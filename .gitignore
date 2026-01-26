@@ -1,0 +1,18 @@
+# Binaries
+/bin/
+/dist/
+/tasc
+
+# Modules
+/vendor/
+
+# Go integration tests
+*.test
+*.out
+
+# Database
+*.db
+*.sqlite
+
+# OS Specific
+.DS_Store

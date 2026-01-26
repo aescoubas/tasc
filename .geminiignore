@@ -1,0 +1,10 @@
+# Ignore git directory
+.git/
+
+# Ignore binaries and database
+tasc
+*.db
+*.sqlite
+
+# Ignore vendor
+vendor/
