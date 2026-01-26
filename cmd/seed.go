@@ -37,14 +37,41 @@ var seedCmd = &cobra.Command{
 				completedAt = "CURRENT_TIMESTAMP"
 			}
 
-			query := fmt.Sprintf(`INSERT INTO tasks (description, project, status, completed_at, created_at) 
-				VALUES ('%s', '%s', '%s', %s, CURRENT_TIMESTAMP)`, desc, proj, status, completedAt)
+			dueAt := "NULL"
+			if rand.Intn(10) > 7 {
+				// Random due date in current month
+				days := rand.Intn(28) + 1
+				dueAt = fmt.Sprintf("'2026-01-%02d 12:00:00'", days) // Hardcoded for this demo context
+			}
+
+			query := fmt.Sprintf(`INSERT INTO tasks (description, project, status, completed_at, created_at, due_at) 
+				VALUES ('%s', '%s', '%s', %s, CURRENT_TIMESTAMP, %s)`, desc, proj, status, completedAt, dueAt)
 			
 			_, err := tx.Exec(query)
 			if err != nil {
 				tx.Rollback()
 				fmt.Printf("Error inserting task: %v\n", err)
 				return
+			}
+		}
+
+		// Add random dependencies
+		// Collect all IDs first? No, we know IDs are 1..50 roughly (autoincrement)
+		// Actually, let's just fetch IDs to be safe.
+		rows, _ := tx.Query("SELECT id FROM tasks")
+		var ids []int64
+		for rows.Next() {
+			var id int64
+			rows.Scan(&id)
+			ids = append(ids, id)
+		}
+		rows.Close()
+
+		for i := 0; i < 20; i++ {
+			blocker := ids[rand.Intn(len(ids))]
+			blocked := ids[rand.Intn(len(ids))]
+			if blocker != blocked {
+				tx.Exec("INSERT OR IGNORE INTO task_dependencies (blocker_id, blocked_id) VALUES (?, ?)", blocker, blocked)
 			}
 		}
 

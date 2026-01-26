@@ -60,6 +60,14 @@ func createTable() {
 	  INSERT INTO tasks_fts(tasks_fts, rowid, description, project) VALUES('delete', old.id, old.description, old.project);
 	  INSERT INTO tasks_fts(rowid, description, project) VALUES (new.id, new.description, new.project);
 	END;
+
+	CREATE TABLE task_dependencies (
+		blocker_id INTEGER,
+		blocked_id INTEGER,
+		PRIMARY KEY (blocker_id, blocked_id),
+		FOREIGN KEY(blocker_id) REFERENCES tasks(id) ON DELETE CASCADE,
+		FOREIGN KEY(blocked_id) REFERENCES tasks(id) ON DELETE CASCADE
+	);
 	`
 	_, err := DB.Exec(query)
 	if err != nil {
