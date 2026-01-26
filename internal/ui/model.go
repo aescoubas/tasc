@@ -1,0 +1,106 @@
+package ui
+
+import (
+	"database/sql"
+	"log"
+
+	"github.com/aescoubas/tasc/internal/db"
+	"github.com/aescoubas/tasc/internal/models"
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/list"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+)
+
+var docStyle = lipgloss.NewStyle().Margin(1, 2)
+
+type Model struct {
+	list list.Model
+}
+
+func InitialModel() Model {
+	// 1. Fetch tasks
+	tasks := loadTasks()
+
+	// 2. Convert to list.Item
+	items := make([]list.Item, len(tasks))
+	for i, t := range tasks {
+		items[i] = item{task: t}
+	}
+
+	// 3. Setup list
+	l := list.New(items, list.NewDefaultDelegate(), 0, 0)
+	l.Title = "My Tasks"
+	l.AdditionalShortHelpKeys = func() []key.Binding {
+		return []key.Binding{
+			key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "done")),
+		}
+	}
+
+	return Model{list: l}
+}
+
+func loadTasks() []models.Task {
+	query := "SELECT id, description, project, status, created_at FROM tasks WHERE status = 'pending' ORDER BY created_at DESC"
+	rows, err := db.DB.Query(query)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	var tasks []models.Task
+	for rows.Next() {
+		var t models.Task
+		var project sql.NullString
+		if err := rows.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt); err != nil {
+			continue
+		}
+		t.Project = project.String
+		tasks = append(tasks, t)
+	}
+	return tasks
+}
+
+func markTaskDone(id int64) {
+	query := `UPDATE tasks SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?`
+	_, err := db.DB.Exec(query, id)
+	if err != nil {
+		log.Printf("Error marking task done: %v", err)
+	}
+}
+
+func (m Model) Init() tea.Cmd {
+	return nil
+}
+
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		if m.list.FilterState() == list.Filtering {
+			break
+		}
+		switch msg.String() {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "d":
+			if i, ok := m.list.SelectedItem().(item); ok {
+				markTaskDone(i.task.ID)
+				index := m.list.Index()
+				m.list.RemoveItem(index)
+				cmd := m.list.NewStatusMessage(docStyle.Foreground(lipgloss.Color("#04B575")).Render("Task completed!"))
+				return m, cmd
+			}
+		}
+	case tea.WindowSizeMsg:
+		h, v := docStyle.GetFrameSize()
+		m.list.SetSize(msg.Width-h, msg.Height-v)
+	}
+
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return m, cmd
+}
+
+func (m Model) View() string {
+	return docStyle.Render(m.list.View())
+}
