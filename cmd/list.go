@@ -4,12 +4,19 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"sort"
 	"text/tabwriter"
 
 	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
+	"github.com/aescoubas/tasc/internal/priority"
 	"github.com/spf13/cobra"
 )
+
+type taskWithScore struct {
+	task  models.Task
+	score float64
+}
 
 var listCmd = &cobra.Command{
 	Use:   "list",
@@ -22,8 +29,8 @@ var listCmd = &cobra.Command{
 		}
 		defer rows.Close()
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-		fmt.Fprintln(w, "ID\tProject\tDescription\tCreated\tDue\tScheduled\tEst")
+		var tasks []taskWithScore
+		calc := priority.NewCalculator()
 
 		for rows.Next() {
 			var t models.Task
@@ -39,22 +46,47 @@ var listCmd = &cobra.Command{
 			}
 			t.Project = project.String
 
-			dueStr := "-"
 			if dueAt.Valid {
-				dueStr = dueAt.Time.Format("2006-01-02")
+				t.DueAt = &dueAt.Time
+			}
+			if scheduledAt.Valid {
+				t.ScheduledAt = &scheduledAt.Time
+			}
+			if estimate.Valid {
+				t.Estimate = estimate.String
+			}
+
+			score := calc.Calculate(t)
+			tasks = append(tasks, taskWithScore{task: t, score: score})
+		}
+
+		// Sort by score descending
+		sort.Slice(tasks, func(i, j int) bool {
+			return tasks[i].score > tasks[j].score
+		})
+
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+		fmt.Fprintln(w, "ID\tProject\tDescription\tCreated\tDue\tScheduled\tEst\tScore")
+
+		for _, item := range tasks {
+			t := item.task
+			
+			dueStr := "-"
+			if t.DueAt != nil {
+				dueStr = t.DueAt.Format("2006-01-02")
 			}
 			
 			schStr := "-"
-			if scheduledAt.Valid {
-				schStr = scheduledAt.Time.Format("2006-01-02")
+			if t.ScheduledAt != nil {
+				schStr = t.ScheduledAt.Format("2006-01-02")
 			}
 
 			estStr := "-"
-			if estimate.Valid {
-				estStr = estimate.String
+			if t.Estimate != "" {
+				estStr = t.Estimate
 			}
 
-			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n", t.ID, t.Project, t.Description, t.CreatedAt.Format("2006-01-02"), dueStr, schStr, estStr)
+			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%.1f\n", t.ID, t.Project, t.Description, t.CreatedAt.Format("2006-01-02"), dueStr, schStr, estStr, item.score)
 		}
 		w.Flush()
 	},

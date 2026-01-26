@@ -3,9 +3,11 @@ package ui
 import (
 	"database/sql"
 	"log"
+	"sort"
 
 	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
+	"github.com/aescoubas/tasc/internal/priority"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -71,6 +73,13 @@ func loadTasks() []models.Task {
 		}
 		tasks = append(tasks, t)
 	}
+
+	// Sort by priority score
+	calc := priority.NewCalculator()
+	sort.Slice(tasks, func(i, j int) bool {
+		return calc.Calculate(tasks[i]) > calc.Calculate(tasks[j])
+	})
+
 	return tasks
 }
 
