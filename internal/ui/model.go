@@ -41,7 +41,7 @@ func InitialModel() Model {
 }
 
 func loadTasks() []models.Task {
-	query := "SELECT id, description, project, status, created_at FROM tasks WHERE status = 'pending' ORDER BY created_at DESC"
+	query := "SELECT id, description, project, status, created_at, due_at, scheduled_at, estimate FROM tasks WHERE status = 'pending' ORDER BY created_at DESC"
 	rows, err := db.DB.Query(query)
 	if err != nil {
 		log.Fatal(err)
@@ -52,10 +52,23 @@ func loadTasks() []models.Task {
 	for rows.Next() {
 		var t models.Task
 		var project sql.NullString
-		if err := rows.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt); err != nil {
+		var dueAt sql.NullTime
+		var scheduledAt sql.NullTime
+		var estimate sql.NullString
+
+		if err := rows.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt, &dueAt, &scheduledAt, &estimate); err != nil {
 			continue
 		}
 		t.Project = project.String
+		if dueAt.Valid {
+			t.DueAt = &dueAt.Time
+		}
+		if scheduledAt.Valid {
+			t.ScheduledAt = &scheduledAt.Time
+		}
+		if estimate.Valid {
+			t.Estimate = estimate.String
+		}
 		tasks = append(tasks, t)
 	}
 	return tasks

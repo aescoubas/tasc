@@ -20,4 +20,6 @@ type Task struct {
 	CreatedAt   time.Time  `json:"created_at" yaml:"created_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty" yaml:"completed_at,omitempty"`
 	DueAt       *time.Time `json:"due_at,omitempty" yaml:"due_at,omitempty"`
+	ScheduledAt *time.Time `json:"scheduled_at,omitempty" yaml:"scheduled_at,omitempty"`
+	Estimate    string     `json:"estimate,omitempty" yaml:"estimate,omitempty"`
 }

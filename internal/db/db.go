@@ -30,7 +30,16 @@ func InitDB() {
 
 	if newDb {
 		createTable()
+	} else {
+		migrate()
 	}
+}
+
+func migrate() {
+	// Attempt to add new columns for existing databases.
+	// We ignore errors here because the columns might already exist.
+	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN scheduled_at DATETIME")
+	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN estimate TEXT")
 }
 
 func createTable() {
@@ -42,7 +51,9 @@ func createTable() {
 		status TEXT DEFAULT 'pending',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		completed_at DATETIME,
-		due_at DATETIME
+		due_at DATETIME,
+		scheduled_at DATETIME,
+		estimate TEXT
 	);
 
 	CREATE VIRTUAL TABLE tasks_fts USING fts5(description, project, content='tasks', content_rowid='id');

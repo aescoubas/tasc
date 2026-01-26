@@ -44,8 +44,20 @@ var seedCmd = &cobra.Command{
 				dueAt = fmt.Sprintf("'2026-01-%02d 12:00:00'", days) // Hardcoded for this demo context
 			}
 
-			query := fmt.Sprintf(`INSERT INTO tasks (description, project, status, completed_at, created_at, due_at) 
-				VALUES ('%s', '%s', '%s', %s, CURRENT_TIMESTAMP, %s)`, desc, proj, status, completedAt, dueAt)
+			scheduledAt := "NULL"
+			if rand.Intn(10) > 8 {
+				days := rand.Intn(28) + 1
+				scheduledAt = fmt.Sprintf("'2026-01-%02d 09:00:00'", days)
+			}
+
+			estimate := "NULL"
+			if rand.Intn(10) > 6 {
+				estVals := []string{"30m", "1h", "2h", "4h", "1d"}
+				estimate = fmt.Sprintf("'%s'", estVals[rand.Intn(len(estVals))])
+			}
+
+			query := fmt.Sprintf(`INSERT INTO tasks (description, project, status, completed_at, created_at, due_at, scheduled_at, estimate) 
+				VALUES ('%s', '%s', '%s', %s, CURRENT_TIMESTAMP, %s, %s, %s)`, desc, proj, status, completedAt, dueAt, scheduledAt, estimate)
 			
 			_, err := tx.Exec(query)
 			if err != nil {
