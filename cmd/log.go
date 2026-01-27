@@ -1,0 +1,64 @@
+package cmd
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/aescoubas/tasc/internal/db"
+	"github.com/spf13/cobra"
+)
+
+var logCmd = &cobra.Command{
+	Use:   "log [description]",
+	Short: "Log a task that is already completed",
+	Args:  cobra.MinimumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		description := strings.Join(args, " ")
+
+		var dueAt *time.Time
+		if due != "" {
+			t, err := parseDate(due)
+			if err != nil {
+				fmt.Printf("Invalid due date format: %v\n", err)
+				return
+			}
+			dueAt = t
+		}
+
+		var scheduledAt *time.Time
+		if scheduled != "" {
+			t, err := parseDate(scheduled)
+			if err != nil {
+				fmt.Printf("Invalid scheduled date format: %v\n", err)
+				return
+			}
+			scheduledAt = t
+		}
+
+		query := `INSERT INTO tasks (description, project, due_at, scheduled_at, estimate, status, created_at, completed_at) VALUES (?, ?, ?, ?, ?, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+		stmt, err := db.DB.Prepare(query)
+		if err != nil {
+			fmt.Printf("Error preparing statement: %v\n", err)
+			return
+		}
+		defer stmt.Close()
+
+		res, err := stmt.Exec(description, project, dueAt, scheduledAt, estimate)
+		if err != nil {
+			fmt.Printf("Error executing statement: %v\n", err)
+			return
+		}
+
+		id, _ := res.LastInsertId()
+		fmt.Printf("Logged task %d.\n", id)
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(logCmd)
+	logCmd.Flags().StringVarP(&project, "project", "p", "", "Project name")
+	logCmd.Flags().StringVarP(&due, "due", "d", "", "Due date (YYYY-MM-DD)")
+	logCmd.Flags().StringVarP(&scheduled, "scheduled", "s", "", "Scheduled date (YYYY-MM-DD)")
+	logCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate (e.g. 2h, 30m)")
+}

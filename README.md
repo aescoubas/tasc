@@ -45,6 +45,12 @@ sudo mv tasc /usr/local/bin/
     tasc add "Buy milk" --due "tomorrow"
     ```
 
+*   **Log a completed task:**
+    ```bash
+    tasc log "Fixed that bug"
+    tasc log "Meeting with team" --project "Work"
+    ```
+
 *   **List tasks:**
     ```bash
     tasc list
