@@ -265,6 +265,9 @@ var listCmd = &cobra.Command{
 			}
 
 			desc := t.Description
+			if len(desc) > 50 {
+				desc = desc[:47] + "..."
+			}
 			duration := t.TimeSpent
 			if t.ActiveStart != nil {
 				desc = "ONGOING: " + desc
@@ -277,9 +280,14 @@ var listCmd = &cobra.Command{
 				durStr = d.String()
 			}
 
+			projectStr := t.Project
+			if len(projectStr) > 20 {
+				projectStr = projectStr[:17] + "..."
+			}
+
 			row := displayRow{
 				id:       fmt.Sprintf("%d", t.ID),
-				project:  t.Project,
+				project:  projectStr,
 				desc:     desc,
 				created:  t.CreatedAt.Format("2006-01-02"),
 				age:      t.AgeString(),
