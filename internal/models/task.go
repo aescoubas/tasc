@@ -22,4 +22,6 @@ type Task struct {
 	DueAt       *time.Time `json:"due_at,omitempty" yaml:"due_at,omitempty"`
 	ScheduledAt *time.Time `json:"scheduled_at,omitempty" yaml:"scheduled_at,omitempty"`
 	Estimate    string     `json:"estimate,omitempty" yaml:"estimate,omitempty"`
+	ActiveStart *time.Time `json:"active_start,omitempty" yaml:"active_start,omitempty"`
+	TimeSpent   int64      `json:"time_spent" yaml:"time_spent"` // in seconds
 }

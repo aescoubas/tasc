@@ -43,7 +43,7 @@ func InitialModel() Model {
 }
 
 func loadTasks() []models.Task {
-	query := "SELECT id, description, project, status, created_at, due_at, scheduled_at, estimate FROM tasks WHERE status = 'pending' ORDER BY created_at DESC"
+	query := "SELECT id, description, project, status, created_at, due_at, scheduled_at, estimate, active_start, time_spent FROM tasks WHERE status = 'pending' ORDER BY created_at DESC"
 	rows, err := db.DB.Query(query)
 	if err != nil {
 		log.Fatal(err)
@@ -57,8 +57,10 @@ func loadTasks() []models.Task {
 		var dueAt sql.NullTime
 		var scheduledAt sql.NullTime
 		var estimate sql.NullString
+		var activeStart sql.NullTime
+		var timeSpent sql.NullInt64
 
-		if err := rows.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt, &dueAt, &scheduledAt, &estimate); err != nil {
+		if err := rows.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt, &dueAt, &scheduledAt, &estimate, &activeStart, &timeSpent); err != nil {
 			continue
 		}
 		t.Project = project.String
@@ -71,12 +73,26 @@ func loadTasks() []models.Task {
 		if estimate.Valid {
 			t.Estimate = estimate.String
 		}
+		if activeStart.Valid {
+			t.ActiveStart = &activeStart.Time
+		}
+		if timeSpent.Valid {
+			t.TimeSpent = timeSpent.Int64
+		}
 		tasks = append(tasks, t)
 	}
 
 	// Sort by priority score
 	calc := priority.NewCalculator()
 	sort.Slice(tasks, func(i, j int) bool {
+		activeI := tasks[i].ActiveStart != nil
+		activeJ := tasks[j].ActiveStart != nil
+		if activeI && !activeJ {
+			return true
+		}
+		if !activeI && activeJ {
+			return false
+		}
 		return calc.Calculate(tasks[i]) > calc.Calculate(tasks[j])
 	})
 

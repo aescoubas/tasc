@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"text/tabwriter"
+	"time"
 
 	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
@@ -22,7 +23,7 @@ var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List pending tasks",
 	Run: func(cmd *cobra.Command, args []string) {
-		rows, err := db.DB.Query("SELECT id, description, project, status, created_at, due_at, scheduled_at, estimate FROM tasks WHERE status = 'pending'")
+		rows, err := db.DB.Query("SELECT id, description, project, status, created_at, due_at, scheduled_at, estimate, active_start, time_spent FROM tasks WHERE status = 'pending'")
 		if err != nil {
 			fmt.Printf("Error querying tasks: %v\n", err)
 			return
@@ -38,8 +39,10 @@ var listCmd = &cobra.Command{
 			var dueAt sql.NullTime
 			var scheduledAt sql.NullTime
 			var estimate sql.NullString
+			var activeStart sql.NullTime
+			var timeSpent sql.NullInt64
 
-			err := rows.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt, &dueAt, &scheduledAt, &estimate)
+			err := rows.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt, &dueAt, &scheduledAt, &estimate, &activeStart, &timeSpent)
 			if err != nil {
 				fmt.Printf("Error scanning row: %v\n", err)
 				continue
@@ -55,18 +58,32 @@ var listCmd = &cobra.Command{
 			if estimate.Valid {
 				t.Estimate = estimate.String
 			}
+			if activeStart.Valid {
+				t.ActiveStart = &activeStart.Time
+			}
+			if timeSpent.Valid {
+				t.TimeSpent = timeSpent.Int64
+			}
 
 			score := calc.Calculate(t)
 			tasks = append(tasks, taskWithScore{task: t, score: score})
 		}
 
-		// Sort by score descending
+		// Sort by active status then score descending
 		sort.Slice(tasks, func(i, j int) bool {
+			activeI := tasks[i].task.ActiveStart != nil
+			activeJ := tasks[j].task.ActiveStart != nil
+			if activeI && !activeJ {
+				return true
+			}
+			if !activeI && activeJ {
+				return false
+			}
 			return tasks[i].score > tasks[j].score
 		})
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-		fmt.Fprintln(w, "ID\tProject\tDescription\tCreated\tDue\tScheduled\tEst\tScore")
+		fmt.Fprintln(w, "ID\tProject\tDescription\tCreated\tDue\tScheduled\tEst\tScore\tDuration")
 
 		for _, item := range tasks {
 			t := item.task
@@ -85,8 +102,21 @@ var listCmd = &cobra.Command{
 			if t.Estimate != "" {
 				estStr = t.Estimate
 			}
+			
+			desc := t.Description
+			duration := t.TimeSpent
+			if t.ActiveStart != nil {
+				desc = "ONGOING: " + desc
+				duration += int64(time.Since(*t.ActiveStart).Seconds())
+			}
+			
+			durStr := "-"
+			if duration > 0 {
+				d := time.Duration(duration) * time.Second
+				durStr = d.String()
+			}
 
-			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%.1f\n", t.ID, t.Project, t.Description, t.CreatedAt.Format("2006-01-02"), dueStr, schStr, estStr, item.score)
+			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%.1f\t%s\n", t.ID, t.Project, desc, t.CreatedAt.Format("2006-01-02"), dueStr, schStr, estStr, item.score, durStr)
 		}
 		w.Flush()
 	},

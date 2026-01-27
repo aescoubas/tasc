@@ -40,6 +40,8 @@ func migrate() {
 	// We ignore errors here because the columns might already exist.
 	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN scheduled_at DATETIME")
 	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN estimate TEXT")
+	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN active_start DATETIME")
+	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN time_spent INTEGER DEFAULT 0")
 }
 
 func createTable() {
@@ -53,7 +55,9 @@ func createTable() {
 		completed_at DATETIME,
 		due_at DATETIME,
 		scheduled_at DATETIME,
-		estimate TEXT
+		estimate TEXT,
+		active_start DATETIME,
+		time_spent INTEGER DEFAULT 0
 	);
 
 	CREATE VIRTUAL TABLE tasks_fts USING fts5(description, project, content='tasks', content_rowid='id');
