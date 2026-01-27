@@ -8,11 +8,16 @@ import (
 )
 
 type Colors struct {
-	Overdue  string `yaml:"overdue"`
-	Today    string `yaml:"today"`
-	Tomorrow string `yaml:"tomorrow"`
-	Week     string `yaml:"week"`
-	Default  string `yaml:"default"`
+	Overdue    string `yaml:"overdue"`
+	OverdueBg  string `yaml:"overdue_bg"`
+	Today      string `yaml:"today"`
+	TodayBg    string `yaml:"today_bg"`
+	Tomorrow   string `yaml:"tomorrow"`
+	TomorrowBg string `yaml:"tomorrow_bg"`
+	Week       string `yaml:"week"`
+	WeekBg     string `yaml:"week_bg"`
+	Default    string `yaml:"default"`
+	DefaultBg  string `yaml:"default_bg"`
 }
 
 type Config struct {
@@ -24,11 +29,12 @@ func DefaultConfig() Config {
 	home, _ := os.UserHomeDir()
 	return Config{
 		Colors: Colors{
-			Overdue:  "#FF0000", // Red
-			Today:    "#FFA500", // Orange
-			Tomorrow: "#FFFF00", // Yellow
-			Week:     "#00FF00", // Green
-			Default:  "#FFFFFF", // White
+			Overdue:   "#FFFFFF", // White text
+			OverdueBg: "#FF0000", // Red background
+			Today:     "#FFA500", // Orange
+			Tomorrow:  "#FFFF00", // Yellow
+			Week:      "#00FF00", // Green
+			Default:   "#FFFFFF", // White
 		},
 		BackupDir: filepath.Join(home, ".config", "tasc", "backups"),
 	}

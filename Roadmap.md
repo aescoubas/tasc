@@ -7,6 +7,7 @@ Completed features are listed in the **Completed** section at the bottom of this
 ## Stale Task Identification
 - **Age Tracking:** Identify tasks that were defined a long time ago and remain incomplete.
 - **Rescheduling Analysis:** Identify tasks that are constantly being rescheduled, indicating potential roadblocks or lack of clarity.
+- **Score impact** Boost the priority with each reschedule (change in the "Scheduled" field). 
 
 ## Enhanced Productivity Metrics
 - **Advanced Stats:** Expand the `stats` command to provide deeper insights into productivity.

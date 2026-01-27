@@ -344,11 +344,19 @@ var listCmd = &cobra.Command{
 		// Render
 		// Styles
 		styles := make(map[urgencyTier]lipgloss.Style)
-		styles[tierOverdue] = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.Colors.Overdue))
-		styles[tierToday] = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.Colors.Today))
-		styles[tierTomorrow] = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.Colors.Tomorrow))
-		styles[tierWeek] = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.Colors.Week))
-		styles[tierDefault] = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.Colors.Default))
+		makeStyle := func(fg, bg string) lipgloss.Style {
+			s := lipgloss.NewStyle().Foreground(lipgloss.Color(fg))
+			if bg != "" {
+				s = s.Background(lipgloss.Color(bg))
+			}
+			return s
+		}
+
+		styles[tierOverdue] = makeStyle(cfg.Colors.Overdue, cfg.Colors.OverdueBg)
+		styles[tierToday] = makeStyle(cfg.Colors.Today, cfg.Colors.TodayBg)
+		styles[tierTomorrow] = makeStyle(cfg.Colors.Tomorrow, cfg.Colors.TomorrowBg)
+		styles[tierWeek] = makeStyle(cfg.Colors.Week, cfg.Colors.WeekBg)
+		styles[tierDefault] = makeStyle(cfg.Colors.Default, cfg.Colors.DefaultBg)
 
 		// Header
 		// We pad headers manually too
@@ -366,19 +374,12 @@ var listCmd = &cobra.Command{
 		for _, row := range rowsData {
 			style := styles[row.tier]
 
-			// We print field by field to ensure padding is OUTSIDE the style (though if we style the text, padding naturally stays outside if we printf normally)
-			// Actually, easiest is to pad the string first, THEN style it?
-			// If we pad first: "text   " -> style("text   ") -> background color might show if we had one. Foreground is safe.
-			// But if we use lipgloss.Style.Render(text), it just wraps.
-			// Let's pad manually in the Printf.
-
 			// Helper to print a column
 			printCol := func(text string, width int, isLast bool) {
 				padded := fmt.Sprintf("%-*s", width, text)
 				fmt.Print(style.Render(padded))
 				if !isLast {
-					fmt.Print("   ") // 3 spaces gap (uncolored? or colored?)
-					// Usually gap is uncolored.
+					fmt.Print(style.Render("   ")) // 3 spaces gap with style
 				}
 			}
 
