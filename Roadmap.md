@@ -2,6 +2,8 @@
 
 This document outlines the planned future features and improvements for `tasc`.
 
+Completed features are listed in the **Completed** section at the bottom of this file, grouped by the quarter in which they were finished.
+
 ## Stale Task Identification
 - **Age Tracking:** Identify tasks that were defined a long time ago and remain incomplete.
 - **Rescheduling Analysis:** Identify tasks that are constantly being rescheduled, indicating potential roadblocks or lack of clarity.
@@ -32,7 +34,9 @@ This document outlines the planned future features and improvements for `tasc`.
 - **Dependency Visualization:** Provide tools to quickly visualize and update task dependencies.
 - **Dependency-Aware Priority:** Update the priority scoring to factor in the priority of blocked tasks or the number of blocked tasks (e.g., blocking a high-priority task increases the blocker's score).
 
-## Status Field Refinement
+## Completed (Q1 2026)
+
+### Status Field Refinement
 - **Expanded Status Values:** Formalize a status field with values: `backlog`, `ongoing`, `done`, `blocked`, and `undefined`.
 - **Refactor Existing Statuses:** Migrate existing `pending` to `backlog` or `ongoing`, `completed` to `done`, and `poorly_defined` to `undefined`.
 - **Explicit Blocked State:** Evaluate making `blocked` an explicit status for easier filtering, while maintaining the dynamic dependency logic.
