@@ -8,10 +8,12 @@ import (
 type TaskStatus string
 
 const (
-	StatusPending       TaskStatus = "pending"
-	StatusCompleted     TaskStatus = "completed"
-	StatusDeleted       TaskStatus = "deleted"
-	StatusPoorlyDefined TaskStatus = "poorly_defined"
+	StatusBacklog   TaskStatus = "backlog"
+	StatusOngoing   TaskStatus = "ongoing"
+	StatusDone      TaskStatus = "done"
+	StatusBlocked   TaskStatus = "blocked"
+	StatusUndefined TaskStatus = "undefined"
+	StatusDeleted   TaskStatus = "deleted"
 )
 
 type Task struct {

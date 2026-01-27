@@ -19,14 +19,14 @@ var doneCmd = &cobra.Command{
 			return
 		}
 
-		query := `UPDATE tasks SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?`
+		query := `UPDATE tasks SET status = 'done', completed_at = CURRENT_TIMESTAMP WHERE id = ?`
 		_, err = db.DB.Exec(query, id)
 		if err != nil {
 			fmt.Printf("Error updating task: %v\n", err)
 			return
 		}
 
-		fmt.Printf("Task %d marked as completed.\n", id)
+		fmt.Printf("Task %d marked as done.\n", id)
 	},
 }
 

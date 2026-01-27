@@ -32,7 +32,7 @@ var askCmd = &cobra.Command{
 		}
 
 		// 1. Fetch all pending tasks
-		query := "SELECT id, description, project, created_at, due_at FROM tasks WHERE status = 'pending'"
+		query := "SELECT id, description, project, created_at, due_at FROM tasks WHERE status != 'done' AND status != 'deleted'"
 		rows, err := db.DB.Query(query)
 		if err != nil {
 			log.Fatalf("Error querying tasks: %v", err)

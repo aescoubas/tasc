@@ -30,10 +30,10 @@ var seedCmd = &cobra.Command{
 			proj := projects[rand.Intn(len(projects))]
 
 			// Mostly pending, some completed
-			status := "pending"
+			status := "backlog"
 			completedAt := "NULL"
 			if rand.Intn(10) > 7 {
-				status = "completed"
+				status = "done"
 				completedAt = "CURRENT_TIMESTAMP"
 			}
 

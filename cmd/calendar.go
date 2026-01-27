@@ -26,7 +26,7 @@ var calendarCmd = &cobra.Command{
 
 		// Fetch due dates
 		query := `SELECT strftime('%d', due_at) FROM tasks 
-		t	  WHERE strftime('%Y-%m', due_at) = ? AND status = 'pending'`
+		t	  WHERE strftime('%Y-%m', due_at) = ? AND status != 'done' AND status != 'deleted'`
 
 		rows, err := db.DB.Query(query, fmt.Sprintf("%04d-%02d", year, month))
 		if err != nil {

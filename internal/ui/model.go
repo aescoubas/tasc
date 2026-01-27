@@ -43,7 +43,7 @@ func InitialModel() Model {
 }
 
 func loadTasks() []models.Task {
-	query := "SELECT id, description, project, status, created_at, due_at, scheduled_at, estimate, active_start, time_spent FROM tasks WHERE status = 'pending' ORDER BY created_at DESC"
+	query := "SELECT id, description, project, status, created_at, due_at, scheduled_at, estimate, active_start, time_spent FROM tasks WHERE status != 'done' AND status != 'deleted' ORDER BY created_at DESC"
 	rows, err := db.DB.Query(query)
 	if err != nil {
 		log.Fatal(err)
@@ -100,7 +100,7 @@ func loadTasks() []models.Task {
 }
 
 func markTaskDone(id int64) {
-	query := `UPDATE tasks SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?`
+	query := `UPDATE tasks SET status = 'done', completed_at = CURRENT_TIMESTAMP WHERE id = ?`
 	_, err := db.DB.Exec(query, id)
 	if err != nil {
 		log.Printf("Error marking task done: %v", err)

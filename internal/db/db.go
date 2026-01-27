@@ -46,6 +46,12 @@ func migrate() {
 	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN estimate TEXT")
 	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN active_start DATETIME")
 	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN time_spent INTEGER DEFAULT 0")
+
+	// Migrate status values
+	_, _ = DB.Exec("UPDATE tasks SET status = 'backlog' WHERE status = 'pending'")
+	_, _ = DB.Exec("UPDATE tasks SET status = 'done' WHERE status = 'completed'")
+	_, _ = DB.Exec("UPDATE tasks SET status = 'undefined' WHERE status = 'poorly_defined'")
+	_, _ = DB.Exec("UPDATE tasks SET status = 'ongoing' WHERE active_start IS NOT NULL AND status = 'backlog'")
 }
 
 func createTable() {
@@ -54,7 +60,7 @@ func createTable() {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		description TEXT NOT NULL,
 		project TEXT,
-		status TEXT DEFAULT 'pending',
+		status TEXT DEFAULT 'backlog',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		completed_at DATETIME,
 		due_at DATETIME,

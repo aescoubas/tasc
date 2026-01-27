@@ -46,7 +46,7 @@ var listCmd = &cobra.Command{
 			cfg = config.DefaultConfig()
 		}
 
-		rows, err := db.DB.Query("SELECT id, description, project, status, created_at, due_at, scheduled_at, estimate, active_start, time_spent FROM tasks WHERE status = 'pending'")
+		rows, err := db.DB.Query("SELECT id, description, project, status, created_at, due_at, scheduled_at, estimate, active_start, time_spent FROM tasks WHERE status != 'done' AND status != 'deleted'")
 		if err != nil {
 			fmt.Printf("Error querying tasks: %v\n", err)
 			return

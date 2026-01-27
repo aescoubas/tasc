@@ -36,7 +36,7 @@ var logCmd = &cobra.Command{
 			scheduledAt = t
 		}
 
-		query := `INSERT INTO tasks (description, project, due_at, scheduled_at, estimate, status, created_at, completed_at) VALUES (?, ?, ?, ?, ?, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+		query := `INSERT INTO tasks (description, project, due_at, scheduled_at, estimate, status, created_at, completed_at) VALUES (?, ?, ?, ?, ?, 'done', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
 		stmt, err := db.DB.Prepare(query)
 		if err != nil {
 			fmt.Printf("Error preparing statement: %v\n", err)

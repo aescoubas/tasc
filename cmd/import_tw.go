@@ -103,11 +103,11 @@ type twTask struct {
 			var status models.TaskStatus
 			switch tw.Status {
 			case "completed":
-				status = models.StatusCompleted
+				status = models.StatusDone
 			case "deleted":
 				status = models.StatusDeleted
 			default: // pending, waiting, recurring
-				status = models.StatusPending
+				status = models.StatusBacklog
 			}
 	
 			// 2. Map Description (Append Tags, Priority, Annotations)

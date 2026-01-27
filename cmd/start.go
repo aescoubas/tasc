@@ -75,7 +75,7 @@ var startCmd = &cobra.Command{
 
 		// 2. Start the new task
 		// Verify task exists and is pending/completed? Assuming we can track any task.
-		res, err := tx.Exec("UPDATE tasks SET active_start = ? WHERE id = ?", now, id)
+		res, err := tx.Exec("UPDATE tasks SET active_start = ?, status = 'ongoing' WHERE id = ?", now, id)
 		if err != nil {
 			fmt.Printf("Error starting task %d: %v\n", id, err)
 			return

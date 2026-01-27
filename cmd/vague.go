@@ -20,11 +20,11 @@ var vagueCmd = &cobra.Command{
 			return
 		}
 
-		// Update status to poorly_defined
+		// Update status to undefined
 		query := `UPDATE tasks SET status = ? WHERE id = ?`
-		result, err := db.DB.Exec(query, models.StatusPoorlyDefined, id)
+		result, err := db.DB.Exec(query, models.StatusUndefined, id)
 		if err != nil {
-			fmt.Printf("Error marking task as poorly defined: %v\n", err)
+			fmt.Printf("Error marking task as undefined: %v\n", err)
 			return
 		}
 
@@ -39,7 +39,7 @@ var vagueCmd = &cobra.Command{
 			return
 		}
 
-		fmt.Printf("Task %d marked as poorly defined.\n", id)
+		fmt.Printf("Task %d marked as undefined.\n", id)
 	},
 }
 
