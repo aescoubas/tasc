@@ -120,6 +120,21 @@ var listCmd = &cobra.Command{
 				less = strings.ToLower(t1.Description) < strings.ToLower(t2.Description)
 			case "created", "created_at":
 				less = t1.CreatedAt.Before(t2.CreatedAt)
+			case "age":
+				// Sort by age: older tasks (smaller CreatedAt) are "greater" in age?
+				// Usually "sort by age" means "oldest first" or "newest first".
+				// If we stick to "less" meaning "comes first":
+				// If we want shortest age first (newest): CreatedAt descending (t1 > t2)
+				// If we want longest age first (oldest): CreatedAt ascending (t1 < t2)
+				// Let's assume standard ascending sort = smallest age (newest) first?
+				// Or does "sort by age" mean "oldest first"?
+				// Let's alias "age" to "created_at" which is Oldest First (Ascending date).
+				// Wait, CreatedAt ascending means Oldest Date (e.g. 2020) < Newest Date (2025).
+				// So sort by CreatedAt ASC puts Oldest at top.
+				// Age: Oldest has BIG age. Newest has SMALL age.
+				// If I sort by Age ASC (Smallest Age first), I want Newest First.
+				// So Age ASC == CreatedAt DESC.
+				less = t2.CreatedAt.Before(t1.CreatedAt)
 			case "due", "due_at":
 				if t1.DueAt == nil && t2.DueAt == nil {
 					less = false
@@ -173,6 +188,7 @@ var listCmd = &cobra.Command{
 			project  string
 			desc     string
 			created  string
+			age      string
 			due      string
 			sch      string
 			est      string
@@ -182,8 +198,8 @@ var listCmd = &cobra.Command{
 		}
 
 		var rowsData []displayRow
-		widths := make([]int, 9) // 9 columns
-		headers := []string{"ID", "Project", "Description", "Created", "Due", "Scheduled", "Est", "Score", "Duration"}
+		widths := make([]int, 10) // 10 columns
+		headers := []string{"ID", "Project", "Description", "Created", "Age", "Due", "Scheduled", "Est", "Score", "Duration"}
 
 		// Initialize widths with headers
 		for i, h := range headers {
@@ -266,6 +282,7 @@ var listCmd = &cobra.Command{
 				project:  t.Project,
 				desc:     desc,
 				created:  t.CreatedAt.Format("2006-01-02"),
+				age:      t.AgeString(),
 				due:      dueStr,
 				sch:      schStr,
 				est:      estStr,
@@ -289,20 +306,23 @@ var listCmd = &cobra.Command{
 			if len(row.created) > widths[3] {
 				widths[3] = len(row.created)
 			}
-			if len(row.due) > widths[4] {
-				widths[4] = len(row.due)
+			if len(row.age) > widths[4] {
+				widths[4] = len(row.age)
 			}
-			if len(row.sch) > widths[5] {
-				widths[5] = len(row.sch)
+			if len(row.due) > widths[5] {
+				widths[5] = len(row.due)
 			}
-			if len(row.est) > widths[6] {
-				widths[6] = len(row.est)
+			if len(row.sch) > widths[6] {
+				widths[6] = len(row.sch)
 			}
-			if len(row.score) > widths[7] {
-				widths[7] = len(row.score)
+			if len(row.est) > widths[7] {
+				widths[7] = len(row.est)
 			}
-			if len(row.duration) > widths[8] {
-				widths[8] = len(row.duration)
+			if len(row.score) > widths[8] {
+				widths[8] = len(row.score)
+			}
+			if len(row.duration) > widths[9] {
+				widths[9] = len(row.duration)
 			}
 		}
 
@@ -351,18 +371,19 @@ var listCmd = &cobra.Command{
 			printCol(row.project, widths[1], false)
 			printCol(row.desc, widths[2], false)
 			printCol(row.created, widths[3], false)
-			printCol(row.due, widths[4], false)
-			printCol(row.sch, widths[5], false)
-			printCol(row.est, widths[6], false)
-			printCol(row.score, widths[7], false)
-			printCol(row.duration, widths[8], true)
+			printCol(row.age, widths[4], false)
+			printCol(row.due, widths[5], false)
+			printCol(row.sch, widths[6], false)
+			printCol(row.est, widths[7], false)
+			printCol(row.score, widths[8], false)
+			printCol(row.duration, widths[9], true)
 			fmt.Println()
 		}
 	},
 }
 
 func init() {
-	listCmd.Flags().StringVarP(&sortBy, "sort", "s", "", "Sort by field (id, project, description, created, due, scheduled, estimate, score, duration)")
+	listCmd.Flags().StringVarP(&sortBy, "sort", "s", "", "Sort by field (id, project, description, created, age, due, scheduled, estimate, score, duration)")
 	listCmd.Flags().BoolVarP(&sortDesc, "desc", "d", false, "Sort in descending order")
 	rootCmd.AddCommand(listCmd)
 }

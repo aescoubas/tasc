@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -25,4 +26,18 @@ type Task struct {
 	Estimate    string     `json:"estimate,omitempty" yaml:"estimate,omitempty"`
 	ActiveStart *time.Time `json:"active_start,omitempty" yaml:"active_start,omitempty"`
 	TimeSpent   int64      `json:"time_spent" yaml:"time_spent"` // in seconds
+}
+
+func (t Task) AgeString() string {
+	d := time.Since(t.CreatedAt)
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	if d < 24*time.Hour {
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	}
+	return fmt.Sprintf("%dd", int(d.Hours()/24))
 }
