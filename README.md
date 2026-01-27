@@ -49,6 +49,7 @@ sudo mv tasc /usr/local/bin/
     ```bash
     tasc list
     tasc list --sort due      # Sort by due date
+    tasc list --sort age      # Sort by task age
     tasc list --sort duration # Sort by time spent
     tasc list --sort score -d # Sort by priority score descending
     ```
