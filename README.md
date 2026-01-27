@@ -11,6 +11,7 @@
 *   **AI Integration:** Built-in integration with Google Gemini for natural language queries and advice.
 *   **Smart Scheduling:** Track Due Dates, Scheduled Dates, and Estimates.
 *   **Priority System:** Dynamic priority scoring to highlight what matters most.
+*   **Time Tracking:** Built-in timer to track how long tasks take.
 *   **Calendar View:** Visualize your schedule in the terminal.
 
 ## Installation
@@ -41,19 +42,26 @@ sudo mv tasc /usr/local/bin/
 *   **Add a task:**
     ```bash
     tasc add "Finish the report"
-    tasc add "Buy milk" --due "tomorrow" --priority 5
+    tasc add "Buy milk" --due "tomorrow"
     ```
 
 *   **List tasks:**
     ```bash
     tasc list
     tasc list --sort due      # Sort by due date
+    tasc list --sort duration # Sort by time spent
     tasc list --sort score -d # Sort by priority score descending
     ```
 
 *   **Mark as done:**
     ```bash
     tasc done <task_id>
+    ```
+
+*   **Edit a task:**
+    ```bash
+    tasc edit <task_id>        # Opens task in your default $EDITOR
+    tasc modify <task_id> "New description" --due "next friday"
     ```
 
 *   **Delete a task:**
@@ -78,7 +86,7 @@ sudo mv tasc /usr/local/bin/
 *   **Dependencies:**
     Link tasks together:
     ```bash
-    tasc dep link <parent_id> <child_id>
+    tasc dep <parent_id> <child_id>
     ```
     View dependency graph:
     ```bash
@@ -95,6 +103,25 @@ sudo mv tasc /usr/local/bin/
     View upcoming tasks on a calendar:
     ```bash
     tasc calendar
+    ```
+
+*   **Time Tracking:**
+    Track time spent on tasks:
+    ```bash
+    tasc start <task_id>       # Start the timer for a task
+    tasc stop                  # Stop the currently active timer
+    ```
+
+*   **Statistics:**
+    View task counts by status:
+    ```bash
+    tasc stats
+    ```
+
+*   **Task Refinement:**
+    Mark vague tasks that need more clarity:
+    ```bash
+    tasc vague <task_id>
     ```
 
 ## Contributing
