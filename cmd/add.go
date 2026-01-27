@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/aescoubas/tasc/internal/db"
 	"github.com/spf13/cobra"
+	"github.com/tj/go-naturaldate"
 )
 
 var (
@@ -82,5 +84,33 @@ func parseDate(s string) (*time.Time, error) {
 			return &t, nil
 		}
 	}
+
+	// Try natural date parsing
+	processed := preprocessDate(s)
+	t, err := naturaldate.Parse(processed, time.Now())
+	if err == nil {
+		return &t, nil
+	}
+
 	return nil, fmt.Errorf("could not parse date %q", s)
+}
+
+func preprocessDate(s string) string {
+	s = strings.TrimSpace(s)
+	// 1. Split number and unit if stuck together: "10days" -> "10 days"
+	re := regexp.MustCompile(`^(\d+)([a-zA-Z]+)$`)
+	s = re.ReplaceAllString(s, "$1 $2")
+
+	// 2. "week" -> "next week"
+	if s == "week" {
+		return "next week"
+	}
+
+	// 3. If it looks like a duration "10 days", "2 weeks", prepend "in " to force future
+	reDuration := regexp.MustCompile(`^\d+\s+(day|days|week|weeks|month|months|year|years)$`)
+	if reDuration.MatchString(s) {
+		return "in " + s
+	}
+
+	return s
 }
