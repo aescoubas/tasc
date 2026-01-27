@@ -47,6 +47,8 @@ sudo mv tasc /usr/local/bin/
 *   **List tasks:**
     ```bash
     tasc list
+    tasc list --sort due      # Sort by due date
+    tasc list --sort score -d # Sort by priority score descending
     ```
 
 *   **Mark as done:**
