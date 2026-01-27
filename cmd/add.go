@@ -24,7 +24,7 @@ var addCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		description := strings.Join(args, " ")
-		
+
 		var dueAt *time.Time
 		if due != "" {
 			t, err := parseDate(due)

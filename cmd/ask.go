@@ -18,7 +18,7 @@ import (
 var askCmd = &cobra.Command{
 	Use:   "ask [prompt]",
 	Short: "Ask Gemini about your tasks",
-	Long:  `Send your current task list to Google's Gemini model and ask for advice, prioritization, or general queries.`, 
+	Long:  `Send your current task list to Google's Gemini model and ask for advice, prioritization, or general queries.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		apiKey := os.Getenv("GEMINI_API_KEY")
 		if apiKey == "" {
@@ -41,7 +41,7 @@ var askCmd = &cobra.Command{
 
 		var sb strings.Builder
 		sb.WriteString("Here is my current task list:\n")
-		
+
 		count := 0
 		for rows.Next() {
 			var t models.Task
@@ -54,12 +54,12 @@ var askCmd = &cobra.Command{
 			if dueAt.Valid {
 				due = dueAt.Time.Format("2006-01-02")
 			}
-			
-			sb.WriteString(fmt.Sprintf("- [ID: %d] %s (Project: %s, Created: %s, Due: %s)\n", 
+
+			sb.WriteString(fmt.Sprintf("- [ID: %d] %s (Project: %s, Created: %s, Due: %s)\n",
 				t.ID, t.Description, project.String, t.CreatedAt.Format("2006-01-02"), due))
 			count++
 		}
-		
+
 		if count == 0 {
 			fmt.Println("No pending tasks to analyze.")
 			return

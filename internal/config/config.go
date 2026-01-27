@@ -49,7 +49,7 @@ func LoadConfig() (Config, error) {
 	var cfg Config
 	// Initialize with defaults in case file is partial
 	cfg = DefaultConfig()
-	
+
 	err = yaml.Unmarshal(data, &cfg)
 	if err != nil {
 		return DefaultConfig(), err

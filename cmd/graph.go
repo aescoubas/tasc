@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/aescoubas/tasc/internal/db"
-	"github.com/spf13/cobra"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spf13/cobra"
 )
 
 var graphCmd = &cobra.Command{
@@ -29,10 +29,13 @@ var graphCmd = &cobra.Command{
 		defer rows.Close()
 
 		// Build adjacency list
-		adj := make(map[int64][]struct{ID int64; Desc string})
+		adj := make(map[int64][]struct {
+			ID   int64
+			Desc string
+		})
 		tasks := make(map[int64]string)
-		
-hasIncoming := make(map[int64]bool)
+
+		hasIncoming := make(map[int64]bool)
 
 		for rows.Next() {
 			var bID, bdID int64
@@ -40,7 +43,10 @@ hasIncoming := make(map[int64]bool)
 			if err := rows.Scan(&bID, &bDesc, &bdID, &bdDesc); err != nil {
 				continue
 			}
-			adj[bID] = append(adj[bID], struct{ID int64; Desc string}{bdID, bdDesc})
+			adj[bID] = append(adj[bID], struct {
+				ID   int64
+				Desc string
+			}{bdID, bdDesc})
 			tasks[bID] = bDesc
 			tasks[bdID] = bdDesc
 			hasIncoming[bdID] = true
@@ -62,7 +68,7 @@ hasIncoming := make(map[int64]bool)
 			}
 			return
 		}
-		
+
 		if len(adj) == 0 {
 			fmt.Println("No dependencies found.")
 			return
@@ -77,12 +83,15 @@ hasIncoming := make(map[int64]bool)
 	},
 }
 
-func printTree(id int64, adj map[int64][]struct{ID int64; Desc string}, tasks map[int64]string, level int) {
+func printTree(id int64, adj map[int64][]struct {
+	ID   int64
+	Desc string
+}, tasks map[int64]string, level int) {
 	indent := ""
 	for i := 0; i < level; i++ {
 		indent += "  "
 	}
-	
+
 	arrow := "└─"
 	if level == 0 {
 		arrow = "●"

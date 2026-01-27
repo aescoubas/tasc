@@ -15,7 +15,7 @@ var calendarCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		now := time.Now()
 		year, month, _ := now.Date()
-		
+
 		fmt.Printf("      %s %d\n", month, year)
 		fmt.Println("Su Mo Tu We Th Fr Sa")
 
@@ -27,8 +27,8 @@ var calendarCmd = &cobra.Command{
 		// Fetch due dates
 		query := `SELECT strftime('%d', due_at) FROM tasks 
 		t	  WHERE strftime('%Y-%m', due_at) = ? AND status = 'pending'`
-	
-rows, err := db.DB.Query(query, fmt.Sprintf("%04d-%02d", year, month))
+
+		rows, err := db.DB.Query(query, fmt.Sprintf("%04d-%02d", year, month))
 		if err != nil {
 			fmt.Printf("Error querying due dates: %v\n", err)
 			return
@@ -45,7 +45,7 @@ rows, err := db.DB.Query(query, fmt.Sprintf("%04d-%02d", year, month))
 		// Rendering
 		styleDefault := lipgloss.NewStyle().Width(3).Align(lipgloss.Right)
 		styleToday := styleDefault.Copy().Foreground(lipgloss.Color("86")).Bold(true) // Aqua
-		styleDue := styleDefault.Copy().Foreground(lipgloss.Color("205")).Bold(true) // Pink
+		styleDue := styleDefault.Copy().Foreground(lipgloss.Color("205")).Bold(true)  // Pink
 		styleDueAndToday := styleDue.Copy().Background(lipgloss.Color("236"))
 
 		// Padding for start of week

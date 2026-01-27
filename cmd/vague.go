@@ -28,8 +28,7 @@ var vagueCmd = &cobra.Command{
 			return
 		}
 
-	
-rowsAffected, err := result.RowsAffected()
+		rowsAffected, err := result.RowsAffected()
 		if err != nil {
 			fmt.Printf("Error checking rows affected: %v\n", err)
 			return

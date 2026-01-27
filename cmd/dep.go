@@ -27,7 +27,7 @@ var depCmd = &cobra.Command{
 		}
 
 		// Check circular dependency (simple 1-level check for now, can be improved)
-		// Or let SQLite recursion handle it later? 
+		// Or let SQLite recursion handle it later?
 		// For now, just insert.
 
 		query := `INSERT INTO task_dependencies (blocker_id, blocked_id) VALUES (?, ?)`
@@ -44,4 +44,3 @@ var depCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(depCmd)
 }
-

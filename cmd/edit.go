@@ -19,13 +19,13 @@ var editCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		idStr := args[0]
-		
+
 		// 1. Fetch Task
 		var t models.Task
 		var project sql.NullString
 		query := "SELECT id, description, project, status, created_at, due_at FROM tasks WHERE id = ?"
 		row := db.DB.QueryRow(query, idStr)
-		
+
 		err := row.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt, &t.DueAt)
 		if err != nil {
 			fmt.Printf("Error fetching task: %v\n", err)

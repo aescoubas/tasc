@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/aescoubas/tasc/internal/ui"
-	"github.com/spf13/cobra"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spf13/cobra"
 )
 
 var uiCmd = &cobra.Command{
@@ -28,4 +28,3 @@ var uiCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(uiCmd)
 }
-

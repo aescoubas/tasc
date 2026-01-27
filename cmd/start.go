@@ -28,8 +28,8 @@ var startCmd = &cobra.Command{
 		defer tx.Rollback()
 
 		// 1. Stop any currently active task
-	
-rows, err := tx.Query("SELECT id, active_start FROM tasks WHERE active_start IS NOT NULL")
+
+		rows, err := tx.Query("SELECT id, active_start FROM tasks WHERE active_start IS NOT NULL")
 		if err != nil {
 			fmt.Printf("Error checking active tasks: %v\n", err)
 			return
@@ -48,7 +48,7 @@ rows, err := tx.Query("SELECT id, active_start FROM tasks WHERE active_start IS 
 				return
 			}
 			taskFound = true
-			
+
 			// If the task we are starting is already active, we can either:
 			// A) Do nothing (it's already started)
 			// B) Restart it (reset start time?) - bad for tracking
@@ -81,8 +81,7 @@ rows, err := tx.Query("SELECT id, active_start FROM tasks WHERE active_start IS 
 			return
 		}
 
-	
-rowsAffected, _ := res.RowsAffected()
+		rowsAffected, _ := res.RowsAffected()
 		if rowsAffected == 0 {
 			fmt.Printf("Task %d not found.\n", id)
 			return

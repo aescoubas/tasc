@@ -14,8 +14,8 @@ var statsCmd = &cobra.Command{
 	Short: "Show task statistics",
 	Run: func(cmd *cobra.Command, args []string) {
 		query := `SELECT status, COUNT(*) FROM tasks GROUP BY status`
-	
-rows, err := db.DB.Query(query)
+
+		rows, err := db.DB.Query(query)
 		if err != nil {
 			fmt.Printf("Error querying stats: %v\n", err)
 			return
@@ -41,4 +41,3 @@ rows, err := db.DB.Query(query)
 func init() {
 	rootCmd.AddCommand(statsCmd)
 }
-

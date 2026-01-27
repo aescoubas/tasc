@@ -222,7 +222,7 @@ var listCmd = &cobra.Command{
 			// Determine Urgency
 			tierDue := getTier(t.DueAt)
 			tierSch := getTier(t.ScheduledAt)
-			
+
 			// Use the most urgent tier (lower enum value is higher urgency)
 			finalTier := tierDefault
 			if tierDue < finalTier {
@@ -277,15 +277,33 @@ var listCmd = &cobra.Command{
 			rowsData = append(rowsData, row)
 
 			// Update widths
-			if len(row.id) > widths[0] { widths[0] = len(row.id) }
-			if len(row.project) > widths[1] { widths[1] = len(row.project) }
-			if len(row.desc) > widths[2] { widths[2] = len(row.desc) }
-			if len(row.created) > widths[3] { widths[3] = len(row.created) }
-			if len(row.due) > widths[4] { widths[4] = len(row.due) }
-			if len(row.sch) > widths[5] { widths[5] = len(row.sch) }
-			if len(row.est) > widths[6] { widths[6] = len(row.est) }
-			if len(row.score) > widths[7] { widths[7] = len(row.score) }
-			if len(row.duration) > widths[8] { widths[8] = len(row.duration) }
+			if len(row.id) > widths[0] {
+				widths[0] = len(row.id)
+			}
+			if len(row.project) > widths[1] {
+				widths[1] = len(row.project)
+			}
+			if len(row.desc) > widths[2] {
+				widths[2] = len(row.desc)
+			}
+			if len(row.created) > widths[3] {
+				widths[3] = len(row.created)
+			}
+			if len(row.due) > widths[4] {
+				widths[4] = len(row.due)
+			}
+			if len(row.sch) > widths[5] {
+				widths[5] = len(row.sch)
+			}
+			if len(row.est) > widths[6] {
+				widths[6] = len(row.est)
+			}
+			if len(row.score) > widths[7] {
+				widths[7] = len(row.score)
+			}
+			if len(row.duration) > widths[8] {
+				widths[8] = len(row.duration)
+			}
 		}
 
 		// Render
@@ -312,13 +330,13 @@ var listCmd = &cobra.Command{
 		// Rows
 		for _, row := range rowsData {
 			style := styles[row.tier]
-			
+
 			// We print field by field to ensure padding is OUTSIDE the style (though if we style the text, padding naturally stays outside if we printf normally)
 			// Actually, easiest is to pad the string first, THEN style it?
 			// If we pad first: "text   " -> style("text   ") -> background color might show if we had one. Foreground is safe.
 			// But if we use lipgloss.Style.Render(text), it just wraps.
 			// Let's pad manually in the Printf.
-			
+
 			// Helper to print a column
 			printCol := func(text string, width int, isLast bool) {
 				padded := fmt.Sprintf("%-*s", width, text)

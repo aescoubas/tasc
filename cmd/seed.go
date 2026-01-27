@@ -16,7 +16,7 @@ var seedCmd = &cobra.Command{
 		projects := []string{"Work", "Personal", "Tasc", "Health", "Finance"}
 		verbs := []string{"Fix", "Buy", "Write", "Call", "Email", "Review", "Clean", "Pay", "Update", "Deploy"}
 		nouns := []string{"bug", "milk", "documentation", "mom", "client", "code", "house", "bills", "dependencies", "server"}
-		
+
 		rand.Seed(time.Now().UnixNano())
 
 		tx, err := db.DB.Begin()
@@ -28,7 +28,7 @@ var seedCmd = &cobra.Command{
 		for i := 0; i < 50; i++ {
 			desc := fmt.Sprintf("%s %s %d", verbs[rand.Intn(len(verbs))], nouns[rand.Intn(len(nouns))], i)
 			proj := projects[rand.Intn(len(projects))]
-			
+
 			// Mostly pending, some completed
 			status := "pending"
 			completedAt := "NULL"
@@ -58,7 +58,7 @@ var seedCmd = &cobra.Command{
 
 			query := fmt.Sprintf(`INSERT INTO tasks (description, project, status, completed_at, created_at, due_at, scheduled_at, estimate) 
 				VALUES ('%s', '%s', '%s', %s, CURRENT_TIMESTAMP, %s, %s, %s)`, desc, proj, status, completedAt, dueAt, scheduledAt, estimate)
-			
+
 			_, err := tx.Exec(query)
 			if err != nil {
 				tx.Rollback()

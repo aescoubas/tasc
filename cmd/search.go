@@ -18,7 +18,7 @@ var searchCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		queryStr := strings.Join(args, " ")
-		
+
 		// Use FTS5 MATCH operator
 		query := `
 			SELECT id, description, project, status, created_at 
@@ -27,7 +27,7 @@ var searchCmd = &cobra.Command{
 				SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ? ORDER BY rank
 			)
 		`
-		
+
 		rows, err := db.DB.Query(query, queryStr)
 		if err != nil {
 			fmt.Printf("Error searching tasks: %v\n", err)

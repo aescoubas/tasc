@@ -12,7 +12,7 @@ import (
 var stopCmd = &cobra.Command{
 	Use:   "stop [id]",
 	Short: "Stop tracking time for a task",
-	Args:  func(cmd *cobra.Command, args []string) error {
+	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 1 {
 			return fmt.Errorf("accepts at most 1 arg(s), received %d", len(args))
 		}
@@ -37,8 +37,8 @@ var stopCmd = &cobra.Command{
 		defer tx.Rollback()
 
 		query := "SELECT id, active_start FROM tasks WHERE active_start IS NOT NULL"
-	
-rows, err := tx.Query(query)
+
+		rows, err := tx.Query(query)
 		if err != nil {
 			fmt.Printf("Error querying active tasks: %v\n", err)
 			return
@@ -54,12 +54,12 @@ rows, err := tx.Query(query)
 				fmt.Printf("Error scanning task: %v\n", err)
 				return
 			}
-			
+
 			// If targetID is specified, only stop if it matches
 			if targetID != -1 && activeID != targetID {
 				continue
 			}
-			
+
 			// We found a task to stop
 			found = true
 			break // Only stop one
