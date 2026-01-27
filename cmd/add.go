@@ -12,10 +12,11 @@ import (
 )
 
 var (
-	project   string
-	due       string
-	scheduled string
-	estimate  string
+	project    string
+	due        string
+	scheduled  string
+	estimate   string
+	recurrenceFlag string
 )
 
 var addCmd = &cobra.Command{
@@ -45,7 +46,7 @@ var addCmd = &cobra.Command{
 			scheduledAt = t
 		}
 
-		query := `INSERT INTO tasks (description, project, due_at, scheduled_at, estimate, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+		query := `INSERT INTO tasks (description, project, due_at, scheduled_at, estimate, recurrence, created_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
 		stmt, err := db.DB.Prepare(query)
 		if err != nil {
 			fmt.Printf("Error preparing statement: %v\n", err)
@@ -53,7 +54,7 @@ var addCmd = &cobra.Command{
 		}
 		defer stmt.Close()
 
-		res, err := stmt.Exec(description, project, dueAt, scheduledAt, estimate)
+		res, err := stmt.Exec(description, project, dueAt, scheduledAt, estimate, recurrenceFlag)
 		if err != nil {
 			fmt.Printf("Error executing statement: %v\n", err)
 			return
@@ -70,6 +71,7 @@ func init() {
 	addCmd.Flags().StringVarP(&due, "due", "d", "", "Due date (YYYY-MM-DD)")
 	addCmd.Flags().StringVarP(&scheduled, "scheduled", "s", "", "Scheduled date (YYYY-MM-DD)")
 	addCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate (e.g. 2h, 30m)")
+	addCmd.Flags().StringVarP(&recurrenceFlag, "recurrence", "r", "", "Recurrence rule (e.g. 'daily', 'every 2 weeks')")
 }
 
 func parseDate(s string) (*time.Time, error) {

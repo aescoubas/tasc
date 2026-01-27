@@ -44,6 +44,7 @@ func migrate() {
 	// We ignore errors here because the columns might already exist.
 	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN scheduled_at DATETIME")
 	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN estimate TEXT")
+	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN recurrence TEXT")
 	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN active_start DATETIME")
 	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN time_spent INTEGER DEFAULT 0")
 
@@ -66,6 +67,7 @@ func createTable() {
 		due_at DATETIME,
 		scheduled_at DATETIME,
 		estimate TEXT,
+		recurrence TEXT,
 		active_start DATETIME,
 		time_spent INTEGER DEFAULT 0
 	);
