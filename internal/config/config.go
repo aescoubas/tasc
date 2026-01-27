@@ -16,10 +16,12 @@ type Colors struct {
 }
 
 type Config struct {
-	Colors Colors `yaml:"colors"`
+	Colors    Colors `yaml:"colors"`
+	BackupDir string `yaml:"backup_dir"`
 }
 
 func DefaultConfig() Config {
+	home, _ := os.UserHomeDir()
 	return Config{
 		Colors: Colors{
 			Overdue:  "#FF0000", // Red
@@ -28,6 +30,7 @@ func DefaultConfig() Config {
 			Week:     "#00FF00", // Green
 			Default:  "#FFFFFF", // White
 		},
+		BackupDir: filepath.Join(home, ".config", "tasc", "backups"),
 	}
 }
 

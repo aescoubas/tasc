@@ -11,18 +11,22 @@ import (
 
 var DB *sql.DB
 
-func InitDB() {
+func GetDBPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatal(err)
 	}
+	return filepath.Join(home, ".tasc.db")
+}
 
-	dbPath := filepath.Join(home, ".tasc.db")
+func InitDB() {
+	dbPath := GetDBPath()
 	var newDb bool
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		newDb = true
 	}
 
+	var err error
 	DB, err = sql.Open("sqlite3", dbPath)
 	if err != nil {
 		log.Fatal(err)
