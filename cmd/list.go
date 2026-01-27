@@ -46,7 +46,7 @@ var listCmd = &cobra.Command{
 			cfg = config.DefaultConfig()
 		}
 
-		rows, err := db.DB.Query("SELECT id, description, project, status, created_at, due_at, scheduled_at, estimate, active_start, time_spent FROM tasks WHERE status != 'done' AND status != 'deleted'")
+		rows, err := db.DB.Query("SELECT id, description, project, status, created_at, due_at, scheduled_at, estimate, active_start, time_spent FROM tasks WHERE status NOT IN ('done', 'deleted', 'undefined')")
 		if err != nil {
 			fmt.Printf("Error querying tasks: %v\n", err)
 			return
@@ -186,6 +186,7 @@ var listCmd = &cobra.Command{
 		type displayRow struct {
 			id       string
 			project  string
+			status   string
 			desc     string
 			created  string
 			age      string
@@ -198,8 +199,8 @@ var listCmd = &cobra.Command{
 		}
 
 		var rowsData []displayRow
-		widths := make([]int, 10) // 10 columns
-		headers := []string{"ID", "Project", "Description", "Created", "Age", "Due", "Scheduled", "Est", "Score", "Duration"}
+		widths := make([]int, 11) // 11 columns
+		headers := []string{"ID", "Project", "Status", "Description", "Created", "Age", "Due", "Scheduled", "Est", "Score", "Duration"}
 
 		// Initialize widths with headers
 		for i, h := range headers {
@@ -284,10 +285,13 @@ var listCmd = &cobra.Command{
 			if len(projectStr) > 20 {
 				projectStr = projectStr[:17] + "..."
 			}
+			
+			statusStr := string(t.Status)
 
 			row := displayRow{
 				id:       fmt.Sprintf("%d", t.ID),
 				project:  projectStr,
+				status:   statusStr,
 				desc:     desc,
 				created:  t.CreatedAt.Format("2006-01-02"),
 				age:      t.AgeString(),
@@ -308,29 +312,32 @@ var listCmd = &cobra.Command{
 			if len(row.project) > widths[1] {
 				widths[1] = len(row.project)
 			}
-			if len(row.desc) > widths[2] {
-				widths[2] = len(row.desc)
+			if len(row.status) > widths[2] {
+				widths[2] = len(row.status)
 			}
-			if len(row.created) > widths[3] {
-				widths[3] = len(row.created)
+			if len(row.desc) > widths[3] {
+				widths[3] = len(row.desc)
 			}
-			if len(row.age) > widths[4] {
-				widths[4] = len(row.age)
+			if len(row.created) > widths[4] {
+				widths[4] = len(row.created)
 			}
-			if len(row.due) > widths[5] {
-				widths[5] = len(row.due)
+			if len(row.age) > widths[5] {
+				widths[5] = len(row.age)
 			}
-			if len(row.sch) > widths[6] {
-				widths[6] = len(row.sch)
+			if len(row.due) > widths[6] {
+				widths[6] = len(row.due)
 			}
-			if len(row.est) > widths[7] {
-				widths[7] = len(row.est)
+			if len(row.sch) > widths[7] {
+				widths[7] = len(row.sch)
 			}
-			if len(row.score) > widths[8] {
-				widths[8] = len(row.score)
+			if len(row.est) > widths[8] {
+				widths[8] = len(row.est)
 			}
-			if len(row.duration) > widths[9] {
-				widths[9] = len(row.duration)
+			if len(row.score) > widths[9] {
+				widths[9] = len(row.score)
+			}
+			if len(row.duration) > widths[10] {
+				widths[10] = len(row.duration)
 			}
 		}
 
@@ -377,14 +384,15 @@ var listCmd = &cobra.Command{
 
 			printCol(row.id, widths[0], false)
 			printCol(row.project, widths[1], false)
-			printCol(row.desc, widths[2], false)
-			printCol(row.created, widths[3], false)
-			printCol(row.age, widths[4], false)
-			printCol(row.due, widths[5], false)
-			printCol(row.sch, widths[6], false)
-			printCol(row.est, widths[7], false)
-			printCol(row.score, widths[8], false)
-			printCol(row.duration, widths[9], true)
+			printCol(row.status, widths[2], false)
+			printCol(row.desc, widths[3], false)
+			printCol(row.created, widths[4], false)
+			printCol(row.age, widths[5], false)
+			printCol(row.due, widths[6], false)
+			printCol(row.sch, widths[7], false)
+			printCol(row.est, widths[8], false)
+			printCol(row.score, widths[9], false)
+			printCol(row.duration, widths[10], true)
 			fmt.Println()
 		}
 	},
