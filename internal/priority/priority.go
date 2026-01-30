@@ -21,6 +21,8 @@ func NewCalculator() *Calculator {
 			ScheduledRule,
 			RescheduleRule,
 			AgeRule,
+			DueRule,
+			EstimateRule,
 		},
 	}
 }
@@ -71,4 +73,50 @@ func AgeRule(t models.Task) float64 {
 	age := time.Since(t.CreatedAt)
 	days := age.Hours() / 24.0
 	return days * 0.1
+}
+
+// DueRule calculates priority based on the DueAt field.
+func DueRule(t models.Task) float64 {
+	if t.DueAt == nil {
+		return 0
+	}
+
+	score := 0.0
+	now := time.Now()
+	diff := t.DueAt.Sub(now)
+
+	if diff < 0 {
+		// Overdue: High priority + scale with lateness
+		daysOverdue := int(-diff.Hours() / 24)
+		score = 20.0 + float64(daysOverdue)*2.0
+	} else if diff < 24*time.Hour {
+		// Due today/tomorrow (within 24h)
+		score = 15.0
+	} else if diff < 3*24*time.Hour {
+		// Due soon (3 days)
+		score = 10.0
+	} else if diff < 7*24*time.Hour {
+		// Due this week
+		score = 5.0
+	} else {
+		// Due later
+		score = -5.0
+	}
+
+	return score
+}
+
+// EstimateRule boosts short tasks (< 30m) for quick wins.
+func EstimateRule(t models.Task) float64 {
+	if t.Estimate == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(t.Estimate)
+	if err != nil {
+		return 0
+	}
+	if d < 30*time.Minute {
+		return 3.0
+	}
+	return 0
 }

@@ -17,9 +17,6 @@ Completed features are listed in the **Completed** section at the bottom of this
 - **Flexible Filtering:** Allow filtering of statistics by various attributes, such as project, tag, or priority.
 - **Time Allocation:** Provide a breakdown of time spent or allocated to each project.
 
-### Advanced Priority Scoring
-- **Dynamic Scoring:** Improve the priority algorithm to consider additional data points, such as proximity to due dates and other task metadata.
-
 ### User Interface & Experience
 - **Enhanced Colorscheme:** Improve the visual presentation of the CLI.
 - **Background Color Support:** Add support for background colors in task listings (e.g., red on black) to improve readability and aesthetic appeal.
@@ -38,6 +35,9 @@ Completed features are listed in the **Completed** section at the bottom of this
 
 ## Completed (Q1 2026)
 ---
+
+### Advanced Priority Scoring
+- **Dynamic Scoring:** Improve the priority algorithm to consider additional data points, such as proximity to due dates and other task metadata.
 
 ### Status Field Refinement
 - **Expanded Status Values:** Formalize a status field with values: `backlog`, `ongoing`, `done`, `blocked`, and `undefined`.

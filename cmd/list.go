@@ -3,6 +3,7 @@ package cmd
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/aescoubas/tasc/internal/priority"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 type taskWithScore struct {
@@ -33,6 +35,7 @@ const (
 var (
 	sortBy   string
 	sortDesc bool
+	showAll  bool
 )
 
 var listCmd = &cobra.Command{
@@ -271,7 +274,7 @@ var listCmd = &cobra.Command{
 				estStr = t.Estimate
 			}
 
-			desc := t.Description
+			desc := strings.ReplaceAll(t.Description, "\n", " ")
 			if len(desc) > 50 {
 				desc = desc[:47] + "..."
 			}
@@ -351,6 +354,76 @@ var listCmd = &cobra.Command{
 			}
 		}
 
+		// Calculate total table width
+		totalWidth := 0
+		for _, w := range widths {
+			totalWidth += w
+		}
+		totalWidth += (len(widths) - 1) * 3 // Gaps
+
+		// Check terminal constraints for Width
+		width, height, err := term.GetSize(int(os.Stdout.Fd()))
+		if err == nil && width > 0 {
+			if totalWidth > width {
+				// Reduce Description width
+				// widths[3] is Desc
+				fixed := totalWidth - widths[3]
+				avail := width - fixed
+				
+				if avail < 10 {
+					avail = 10 // Minimum sensible width
+				}
+
+				if avail < widths[3] {
+					widths[3] = avail
+					// Re-truncate descriptions
+					for k, row := range rowsData {
+						if len(row.desc) > avail {
+							if avail > 3 {
+								rowsData[k].desc = row.desc[:avail-3] + "..."
+							} else {
+								rowsData[k].desc = row.desc[:avail]
+							}
+						}
+					}
+					// Recalculate totalWidth for height logic
+					totalWidth = fixed + avail
+				}
+			}
+		}
+
+		// Limit output to screen height (accounting for wrapping)
+		if !showAll {
+			if err == nil && height > 0 {
+				linesPerTask := 1
+				if width > 0 {
+					// Ceiling division
+					linesPerTask = (totalWidth + width - 1) / width
+				}
+				
+				// Calculate header lines
+				headerLines := 1
+				if width > 0 {
+					headerLines = (totalWidth + width - 1) / width
+				}
+
+				// Available lines for tasks (Reserve 4 lines for prompt/safety)
+				availableLines := height - 4 - headerLines
+				if availableLines < 0 {
+					availableLines = 0
+				}
+
+				tasksToShow := 0
+				if linesPerTask > 0 {
+					tasksToShow = availableLines / linesPerTask
+				}
+
+				if tasksToShow < len(rowsData) {
+					rowsData = rowsData[:tasksToShow]
+				}
+			}
+		}
+
 		// Render
 		// Styles
 		styles := make(map[urgencyTier]lipgloss.Style)
@@ -413,5 +486,6 @@ var listCmd = &cobra.Command{
 func init() {
 	listCmd.Flags().StringVarP(&sortBy, "sort", "s", "", "Sort by field (id, project, description, created, age, due, scheduled, estimate, score, duration)")
 	listCmd.Flags().BoolVarP(&sortDesc, "desc", "d", false, "Sort in descending order")
+	listCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all tasks (do not truncate to screen height)")
 	rootCmd.AddCommand(listCmd)
 }

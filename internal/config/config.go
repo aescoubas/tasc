@@ -29,12 +29,16 @@ func DefaultConfig() Config {
 	home, _ := os.UserHomeDir()
 	return Config{
 		Colors: Colors{
-			Overdue:   "#FFFFFF", // White text
-			OverdueBg: "#FF0000", // Red background
-			Today:     "#FFA500", // Orange
-			Tomorrow:  "#FFFF00", // Yellow
-			Week:      "#00FF00", // Green
-			Default:   "#FFFFFF", // White
+			Overdue:   "1",   // ANSI Red
+			OverdueBg: "233", // Darker Grey
+			Today:     "1",   // ANSI Red
+			TodayBg:   "",
+			Tomorrow:  "11",  // ANSI Bright Yellow
+			TomorrowBg: "",
+			Week:      "11",  // ANSI Bright Yellow
+			WeekBg:    "",
+			Default:   "7",   // ANSI White/Light Grey
+			DefaultBg: "",
 		},
 		BackupDir: filepath.Join(home, ".config", "tasc", "backups"),
 	}
