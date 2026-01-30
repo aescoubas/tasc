@@ -54,6 +54,21 @@ func migrate() {
 	_, _ = DB.Exec("UPDATE tasks SET status = 'done' WHERE status = 'completed'")
 	_, _ = DB.Exec("UPDATE tasks SET status = 'undefined' WHERE status = 'poorly_defined'")
 	_, _ = DB.Exec("UPDATE tasks SET status = 'ongoing' WHERE active_start IS NOT NULL AND status = 'backlog'")
+
+	// Create projects table if not exists (Migration for new feature)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS projects (
+			name TEXT PRIMARY KEY,
+			description TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+
+	// Populate projects from existing tasks
+	_, _ = DB.Exec(`
+		INSERT OR IGNORE INTO projects (name)
+		SELECT DISTINCT project FROM tasks WHERE project IS NOT NULL AND project != ''
+	`)
 }
 
 func createTable() {
@@ -72,6 +87,12 @@ func createTable() {
 		active_start DATETIME,
 		time_spent INTEGER DEFAULT 0,
 		reschedule_count INTEGER DEFAULT 0
+	);
+
+	CREATE TABLE projects (
+		name TEXT PRIMARY KEY,
+		description TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
 	CREATE VIRTUAL TABLE tasks_fts USING fts5(description, project, content='tasks', content_rowid='id');
