@@ -47,6 +47,7 @@ func migrate() {
 	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN recurrence TEXT")
 	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN active_start DATETIME")
 	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN time_spent INTEGER DEFAULT 0")
+	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN reschedule_count INTEGER DEFAULT 0")
 
 	// Migrate status values
 	_, _ = DB.Exec("UPDATE tasks SET status = 'backlog' WHERE status = 'pending'")
@@ -69,7 +70,8 @@ func createTable() {
 		estimate TEXT,
 		recurrence TEXT,
 		active_start DATETIME,
-		time_spent INTEGER DEFAULT 0
+		time_spent INTEGER DEFAULT 0,
+		reschedule_count INTEGER DEFAULT 0
 	);
 
 	CREATE VIRTUAL TABLE tasks_fts USING fts5(description, project, content='tasks', content_rowid='id');

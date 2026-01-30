@@ -34,6 +34,9 @@ func (i item) Description() string {
 		desc += fmt.Sprintf(" Est: %s", i.task.Estimate)
 	}
 	desc += fmt.Sprintf(" Created: %s", i.task.CreatedAt.Format("2006-01-02"))
+	if i.task.RescheduleCount > 0 {
+		desc += fmt.Sprintf(" Rsch: %d", i.task.RescheduleCount)
+	}
 	desc += fmt.Sprintf(" Age: %s", i.task.AgeString())
 	return desc
 }

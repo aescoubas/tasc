@@ -97,6 +97,9 @@ var modifyCmd = &cobra.Command{
 		if cmd.Flags().Changed("scheduled") {
 			if scheduled == "" {
 				updates = append(updates, "scheduled_at = NULL")
+				if t.ScheduledAt != nil {
+					updates = append(updates, "reschedule_count = reschedule_count + 1")
+				}
 			} else {
 				parsed, err := parseDate(scheduled)
 				if err != nil {
@@ -105,6 +108,10 @@ var modifyCmd = &cobra.Command{
 				}
 				updates = append(updates, "scheduled_at = ?")
 				values = append(values, parsed)
+
+				if t.ScheduledAt == nil || !t.ScheduledAt.Equal(*parsed) {
+					updates = append(updates, "reschedule_count = reschedule_count + 1")
+				}
 			}
 		}
 

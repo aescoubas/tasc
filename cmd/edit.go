@@ -23,15 +23,20 @@ var editCmd = &cobra.Command{
 		// 1. Fetch Task
 		var t models.Task
 		var project sql.NullString
-		query := "SELECT id, description, project, status, created_at, due_at FROM tasks WHERE id = ?"
+		var estimate sql.NullString
+		var recurrence sql.NullString
+
+		query := "SELECT id, description, project, status, created_at, due_at, scheduled_at, estimate, recurrence FROM tasks WHERE id = ?"
 		row := db.DB.QueryRow(query, idStr)
 
-		err := row.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt, &t.DueAt)
+		err := row.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt, &t.DueAt, &t.ScheduledAt, &estimate, &recurrence)
 		if err != nil {
 			fmt.Printf("Error fetching task: %v\n", err)
 			return
 		}
 		t.Project = project.String
+		t.Estimate = estimate.String
+		t.Recurrence = recurrence.String
 
 		// 2. Marshal to YAML
 		data, err := yaml.Marshal(&t)
@@ -88,8 +93,15 @@ var editCmd = &cobra.Command{
 		}
 
 		// 7. Update DB
-		updateQuery := `UPDATE tasks SET description = ?, project = ?, status = ?, due_at = ? WHERE id = ?`
-		_, err = db.DB.Exec(updateQuery, newT.Description, newT.Project, newT.Status, newT.DueAt, newT.ID)
+		rescheduleIncrement := 0
+		if (t.ScheduledAt == nil && newT.ScheduledAt != nil) ||
+			(t.ScheduledAt != nil && newT.ScheduledAt == nil) ||
+			(t.ScheduledAt != nil && newT.ScheduledAt != nil && !t.ScheduledAt.Equal(*newT.ScheduledAt)) {
+			rescheduleIncrement = 1
+		}
+
+		updateQuery := `UPDATE tasks SET description = ?, project = ?, status = ?, due_at = ?, scheduled_at = ?, estimate = ?, recurrence = ?, reschedule_count = reschedule_count + ? WHERE id = ?`
+		_, err = db.DB.Exec(updateQuery, newT.Description, newT.Project, newT.Status, newT.DueAt, newT.ScheduledAt, newT.Estimate, newT.Recurrence, rescheduleIncrement, newT.ID)
 		if err != nil {
 			fmt.Printf("Error updating task: %v\n", err)
 			return

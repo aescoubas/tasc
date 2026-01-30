@@ -19,6 +19,8 @@ func NewCalculator() *Calculator {
 	return &Calculator{
 		Rules: []Rule{
 			ScheduledRule,
+			RescheduleRule,
+			AgeRule,
 		},
 	}
 }
@@ -55,4 +57,18 @@ func ScheduledRule(t models.Task) float64 {
 	}
 
 	return score
+}
+
+// RescheduleRule boosts priority for tasks that are constantly rescheduled.
+// Each reschedule adds +2 to the score.
+func RescheduleRule(t models.Task) float64 {
+	return float64(t.RescheduleCount) * 2.0
+}
+
+// AgeRule slightly boosts older tasks to prevent them from being forgotten.
+// Adds +0.1 per day of age.
+func AgeRule(t models.Task) float64 {
+	age := time.Since(t.CreatedAt)
+	days := age.Hours() / 24.0
+	return days * 0.1
 }

@@ -29,6 +29,7 @@ type Task struct {
 	Recurrence  string     `json:"recurrence,omitempty" yaml:"recurrence,omitempty"`
 	ActiveStart *time.Time `json:"active_start,omitempty" yaml:"active_start,omitempty"`
 	TimeSpent   int64      `json:"time_spent" yaml:"time_spent"` // in seconds
+	RescheduleCount int    `json:"reschedule_count" yaml:"reschedule_count"`
 }
 
 func (t Task) AgeString() string {

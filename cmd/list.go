@@ -46,7 +46,7 @@ var listCmd = &cobra.Command{
 			cfg = config.DefaultConfig()
 		}
 
-		rows, err := db.DB.Query("SELECT id, description, project, status, created_at, due_at, scheduled_at, estimate, active_start, time_spent FROM tasks WHERE status NOT IN ('done', 'deleted', 'undefined')")
+		rows, err := db.DB.Query("SELECT id, description, project, status, created_at, due_at, scheduled_at, estimate, active_start, time_spent, reschedule_count FROM tasks WHERE status NOT IN ('done', 'deleted', 'undefined')")
 		if err != nil {
 			fmt.Printf("Error querying tasks: %v\n", err)
 			return
@@ -65,7 +65,7 @@ var listCmd = &cobra.Command{
 			var activeStart sql.NullTime
 			var timeSpent sql.NullInt64
 
-			err := rows.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt, &dueAt, &scheduledAt, &estimate, &activeStart, &timeSpent)
+			err := rows.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt, &dueAt, &scheduledAt, &estimate, &activeStart, &timeSpent, &t.RescheduleCount)
 			if err != nil {
 				fmt.Printf("Error scanning row: %v\n", err)
 				continue
@@ -192,6 +192,7 @@ var listCmd = &cobra.Command{
 			age      string
 			due      string
 			sch      string
+			rsch     string
 			est      string
 			score    string
 			duration string
@@ -199,8 +200,8 @@ var listCmd = &cobra.Command{
 		}
 
 		var rowsData []displayRow
-		widths := make([]int, 11) // 11 columns
-		headers := []string{"ID", "Project", "Status", "Description", "Created", "Age", "Due", "Scheduled", "Est", "Score", "Duration"}
+		widths := make([]int, 12) // 12 columns
+		headers := []string{"ID", "Project", "Status", "Description", "Created", "Age", "Due", "Scheduled", "Rsch", "Est", "Score", "Duration"}
 
 		// Initialize widths with headers
 		for i, h := range headers {
@@ -260,6 +261,11 @@ var listCmd = &cobra.Command{
 				schStr = t.ScheduledAt.Format("2006-01-02")
 			}
 
+			rschStr := "-"
+			if t.RescheduleCount > 0 {
+				rschStr = fmt.Sprintf("%d", t.RescheduleCount)
+			}
+
 			estStr := "-"
 			if t.Estimate != "" {
 				estStr = t.Estimate
@@ -297,6 +303,7 @@ var listCmd = &cobra.Command{
 				age:      t.AgeString(),
 				due:      dueStr,
 				sch:      schStr,
+				rsch:     rschStr,
 				est:      estStr,
 				score:    fmt.Sprintf("%.1f", item.score),
 				duration: durStr,
@@ -330,14 +337,17 @@ var listCmd = &cobra.Command{
 			if len(row.sch) > widths[7] {
 				widths[7] = len(row.sch)
 			}
-			if len(row.est) > widths[8] {
-				widths[8] = len(row.est)
+			if len(row.rsch) > widths[8] {
+				widths[8] = len(row.rsch)
 			}
-			if len(row.score) > widths[9] {
-				widths[9] = len(row.score)
+			if len(row.est) > widths[9] {
+				widths[9] = len(row.est)
 			}
-			if len(row.duration) > widths[10] {
-				widths[10] = len(row.duration)
+			if len(row.score) > widths[10] {
+				widths[10] = len(row.score)
+			}
+			if len(row.duration) > widths[11] {
+				widths[11] = len(row.duration)
 			}
 		}
 
@@ -391,9 +401,10 @@ var listCmd = &cobra.Command{
 			printCol(row.age, widths[5], false)
 			printCol(row.due, widths[6], false)
 			printCol(row.sch, widths[7], false)
-			printCol(row.est, widths[8], false)
-			printCol(row.score, widths[9], false)
-			printCol(row.duration, widths[10], true)
+			printCol(row.rsch, widths[8], false)
+			printCol(row.est, widths[9], false)
+			printCol(row.score, widths[10], false)
+			printCol(row.duration, widths[11], true)
 			fmt.Println()
 		}
 	},
