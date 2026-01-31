@@ -46,8 +46,18 @@ func initConfig() {
 	}
 
 	if isMCP {
-		// Silence logs for MCP to prevent protocol corruption
-		log.SetOutput(io.Discard)
+		// Log to file for troubleshooting
+		f, err := os.OpenFile("/tmp/tasc_monitor.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err == nil {
+			log.SetOutput(f)
+			log.Println("TASC MCP STARTED")
+			// Print env vars to debug context
+			log.Printf("HOME: %s", os.Getenv("HOME"))
+			log.Printf("PWD: %s", os.Getenv("PWD"))
+		} else {
+			// If file fails, fallback to discard
+			log.SetOutput(io.Discard)
+		}
 	}
 
 	if remoteURL == "" {

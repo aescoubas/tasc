@@ -39,7 +39,7 @@ func (ms *MCPServer) Serve() error {
 
 func (ms *MCPServer) registerTools() {
 	// 1. Add Task
-	ms.server.AddTool(mcp.NewTool("add_task",
+	ms.server.AddTool(mcp.NewTool("tasc_add_task",
 		mcp.WithDescription("Add a new task to the list"),
 		mcp.WithString("description", mcp.Required(), mcp.Description("The task description")),
 		mcp.WithString("project", mcp.Description("The project name (optional)")),
@@ -49,7 +49,7 @@ func (ms *MCPServer) registerTools() {
 	), ms.handleAdd)
 
 	// 2. List Tasks
-	ms.server.AddTool(mcp.NewTool("list_tasks",
+	ms.server.AddTool(mcp.NewTool("tasc_list_tasks",
 		mcp.WithDescription("List tasks with optional filtering"),
 		mcp.WithString("project", mcp.Description("Filter by project")),
 		mcp.WithString("status", mcp.Description("Filter by status (comma separated: backlog, ongoing, done, blocked)")),
@@ -57,13 +57,13 @@ func (ms *MCPServer) registerTools() {
 	), ms.handleList)
 
 	// 3. Complete Task
-	ms.server.AddTool(mcp.NewTool("complete_task",
+	ms.server.AddTool(mcp.NewTool("tasc_complete_task",
 		mcp.WithDescription("Mark a task as done"),
 		mcp.WithNumber("id", mcp.Required(), mcp.Description("The ID of the task to complete")),
 	), ms.handleComplete)
 
 	// 4. Update Task
-	ms.server.AddTool(mcp.NewTool("update_task",
+	ms.server.AddTool(mcp.NewTool("tasc_update_task",
 		mcp.WithDescription("Update an existing task"),
 		mcp.WithNumber("id", mcp.Required(), mcp.Description("The ID of the task to update")),
 		mcp.WithString("description", mcp.Description("New description")),
@@ -74,7 +74,7 @@ func (ms *MCPServer) registerTools() {
 	), ms.handleUpdate)
 
 	// 5. List Projects
-	ms.server.AddTool(mcp.NewTool("list_projects",
+	ms.server.AddTool(mcp.NewTool("tasc_list_projects",
 		mcp.WithDescription("List all projects"),
 	), ms.handleListProjects)
 }
