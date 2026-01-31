@@ -56,7 +56,14 @@
 - [x] **Release Automation:** Local shell script (`release.sh`) to build and publish releases via GitHub CLI.
 
 ## Phase 10: Technical Consolidation & Security
-- [ ] **Unit Testing:** Implement comprehensive unit tests aiming for full code coverage.
+- [x] **Unit Testing:** Implement comprehensive unit tests aiming for full code coverage.
 - [ ] **Integration Testing:** Develop integration tests to verify system reliability and full coverage.
 - [ ] **Codebase Consistency:** Audit and refactor code for consistency, style, and maintainability.
 - [ ] **Upgrade Strategy:** Implement robust processes for upgrades, including automated schema migrations.
+
+## Phase 11: AI Integration (Gemini via MCP)
+- [ ] **MCP Server Implementation:** Implement the Model Context Protocol (MCP) server interface within `tasc` (e.g., `tasc mcp`).
+- [ ] **Tool Exposure:** Expose core functionalities (`add`, `list`, `done`, `edit`, `projects`) as MCP tools for the LLM.
+- [ ] **Resource Exposure:** Expose task lists and details as MCP resources for providing context to the LLM.
+- [ ] **Gemini CLI Config:** Document how to configure Gemini CLI to connect to `tasc`'s MCP server.
+- [ ] **Natural Language Interaction:** Verify that Gemini can "Add a task to buy milk", "List my high priority tasks", etc.

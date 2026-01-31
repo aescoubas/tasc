@@ -118,7 +118,7 @@ var showCmd = &cobra.Command{
 		t.IsBlocked = len(blockedBy) > 0
 		style := ui.GetTaskStyle(t, cfg)
 		
-		fmt.Printf(style.Render(fmt.Sprintf("Task %d: %s", t.ID, t.Description)) + "\n")
+		fmt.Println(style.Render(fmt.Sprintf("Task %d: %s", t.ID, t.Description)))
 		fmt.Println("------------------------------------------------")
 		fmt.Printf("Project:       %s\n", t.Project)
 		fmt.Printf("Status:        %s\n", t.Status)

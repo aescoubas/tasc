@@ -128,7 +128,7 @@ func preprocessDate(s string) string {
 	}
 
 	// 3. If it looks like a duration "10 days", "2 weeks", prepend "in " to force future
-	reDuration := regexp.MustCompile(`^\d+\s+(day|days|week|weeks|month|months|year|years)$`)
+	reDuration := regexp.MustCompile(`(?i)^\d+\s+(day|days|week|weeks|month|months|year|years)$`)
 	if reDuration.MatchString(s) {
 		return "in " + s
 	}
