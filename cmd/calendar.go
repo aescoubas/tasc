@@ -2,83 +2,361 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
+	"github.com/aescoubas/tasc/internal/config"
 	"github.com/aescoubas/tasc/internal/db"
+	"github.com/aescoubas/tasc/internal/models"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
+)
+
+var (
+	calNext bool
+	calView string
 )
 
 var calendarCmd = &cobra.Command{
 	Use:   "calendar",
-	Short: "Show a calendar of due tasks",
+	Short: "Show a calendar view of tasks",
 	Run: func(cmd *cobra.Command, args []string) {
+		cfg, _ := config.LoadConfig()
+
 		now := time.Now()
-		year, month, _ := now.Date()
+		// Adjust 'now' based on --next flag (simple shift)
+		// We define 'focusDate' which determines the range.
+		focusDate := now
 
-		fmt.Printf("      %s %d\n", month, year)
-		fmt.Println("Su Mo Tu We Th Fr Sa")
+		// Calculate range based on View
+		var start, end time.Time
+		view := strings.ToLower(calView)
 
-		// Get first day of month
-		firstDay := time.Date(year, month, 1, 0, 0, 0, 0, time.Local)
-		// Get last day of month
-		lastDay := firstDay.AddDate(0, 1, -1)
+		switch view {
+		case "day":
+			if calNext {
+				focusDate = focusDate.AddDate(0, 0, 1)
+			}
+			start = time.Date(focusDate.Year(), focusDate.Month(), focusDate.Day(), 0, 0, 0, 0, focusDate.Location())
+			end = start.AddDate(0, 0, 1)
+		case "month":
+			if calNext {
+				focusDate = focusDate.AddDate(0, 1, 0)
+			}
+			start = time.Date(focusDate.Year(), focusDate.Month(), 1, 0, 0, 0, 0, focusDate.Location())
+			end = start.AddDate(0, 1, 0)
+		case "quarter":
+			if calNext {
+				focusDate = focusDate.AddDate(0, 3, 0)
+			}
+			month := focusDate.Month()
+			qStartMonth := time.Month(((int(month)-1)/3)*3 + 1)
+			start = time.Date(focusDate.Year(), qStartMonth, 1, 0, 0, 0, 0, focusDate.Location())
+			end = start.AddDate(0, 3, 0)
+		case "year":
+			if calNext {
+				focusDate = focusDate.AddDate(1, 0, 0)
+			}
+			start = time.Date(focusDate.Year(), 1, 1, 0, 0, 0, 0, focusDate.Location())
+			end = start.AddDate(1, 0, 0)
+		case "week":
+			fallthrough
+		default:
+			// Default to Week
+			view = "week"
+			if calNext {
+				focusDate = focusDate.AddDate(0, 0, 7)
+			}
+			weekday := int(focusDate.Weekday())
+			if weekday == 0 {
+				weekday = 7
+			}
+			start = focusDate.AddDate(0, 0, -(weekday - 1))
+			start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, start.Location())
+			end = start.AddDate(0, 0, 7)
+		}
 
-		// Fetch due dates
-		query := `SELECT strftime('%d', due_at) FROM tasks 
-		t	  WHERE strftime('%Y-%m', due_at) = ? AND status != 'done' AND status != 'deleted'`
-
-		rows, err := db.DB.Query(query, fmt.Sprintf("%04d-%02d", year, month))
+		// Fetch Tasks
+		tasks, err := fetchTasksInRange(start, end)
 		if err != nil {
-			fmt.Printf("Error querying due dates: %v\n", err)
+			fmt.Printf("Error fetching tasks: %v\n", err)
 			return
 		}
-		defer rows.Close()
 
-		dueDays := make(map[int]bool)
-		for rows.Next() {
-			var day int
-			rows.Scan(&day)
-			dueDays[day] = true
+		// Render
+		width, _, err := term.GetSize(int(os.Stdout.Fd()))
+		if err != nil || width <= 0 {
+			width = 80
 		}
 
-		// Rendering
-		styleDefault := lipgloss.NewStyle().Width(3).Align(lipgloss.Right)
-		styleToday := styleDefault.Copy().Foreground(lipgloss.Color("86")).Bold(true) // Aqua
-		styleDue := styleDefault.Copy().Foreground(lipgloss.Color("205")).Bold(true)  // Pink
-		styleDueAndToday := styleDue.Copy().Background(lipgloss.Color("236"))
+		fmt.Printf("Calendar View: %s (%s - %s)\n", strings.Title(view), start.Format("2006-01-02"), end.AddDate(0, 0, -1).Format("2006-01-02"))
 
-		// Padding for start of week
-		weekday := int(firstDay.Weekday())
-		for i := 0; i < weekday; i++ {
-			fmt.Print("   ")
+		switch view {
+		case "day":
+			renderDayView(tasks, start, width, cfg)
+		case "week":
+			renderWeekView(tasks, start, width, cfg, now)
+		case "month":
+			renderMonthView(tasks, start, width, cfg, now)
+		case "quarter", "year":
+			renderSimpleList(tasks, start, end, cfg)
 		}
-
-		for day := 1; day <= lastDay.Day(); day++ {
-			isToday := (day == now.Day())
-			isDue := dueDays[day]
-
-			var s lipgloss.Style
-			if isToday && isDue {
-				s = styleDueAndToday
-			} else if isToday {
-				s = styleToday
-			} else if isDue {
-				s = styleDue
-			} else {
-				s = styleDefault
-			}
-
-			fmt.Print(s.Render(fmt.Sprintf("%d", day)))
-
-			if (weekday+day)%7 == 0 {
-				fmt.Println()
-			}
-		}
-		fmt.Println()
 	},
 }
 
+func fetchTasksInRange(start, end time.Time) ([]models.Task, error) {
+	query := `
+		SELECT id, description, project, status, due_at, scheduled_at, estimate 
+		FROM tasks 
+		WHERE status NOT IN ('done', 'deleted', 'undefined') 
+		AND (
+			(scheduled_at >= ? AND scheduled_at < ?)
+			OR 
+			(scheduled_at IS NULL AND due_at >= ? AND due_at < ?)
+		)
+		ORDER BY scheduled_at, due_at
+	`
+	sDate := start.Format("2006-01-02")
+	eDate := end.Format("2006-01-02")
+
+	rows, err := db.DB.Query(query, sDate, eDate, sDate, eDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tasks []models.Task
+	for rows.Next() {
+		var t models.Task
+		var dueAt, scheduledAt *time.Time
+		var est string
+		err := rows.Scan(&t.ID, &t.Description, &t.Project, &t.Status, &dueAt, &scheduledAt, &est)
+		if err != nil {
+			continue
+		}
+		t.DueAt = dueAt
+		t.ScheduledAt = scheduledAt
+		t.Estimate = est
+		tasks = append(tasks, t)
+	}
+	return tasks, nil
+}
+
+func renderDayView(tasks []models.Task, date time.Time, width int, cfg config.Config) {
+	if len(tasks) == 0 {
+		fmt.Println("No tasks scheduled.")
+		return
+	}
+	for _, t := range tasks {
+		renderTaskLine(t, width, cfg)
+	}
+}
+
+func renderWeekView(tasks []models.Task, startOfWeek time.Time, width int, cfg config.Config, now time.Time) {
+	// Bucket tasks
+	dayTasks := make([][]models.Task, 7)
+	for _, t := range tasks {
+		targetTime := getTaskDate(t)
+		daysDiff := int(targetTime.Sub(startOfWeek).Hours() / 24)
+		if daysDiff >= 0 && daysDiff < 7 {
+			dayTasks[daysDiff] = append(dayTasks[daysDiff], t)
+		}
+	}
+
+	colWidth := (width / 7) - 2
+	if colWidth < 10 {
+		colWidth = 10
+	}
+
+	var columns []string
+	
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(cfg.Colors.Default)).
+		Align(lipgloss.Center).
+		Width(colWidth).
+		PaddingBottom(1).
+		Border(lipgloss.NormalBorder(), false, false, true, false).
+		BorderForeground(lipgloss.Color("240"))
+
+	for i := 0; i < 7; i++ {
+		dayDate := startOfWeek.AddDate(0, 0, i)
+		dayName := dayDate.Format("Mon 02")
+		
+		isToday := isSameDay(dayDate, now)
+		hStyle := headerStyle.Copy()
+		if isToday {
+			hStyle = hStyle.Foreground(lipgloss.Color(cfg.Colors.Today)).Bold(true)
+		}
+
+		var cells []string
+		cells = append(cells, hStyle.Render(dayName))
+
+		for _, t := range dayTasks[i] {
+			cells = append(cells, renderTaskBox(t, colWidth, cfg))
+		}
+		
+		colContent := lipgloss.JoinVertical(lipgloss.Left, cells...)
+		columns = append(columns, colContent)
+	}
+	
+	fmt.Println(lipgloss.JoinHorizontal(lipgloss.Top, columns...))
+}
+
+func renderMonthView(tasks []models.Task, startOfMonth time.Time, width int, cfg config.Config, now time.Time) {
+	// Simple Month Grid
+	// 7 Columns
+	colWidth := (width / 7) - 2
+	if colWidth < 8 {
+		colWidth = 8
+	}
+
+	// Calculate offset for first day
+	startWeekday := int(startOfMonth.Weekday()) // Sun=0
+	if startWeekday == 0 { startWeekday = 7 }
+	offset := startWeekday - 1 // Mon=0
+
+	// Total days in month
+	nextMonth := startOfMonth.AddDate(0, 1, 0)
+	daysInMonth := int(nextMonth.Sub(startOfMonth).Hours() / 24)
+
+	// Bucket tasks
+	dayTasks := make(map[int][]models.Task)
+	for _, t := range tasks {
+		d := getTaskDate(t)
+		if d.Month() == startOfMonth.Month() {
+			dayTasks[d.Day()] = append(dayTasks[d.Day()], t)
+		}
+	}
+
+	// Styles
+	cellStyle := lipgloss.NewStyle().
+		Width(colWidth).
+		Height(5). // Fixed height for grid uniformity? Or variable? 
+		           // Variable height rows in calendar grid is hard in terminal without advanced layout.
+				   // Let's try fixed height or just min height.
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("238"))
+	
+	headerStyle := lipgloss.NewStyle().Width(colWidth).Align(lipgloss.Center).Bold(true)
+
+	// Headers
+	days := []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
+	var headers []string
+	for _, d := range days {
+		headers = append(headers, headerStyle.Render(d))
+	}
+	fmt.Println(lipgloss.JoinHorizontal(lipgloss.Top, headers...))
+
+	// Grid
+	currentDay := 1
+	for row := 0; currentDay <= daysInMonth; row++ {
+		var rowCells []string
+		for col := 0; col < 7; col++ {
+			if (row == 0 && col < offset) || currentDay > daysInMonth {
+				// Empty cell
+				rowCells = append(rowCells, cellStyle.Render(""))
+				continue
+			}
+
+			// Content
+			var content strings.Builder
+			dayDate := time.Date(startOfMonth.Year(), startOfMonth.Month(), currentDay, 0,0,0,0, startOfMonth.Location())
+			
+			dateStr := fmt.Sprintf("%d", currentDay)
+			if isSameDay(dayDate, now) {
+				dateStr = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.Colors.Today)).Bold(true).Render(dateStr)
+			}
+			content.WriteString(dateStr + "\n")
+
+			// Tasks (tiny representation)
+			ts := dayTasks[currentDay]
+			for i, t := range ts {
+				if i >= 3 {
+					content.WriteString(fmt.Sprintf("+%d more", len(ts)-3))
+					break
+				}
+				// Tiny: "• Desc"
+				desc := t.Description
+				if len(desc) > colWidth-3 {
+					desc = desc[:colWidth-3]
+				}
+				// Color dot by project?
+				content.WriteString(fmt.Sprintf("• %s\n", desc))
+			}
+
+			rowCells = append(rowCells, cellStyle.Render(content.String()))
+			currentDay++
+		}
+		fmt.Println(lipgloss.JoinHorizontal(lipgloss.Top, rowCells...))
+	}
+}
+
+func renderSimpleList(tasks []models.Task, start, end time.Time, cfg config.Config) {
+	// Group by Month
+	currentMonth := ""
+	for _, t := range tasks {
+		d := getTaskDate(t)
+		monthStr := d.Format("January 2006")
+		if monthStr != currentMonth {
+			fmt.Printf("\n--- %s ---\n", monthStr)
+			currentMonth = monthStr
+		}
+		fmt.Printf("[%s] %s: %s\n", d.Format("02"), t.Project, t.Description)
+	}
+}
+
+func renderTaskBox(t models.Task, width int, cfg config.Config) string {
+	projStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(cfg.Colors.Default))
+	taskStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(0, 1).
+		Width(width - 2)
+
+	line1 := fmt.Sprintf("%d %s", t.ID, t.Project)
+	if len(line1) > width-4 {
+		line1 = line1[:width-4]
+	}
+	
+	desc := strings.ReplaceAll(t.Description, "\n", " ")
+	if len(desc) > width-6 {
+		desc = desc[:width-6] + ".."
+	}
+	
+	statusChar := " "
+	if t.Status == "done" {
+		statusChar = "✓"
+	} else if t.Status == "ongoing" {
+		statusChar = "▶"
+	}
+
+	line2 := fmt.Sprintf("%s %s", statusChar, desc)
+	return taskStyle.Render(fmt.Sprintf("%s\n%s", projStyle.Render(line1), line2))
+}
+
+func renderTaskLine(t models.Task, width int, cfg config.Config) {
+	fmt.Printf("%d\t%s\t%s\n", t.ID, t.Project, t.Description)
+}
+
+func getTaskDate(t models.Task) time.Time {
+	if t.ScheduledAt != nil {
+		return *t.ScheduledAt
+	}
+	if t.DueAt != nil {
+		return *t.DueAt
+	}
+	return time.Time{}
+}
+
+func isSameDay(t1, t2 time.Time) bool {
+	return t1.Year() == t2.Year() && t1.Month() == t2.Month() && t1.Day() == t2.Day()
+}
+
 func init() {
+	calendarCmd.Flags().BoolVarP(&calNext, "next", "n", false, "Show next period")
+	calendarCmd.Flags().StringVarP(&calView, "view", "v", "week", "View mode: day, week, month, quarter, year")
 	rootCmd.AddCommand(calendarCmd)
 }
