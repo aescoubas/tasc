@@ -21,7 +21,7 @@
 - [x] **Reschedule Tracking:** Track and weight tasks based on how often they are rescheduled (`RescheduleRule`).
 
 ## Phase 4: UI Consistency & Polish
-- [ ] **Unified Color Model:** Centralize task coloring logic so `calendar`, `graph`, and `show` match the "official" colorscheme used in `tasc list`.
+- [x] **Unified Color Model:** Centralize task coloring logic so `calendar`, `graph`, and `show` match the "official" colorscheme used in `tasc list`.
 - [ ] **Visual Consistency:** Ensure task representations (IDs, Project names, Status indicators) are identical across all views.
 - [ ] **Contextual Highlighting:** Ensure high-priority or blocked tasks retain their visual urgency in Calendar and Graph views.
 
