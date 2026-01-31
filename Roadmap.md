@@ -2,51 +2,53 @@
 
 This document outlines the planned future features and improvements for `tasc`.
 
-Completed features are listed in the **Completed** section at the bottom of this file, grouped by the quarter in which they were finished.
+## Active / Planned Features
 
+### Project Management Enhancements
+- [ ] **Cascading Deadlines:** Allow setting top-level project deadlines that automatically update or constrain the due dates of contained tasks.
+- [ ] **Dependency-Aware Priority:** Update the priority scoring to factor in the priority of blocked tasks (e.g., blocking a high-priority task increases the blocker's score).
 
 ### Stale Task Identification
-- **Age Tracking:** Identify tasks that were defined a long time ago and remain incomplete.
-- **Rescheduling Analysis:** Identify tasks that are constantly being rescheduled, indicating potential roadblocks or lack of clarity.
-- **Score impact** Boost the priority with each reschedule (change in the "Scheduled" field). 
+- [ ] **Age Reporting:** Specifically identify/list tasks that were defined a long time ago and remain incomplete (beyond just priority scoring).
+- [ ] **Rescheduling Analysis:** Report on tasks that are constantly being rescheduled to help identify roadblocks.
 
 ### Enhanced Productivity Metrics
-- **Advanced Stats:** Expand the `stats` command to provide deeper insights into productivity.
-- **Closure Rates:** Track how many tasks are closed over specific periods.
-- **Estimation Accuracy:** Analyze the mismatch between initial time estimates and the actual time taken to complete tasks.
-- **Flexible Filtering:** Allow filtering of statistics by various attributes, such as project, tag, or priority.
-- **Time Allocation:** Provide a breakdown of time spent or allocated to each project.
-
-### User Interface & Experience
-- **Enhanced Colorscheme:** Improve the visual presentation of the CLI.
-- **Background Color Support:** Add support for background colors in task listings (e.g., red on black) to improve readability and aesthetic appeal.
+- [ ] **Advanced Stats:** Expand the `stats` command to provide deeper insights into productivity.
+- [ ] **Closure Rates:** Track how many tasks are closed over specific periods.
+- [ ] **Estimation Accuracy:** Analyze the mismatch between initial time estimates and the actual time taken to complete tasks.
+- [ ] **Flexible Filtering:** Allow filtering of statistics by various attributes.
+- [ ] **Time Allocation:** Provide a breakdown of time spent or allocated to each project.
 
 ### Remote Server Mode
-- **Client-Server Architecture:** Implement a mode where the executable acts as a client connecting to a central `tasc` server, enabling data synchronization and access across multiple devices.
+- [ ] **Client-Server Architecture:** Implement a mode where the executable acts as a client connecting to a central `tasc` server.
 
 ### Mobile Integration
-- **Lightweight Android App:** Develop a mobile application with a modern interface to allow task management and updates on the go, likely interacting with the "Remote Server Mode".
+- [ ] **Lightweight Android App:** Develop a mobile application interacting with the "Remote Server Mode".
 
-### Project Management Framework
-- **Projects & Subprojects:** Implement efficient grouping of tasks into projects and subprojects.
-- **Cascading Deadlines:** Allow setting top-level project deadlines that automatically update or constrain the due dates of contained tasks.
-- **Dependency Visualization:** Provide tools to quickly visualize and update task dependencies.
-- **Dependency-Aware Priority:** Update the priority scoring to factor in the priority of blocked tasks or the number of blocked tasks (e.g., blocking a high-priority task increases the blocker's score).
+## Completed Features
 
-## Completed (Q1 2026)
----
+### Q1 2026
 
-### Advanced Priority Scoring
-- **Dynamic Scoring:** Improve the priority algorithm to consider additional data points, such as proximity to due dates and other task metadata.
+#### Calendar & Visualization
+- [x] **Advanced Calendar Views:** Implemented `day`, `week` (columns), `month` (grid), `quarter` (grid), and `year` (grid) views.
+- [x] **Calendar Navigation:** Added `--next` / `-n` flag to navigate forward in time.
+- [x] **Dependency Visualization:** Implemented `tasc graph` to visualize task dependency trees.
+- [x] **Task Inspection:** Implemented `tasc show <id>` to view detailed task information and dependency chains.
 
-### Status Field Refinement
-- **Expanded Status Values:** Formalize a status field with values: `backlog`, `ongoing`, `done`, `blocked`, and `undefined`.
-- **Refactor Existing Statuses:** Migrate existing `pending` to `backlog` or `ongoing`, `completed` to `done`, and `poorly_defined` to `undefined`.
-- **Explicit Blocked State:** Evaluate making `blocked` an explicit status for easier filtering, while maintaining the dynamic dependency logic.
+#### Project Management
+- [x] **Projects Framework:** Implemented `projects` database table and `tasc project` subcommand (list, create, edit, delete).
+- [x] **Task Grouping:** Tasks are linked to projects via foreign keys.
 
-### Recurrent tasks with complex recurrence 
-- **Simple recurrence:** "Every day", "Every other day", etc.
-- **Harder recurrence:** "Second monday of each month"
-- **Specs:** Should set the "scheduled" field to that exact date. When trying to delete or modify a
-  recurrent task, should ask if the change should affect only that specific task or every also all
-  the same future tasks.
+#### Core Logic & Priority
+- [x] **Advanced Priority Scoring:** Implemented scoring rules based on:
+  - **Due Date:** Higher score as deadline approaches/passes.
+  - **Schedule Date:** Boosts tasks scheduled for today/past; lowers future tasks.
+  - **Estimates:** "Quick wins" (< 30m) get a boost.
+  - **Age:** Older tasks get a slight boost (`AgeRule`).
+  - **Reschedules:** Tasks moved frequently get a priority boost (`RescheduleRule`).
+- [x] **Status Field Refinement:** Standardized statuses (`pending`, `ongoing`, `done`, `blocked`, `deleted`).
+- [x] **Recurrence:** Basic support for recurring tasks.
+
+#### User Interface
+- [x] **Enhanced Colorscheme:** Implemented configurable ANSI color themes (including 233 grayscale backgrounds).
+- [x] **Responsive Layouts:** `tasc list` and calendar views adapt to terminal width/height.
