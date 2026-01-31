@@ -81,13 +81,21 @@ echo "--- Starting Release Process for $VERSION ---"
 echo "[1/5] Pulling latest changes..."
 git pull origin main
 
-# 2. Create Tag Locally
-if git rev-parse "$VERSION" >/dev/null 2>&1; then
-    echo "Error: Tag '$VERSION' already exists locally."
+# 2. Check Remote Release & Local Tag
+
+# Check if release already exists on GitHub
+if gh release view "$VERSION" >/dev/null 2>&1; then
+    echo "Error: Release '$VERSION' already exists on GitHub."
     exit 1
 fi
-echo "[2/5] Creating local tag $VERSION..."
-git tag -a "$VERSION" -m "Release $VERSION"
+
+# Check/Create Tag
+if git rev-parse "$VERSION" >/dev/null 2>&1; then
+    echo "[2/5] Tag '$VERSION' already exists locally. Proceeding with existing tag..."
+else
+    echo "[2/5] Creating local tag $VERSION..."
+    git tag -a "$VERSION" -m "Release $VERSION"
+fi
 
 # 3. Build Artifacts with GoReleaser
 # We skip 'publish' because we will do it manually with 'gh'.
