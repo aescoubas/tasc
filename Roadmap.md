@@ -1,54 +1,44 @@
 # Roadmap
 
-This document outlines the planned future features and improvements for `tasc`.
+## Phase 1: Core Task & Project Management
+- [x] **Core Data Model:** Implement SQLite schema for Tasks (Description, Status, Priority, Dates) and Projects.
+- [x] **Project Management:** Dedicated table and CLI commands (`tasc project`) for managing project metadata.
+- [x] **Task Lifecycle:** CRUD operations (`add`, `edit`, `done`, `delete`) with status tracking (`backlog`, `ongoing`, `done`).
+- [x] **Recurrence:** Support for recurring tasks to automate repetitive work.
+- [x] **Input Handling:** Robust parsing of dates and natural language inputs.
 
-## Active / Planned Features
+## Phase 2: Visualization & Inspection
+- [x] **Advanced Calendar:** Implement `day`, `week` (columns), `month` (grid), `quarter` (grid), and `year` (grid) views.
+- [x] **Time Navigation:** Add flags (`--next`) to traverse calendar periods easily.
+- [x] **Deep Inspection:** Create `tasc show` for detailed task views and dependency chains.
+- [x] **Dependency Graph:** Visual tree rendering (`tasc graph`) for blocking relationships.
+- [x] **Adaptive UI:** Terminal-responsive layouts (truncation, wrapping) and ANSI color themes.
 
-### Project Management Enhancements
-- [ ] **Cascading Deadlines:** Allow setting top-level project deadlines that automatically update or constrain the due dates of contained tasks.
-- [ ] **Dependency-Aware Priority:** Update the priority scoring to factor in the priority of blocked tasks (e.g., blocking a high-priority task increases the blocker's score).
+## Phase 3: Advanced Logic & Prioritization
+- [x] **Smart Scoring:** Priority algorithms based on Due Date, Schedule Date, Age, and Task Estimates.
+- [x] **Dynamic Status:** Auto-calculated statuses and "Blocked" state handling.
+- [x] **Anti-Procrastination:** Priority boosting for older tasks (`AgeRule`) and "Quick Wins" (`EstimateRule`).
+- [x] **Reschedule Tracking:** Track and weight tasks based on how often they are rescheduled (`RescheduleRule`).
 
-### Stale Task Identification
-- [ ] **Age Reporting:** Specifically identify/list tasks that were defined a long time ago and remain incomplete (beyond just priority scoring).
-- [ ] **Rescheduling Analysis:** Report on tasks that are constantly being rescheduled to help identify roadblocks.
+## Phase 4: Project Management Deep Dive
+- [ ] **Subprojects:** Implement hierarchical structures (Parent -> Child projects) for better organization.
+- [ ] **Cascading Deadlines:** Logic where project deadlines automatically constrain or set defaults for contained tasks.
+- [ ] **Dependency-Aware Priority:** Update scoring to propagate priority from high-value blocked tasks to their blockers.
+- [ ] **Bulk Project Ops:** Commands to archive, move, or delete entire project trees safely.
 
-### Enhanced Productivity Metrics
-- [ ] **Advanced Stats:** Expand the `stats` command to provide deeper insights into productivity.
-- [ ] **Closure Rates:** Track how many tasks are closed over specific periods.
-- [ ] **Estimation Accuracy:** Analyze the mismatch between initial time estimates and the actual time taken to complete tasks.
-- [ ] **Flexible Filtering:** Allow filtering of statistics by various attributes.
-- [ ] **Time Allocation:** Provide a breakdown of time spent or allocated to each project.
+## Phase 5: Productivity & Insights
+- [ ] **Stale Task Analysis:** Reports specifically identifying tasks that are "rotting" (old and untouched).
+- [ ] **Friction Analysis:** Identify tasks with high reschedule counts to highlight roadblocks.
+- [ ] **Estimation Accuracy:** Track "Actual" time vs "Estimated" to improve future planning.
+- [ ] **Velocity Metrics:** Advanced stats for task closure rates and "Burn-down" charts.
 
-### Remote Server Mode
-- [ ] **Client-Server Architecture:** Implement a mode where the executable acts as a client connecting to a central `tasc` server.
+## Phase 6: Distributed Architecture
+- [ ] **Client-Server Separation:** Refactor core logic into a headless server/daemon.
+- [ ] **API Layer:** Expose functionality via REST or gRPC.
+- [ ] **Remote CLI:** Enable the `tasc` binary to connect to a remote server instance.
+- [ ] **Multi-Device Sync:** Enable centralized data management for access across machines.
 
-### Mobile Integration
-- [ ] **Lightweight Android App:** Develop a mobile application interacting with the "Remote Server Mode".
-
-## Completed Features
-
-### Q1 2026
-
-#### Calendar & Visualization
-- [x] **Advanced Calendar Views:** Implemented `day`, `week` (columns), `month` (grid), `quarter` (grid), and `year` (grid) views.
-- [x] **Calendar Navigation:** Added `--next` / `-n` flag to navigate forward in time.
-- [x] **Dependency Visualization:** Implemented `tasc graph` to visualize task dependency trees.
-- [x] **Task Inspection:** Implemented `tasc show <id>` to view detailed task information and dependency chains.
-
-#### Project Management
-- [x] **Projects Framework:** Implemented `projects` database table and `tasc project` subcommand (list, create, edit, delete).
-- [x] **Task Grouping:** Tasks are linked to projects via foreign keys.
-
-#### Core Logic & Priority
-- [x] **Advanced Priority Scoring:** Implemented scoring rules based on:
-  - **Due Date:** Higher score as deadline approaches/passes.
-  - **Schedule Date:** Boosts tasks scheduled for today/past; lowers future tasks.
-  - **Estimates:** "Quick wins" (< 30m) get a boost.
-  - **Age:** Older tasks get a slight boost (`AgeRule`).
-  - **Reschedules:** Tasks moved frequently get a priority boost (`RescheduleRule`).
-- [x] **Status Field Refinement:** Standardized statuses (`pending`, `ongoing`, `done`, `blocked`, `deleted`).
-- [x] **Recurrence:** Basic support for recurring tasks.
-
-#### User Interface
-- [x] **Enhanced Colorscheme:** Implemented configurable ANSI color themes (including 233 grayscale backgrounds).
-- [x] **Responsive Layouts:** `tasc list` and calendar views adapt to terminal width/height.
+## Phase 7: Ecosystem Expansion
+- [ ] **Mobile Application:** Lightweight Android/iOS app interacting with the Server API.
+- [ ] **External Integrations:** Two-way sync with external calendars (Google Calendar, CalDAV).
+- [ ] **Web Dashboard:** A visual web interface for high-level planning and drag-and-drop organization.
