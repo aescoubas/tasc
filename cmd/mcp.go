@@ -15,8 +15,7 @@ var mcpCmd = &cobra.Command{
 	Short: "Start the MCP server (stdio)",
 	Long:  `Starts the Model Context Protocol (MCP) server over standard input/output. This is designed to be used by LLM interfaces like Gemini CLI.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// Silence logs to avoid polluting stderr/stdout which might confuse some MCP clients
-		// although stderr is technically allowed, safer to be clean.
+		// Silence logs just in case
 		log.SetOutput(io.Discard)
 
 		// CurrentStore is initialized by root.go

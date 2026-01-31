@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"io"
 	"log"
 	"os"
 
@@ -35,6 +36,20 @@ func init() {
 }
 
 func initConfig() {
+	// Detect if running "mcp" command to redirect logs early
+	isMCP := false
+	for _, arg := range os.Args {
+		if arg == "mcp" {
+			isMCP = true
+			break
+		}
+	}
+
+	if isMCP {
+		// Silence logs for MCP to prevent protocol corruption
+		log.SetOutput(io.Discard)
+	}
+
 	if remoteURL == "" {
 		remoteURL = os.Getenv("TASC_REMOTE")
 	}
