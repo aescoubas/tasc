@@ -72,3 +72,7 @@
 - [x] **Gemini CLI Config:** Document how to configure Gemini CLI to connect to `tasc`'s MCP server.
 
 - [x] **Natural Language Interaction:** Verify that Gemini can "Add a task to buy milk", "List my high priority tasks", etc.
+
+## Phase 12: Advanced MCP & Batch Operations
+- [ ] **Complex Query Support:** Enable Gemini to perform batch modifications (e.g., "reschedule all my laserbiolabs tasks to next week").
+- [ ] **Batch Update Tool:** Expose a dedicated MCP tool or enhance `update` to handle multiple IDs or filter-based updates to support efficient bulk changes.
