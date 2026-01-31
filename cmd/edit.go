@@ -3,7 +3,6 @@ package cmd
 import (
 	"database/sql"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 
@@ -46,7 +45,7 @@ var editCmd = &cobra.Command{
 		}
 
 		// 3. Write to temp file
-		tmpFile, err := ioutil.TempFile("", "tasc-*.yaml")
+		tmpFile, err := os.CreateTemp("", "tasc-*.yaml")
 		if err != nil {
 			fmt.Printf("Error creating temp file: %v\n", err)
 			return
@@ -79,7 +78,7 @@ var editCmd = &cobra.Command{
 		}
 
 		// 5. Read back
-		newData, err := ioutil.ReadFile(tmpFile.Name())
+		newData, err := os.ReadFile(tmpFile.Name())
 		if err != nil {
 			fmt.Printf("Error reading temp file: %v\n", err)
 			return

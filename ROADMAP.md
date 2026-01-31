@@ -58,8 +58,8 @@
 ## Phase 10: Technical Consolidation & Security
 - [x] **Unit Testing:** Implement comprehensive unit tests aiming for full code coverage.
 - [x] **Integration Testing:** Develop integration tests to verify system reliability and full coverage.
-- [ ] **Codebase Consistency:** Audit and refactor code for consistency, style, and maintainability.
-- [ ] **Upgrade Strategy:** Implement robust processes for upgrades, including automated schema migrations.
+- [x] **Codebase Consistency:** Audit and refactor code for consistency, style, and maintainability.
+- [x] **Upgrade Strategy:** Implement robust processes for upgrades, including automated schema migrations.
 
 ## Phase 11: AI Integration (Gemini via MCP)
 - [ ] **MCP Server Implementation:** Implement the Model Context Protocol (MCP) server interface within `tasc` (e.g., `tasc mcp`).

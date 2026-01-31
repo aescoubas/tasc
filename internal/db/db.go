@@ -24,9 +24,10 @@ func GetDBPath() string {
 
 func InitDB() {
 	dbPath := GetDBPath()
-	var newDb bool
-	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		newDb = true
+	// Ensure directory exists
+	dir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		log.Fatal(err)
 	}
 
 	var err error
@@ -35,108 +36,7 @@ func InitDB() {
 		log.Fatal(err)
 	}
 
-	if newDb {
-		createTable()
-	} else {
-		migrate()
-	}
-}
-
-func migrate() {
-	// Attempt to add new columns for existing databases.
-	// We ignore errors here because the columns might already exist.
-	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN scheduled_at DATETIME")
-	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN estimate TEXT")
-	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN recurrence TEXT")
-	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN active_start DATETIME")
-	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN time_spent INTEGER DEFAULT 0")
-	_, _ = DB.Exec("ALTER TABLE tasks ADD COLUMN reschedule_count INTEGER DEFAULT 0")
-
-	// Migrate status values
-	_, _ = DB.Exec("UPDATE tasks SET status = 'backlog' WHERE status = 'pending'")
-	_, _ = DB.Exec("UPDATE tasks SET status = 'done' WHERE status = 'completed'")
-	_, _ = DB.Exec("UPDATE tasks SET status = 'undefined' WHERE status = 'poorly_defined'")
-	_, _ = DB.Exec("UPDATE tasks SET status = 'ongoing' WHERE active_start IS NOT NULL AND status = 'backlog'")
-
-	// Create projects table if not exists (Migration for new feature)
-	_, _ = DB.Exec(`
-		CREATE TABLE IF NOT EXISTS projects (
-			name TEXT PRIMARY KEY,
-			description TEXT,
-			parent TEXT,
-			status TEXT DEFAULT 'active',
-			due_at DATETIME,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY(parent) REFERENCES projects(name) ON DELETE SET NULL
-		)
-	`)
-
-	// Populate projects from existing tasks
-	_, _ = DB.Exec(`
-		INSERT OR IGNORE INTO projects (name)
-		SELECT DISTINCT project FROM tasks WHERE project IS NOT NULL AND project != ''
-	`)
-	
-	// Phase 5 Migrations
-	_, _ = DB.Exec("ALTER TABLE projects ADD COLUMN parent TEXT")
-	_, _ = DB.Exec("ALTER TABLE projects ADD COLUMN status TEXT DEFAULT 'active'")
-	_, _ = DB.Exec("ALTER TABLE projects ADD COLUMN due_at DATETIME")
-}
-
-func createTable() {
-	query := `
-	CREATE TABLE tasks (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		description TEXT NOT NULL,
-		project TEXT,
-		status TEXT DEFAULT 'backlog',
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		completed_at DATETIME,
-		due_at DATETIME,
-		scheduled_at DATETIME,
-		estimate TEXT,
-		recurrence TEXT,
-		active_start DATETIME,
-		time_spent INTEGER DEFAULT 0,
-		reschedule_count INTEGER DEFAULT 0
-	);
-
-	CREATE TABLE projects (
-		name TEXT PRIMARY KEY,
-		description TEXT,
-		parent TEXT,
-		status TEXT DEFAULT 'active',
-		due_at DATETIME,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(parent) REFERENCES projects(name) ON DELETE SET NULL
-	);
-
-	CREATE VIRTUAL TABLE tasks_fts USING fts5(description, project, content='tasks', content_rowid='id');
-
-	-- Triggers to keep FTS index in sync
-	CREATE TRIGGER tasks_ai AFTER INSERT ON tasks BEGIN
-	  INSERT INTO tasks_fts(rowid, description, project) VALUES (new.id, new.description, new.project);
-	END;
-
-	CREATE TRIGGER tasks_ad AFTER DELETE ON tasks BEGIN
-	  INSERT INTO tasks_fts(tasks_fts, rowid, description, project) VALUES('delete', old.id, old.description, old.project);
-	END;
-
-	CREATE TRIGGER tasks_au AFTER UPDATE ON tasks BEGIN
-	  INSERT INTO tasks_fts(tasks_fts, rowid, description, project) VALUES('delete', old.id, old.description, old.project);
-	  INSERT INTO tasks_fts(rowid, description, project) VALUES (new.id, new.description, new.project);
-	END;
-
-	CREATE TABLE task_dependencies (
-		blocker_id INTEGER,
-		blocked_id INTEGER,
-		PRIMARY KEY (blocker_id, blocked_id),
-		FOREIGN KEY(blocker_id) REFERENCES tasks(id) ON DELETE CASCADE,
-		FOREIGN KEY(blocked_id) REFERENCES tasks(id) ON DELETE CASCADE
-	);
-	`
-	_, err := DB.Exec(query)
-	if err != nil {
-		log.Fatal(err)
+	if err := RunMigrations(DB); err != nil {
+		log.Fatalf("Failed to migrate database: %v", err)
 	}
 }

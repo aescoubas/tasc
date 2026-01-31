@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/aescoubas/tasc/internal/db"
+	"github.com/aescoubas/tasc/internal/parse"
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +19,7 @@ var logCmd = &cobra.Command{
 
 		var dueAt *time.Time
 		if due != "" {
-			t, err := parseDate(due)
+			t, err := parse.Date(due)
 			if err != nil {
 				fmt.Printf("Invalid due date format: %v\n", err)
 				return
@@ -28,7 +29,7 @@ var logCmd = &cobra.Command{
 
 		var scheduledAt *time.Time
 		if scheduled != "" {
-			t, err := parseDate(scheduled)
+			t, err := parse.Date(scheduled)
 			if err != nil {
 				fmt.Printf("Invalid scheduled date format: %v\n", err)
 				return

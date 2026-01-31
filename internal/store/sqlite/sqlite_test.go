@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	dbpkg "github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/store"
 	_ "github.com/mattn/go-sqlite3"
@@ -16,46 +17,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 		t.Fatalf("Failed to open memory db: %v", err)
 	}
 
-	schema := `
-	CREATE TABLE tasks (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		description TEXT NOT NULL,
-		project TEXT,
-		status TEXT DEFAULT 'backlog',
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		completed_at DATETIME,
-		due_at DATETIME,
-		scheduled_at DATETIME,
-		estimate TEXT,
-		recurrence TEXT,
-		active_start DATETIME,
-		time_spent INTEGER DEFAULT 0,
-		reschedule_count INTEGER DEFAULT 0
-	);
-
-	CREATE TABLE projects (
-		name TEXT PRIMARY KEY,
-		description TEXT,
-		parent TEXT,
-		status TEXT DEFAULT 'active',
-		due_at DATETIME,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(parent) REFERENCES projects(name) ON DELETE SET NULL
-	);
-	
-	CREATE VIRTUAL TABLE tasks_fts USING fts5(description, project, content='tasks', content_rowid='id');
-
-	CREATE TABLE task_dependencies (
-		blocker_id INTEGER,
-		blocked_id INTEGER,
-		PRIMARY KEY (blocker_id, blocked_id),
-		FOREIGN KEY(blocker_id) REFERENCES tasks(id) ON DELETE CASCADE,
-		FOREIGN KEY(blocked_id) REFERENCES tasks(id) ON DELETE CASCADE
-	);
-	`
-	_, err = db.Exec(schema)
-	if err != nil {
-		t.Fatalf("Failed to init schema: %v", err)
+	if err := dbpkg.RunMigrations(db); err != nil {
+		t.Fatalf("Failed to run migrations: %v", err)
 	}
 
 	return db

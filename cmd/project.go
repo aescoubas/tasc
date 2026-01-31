@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aescoubas/tasc/internal/db"
+	"github.com/aescoubas/tasc/internal/parse"
 	"github.com/spf13/cobra"
 )
 
@@ -152,7 +153,7 @@ var projectCreateCmd = &cobra.Command{
 		
 		var dueAt *time.Time
 		if projDue != "" {
-			t, err := parseDate(projDue)
+			t, err := parse.Date(projDue)
 			if err != nil {
 				fmt.Printf("Invalid due date: %v\n", err)
 				return
@@ -243,7 +244,7 @@ var projectEditCmd = &cobra.Command{
 		if cmd.Flags().Changed("due") {
 			var d *time.Time
 			if projDue != "" {
-				t, err := parseDate(projDue)
+				t, err := parse.Date(projDue)
 				if err != nil {
 					fmt.Printf("Invalid due date: %v\n", err)
 					return

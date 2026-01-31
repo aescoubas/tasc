@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aescoubas/tasc/internal/parse"
 	"github.com/spf13/cobra"
 )
 
@@ -59,7 +60,7 @@ var modifyCmd = &cobra.Command{
 			if due == "" {
 				t.DueAt = nil
 			} else {
-				parsed, err := parseDate(due)
+				parsed, err := parse.Date(due)
 				if err != nil {
 					fmt.Printf("Invalid due date: %v\n", err)
 					return
@@ -75,7 +76,7 @@ var modifyCmd = &cobra.Command{
 				}
 				t.ScheduledAt = nil
 			} else {
-				parsed, err := parseDate(scheduled)
+				parsed, err := parse.Date(scheduled)
 				if err != nil {
 					fmt.Printf("Invalid scheduled date: %v\n", err)
 					return

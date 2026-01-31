@@ -1,4 +1,4 @@
-package cmd
+package parse
 
 import "testing"
 
@@ -34,8 +34,8 @@ func TestPreprocessDate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			if got := preprocessDate(tt.input); got != tt.want {
-				t.Errorf("preprocessDate(%q) = %q, want %q", tt.input, got, tt.want)
+			if got := PreprocessDate(tt.input); got != tt.want {
+				t.Errorf("PreprocessDate(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
