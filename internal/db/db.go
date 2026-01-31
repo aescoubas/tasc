@@ -60,7 +60,11 @@ func migrate() {
 		CREATE TABLE IF NOT EXISTS projects (
 			name TEXT PRIMARY KEY,
 			description TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			parent TEXT,
+			status TEXT DEFAULT 'active',
+			due_at DATETIME,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY(parent) REFERENCES projects(name) ON DELETE SET NULL
 		)
 	`)
 
@@ -69,6 +73,11 @@ func migrate() {
 		INSERT OR IGNORE INTO projects (name)
 		SELECT DISTINCT project FROM tasks WHERE project IS NOT NULL AND project != ''
 	`)
+	
+	// Phase 5 Migrations
+	_, _ = DB.Exec("ALTER TABLE projects ADD COLUMN parent TEXT")
+	_, _ = DB.Exec("ALTER TABLE projects ADD COLUMN status TEXT DEFAULT 'active'")
+	_, _ = DB.Exec("ALTER TABLE projects ADD COLUMN due_at DATETIME")
 }
 
 func createTable() {
@@ -92,7 +101,11 @@ func createTable() {
 	CREATE TABLE projects (
 		name TEXT PRIMARY KEY,
 		description TEXT,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		parent TEXT,
+		status TEXT DEFAULT 'active',
+		due_at DATETIME,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(parent) REFERENCES projects(name) ON DELETE SET NULL
 	);
 
 	CREATE VIRTUAL TABLE tasks_fts USING fts5(description, project, content='tasks', content_rowid='id');

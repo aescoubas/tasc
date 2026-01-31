@@ -26,10 +26,11 @@
 - [x] **Contextual Highlighting:** Ensure high-priority or blocked tasks retain their visual urgency in Calendar and Graph views.
 
 ## Phase 5: Project Management Deep Dive
-- [ ] **Subprojects:** Implement hierarchical structures (Parent -> Child projects) for better organization.
-- [ ] **Cascading Deadlines:** Logic where project deadlines automatically constrain or set defaults for contained tasks.
-- [ ] **Dependency-Aware Priority:** Update scoring to propagate priority from high-value blocked tasks to their blockers.
-- [ ] **Bulk Project Ops:** Commands to archive, move, or delete entire project trees safely.
+- [x] **Subprojects:** Implement hierarchical structures (Parent -> Child projects) for better organization.
+- [x] **Cascading Deadlines:** Logic where project deadlines automatically constrain or set defaults for contained tasks.
+- [x] **Dependency-Aware Priority:** Update scoring to propagate priority from high-value blocked tasks to their blockers.
+- [x] **Bulk Project Ops:** Commands to archive, move, or delete entire project trees safely.
+- [x] **Progress Tracking:** Show completion percentage in project list.
 
 ## Phase 6: Productivity & Insights
 - [ ] **Stale Task Analysis:** Reports specifically identifying tasks that are "rotting" (old and untouched).

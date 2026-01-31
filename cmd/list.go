@@ -94,6 +94,77 @@ var listCmd = &cobra.Command{
 			tasks = append(tasks, taskWithScore{task: t, score: score})
 		}
 
+		// --- Dependency-Aware Priority Propagation ---
+		// Fetch dependencies
+		depRows, err := db.DB.Query("SELECT blocker_id, blocked_id FROM task_dependencies")
+		if err == nil {
+			defer depRows.Close()
+
+			type edge struct {
+				blocker int64
+				blocked int64
+			}
+			var deps []edge
+			for depRows.Next() {
+				var e edge
+				if err := depRows.Scan(&e.blocker, &e.blocked); err == nil {
+					deps = append(deps, e)
+				}
+			}
+
+			// Map for quick lookup
+			baseScores := make(map[int64]float64)
+			for _, t := range tasks {
+				baseScores[t.task.ID] = t.score
+			}
+
+			boosts := make(map[int64]float64)
+
+			// Relaxation loop to propagate scores (Blocker gets boost from Blocked)
+			// Max 10 iterations to handle chains
+			for k := 0; k < 10; k++ {
+				newBoosts := make(map[int64]float64)
+				changed := false
+
+				for _, dep := range deps {
+					// Check if tasks exist in current list (filtering might be active in query? No, list queries all pending)
+					// But we should check existence in map
+					blockedBase, ok := baseScores[dep.blocked]
+					if !ok { continue } // Blocked task not in current list (e.g. done/deleted)
+					
+					blockedTotal := blockedBase + boosts[dep.blocked]
+					
+					// Propagate 50% of the blocked task's urgency
+					inherited := blockedTotal * 0.5
+					
+					// Use MAX aggregation: A blocker is as urgent as its most urgent dependent
+					if inherited > newBoosts[dep.blocker] {
+						newBoosts[dep.blocker] = inherited
+					}
+				}
+
+				// Check changes
+				for id, val := range newBoosts {
+					if val != boosts[id] {
+						changed = true
+						break
+					}
+				}
+				boosts = newBoosts
+				if !changed {
+					break
+				}
+			}
+
+			// Apply boosts
+			for i := range tasks {
+				if b, ok := boosts[tasks[i].task.ID]; ok {
+					tasks[i].score += b
+				}
+			}
+		}
+		// ---------------------------------------------
+
 		// Sort tasks
 		sort.Slice(tasks, func(i, j int) bool {
 			if sortBy == "" {

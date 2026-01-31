@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"database/sql"
 	"fmt"
 	"regexp"
 	"strings"
@@ -34,6 +35,29 @@ var addCmd = &cobra.Command{
 				return
 			}
 			dueAt = t
+		}
+
+		// Check project deadline
+		if project != "" {
+			var projDue sql.NullTime
+			// We accept error here (project might not exist or have no due date)
+			_ = db.DB.QueryRow("SELECT due_at FROM projects WHERE name = ?", project).Scan(&projDue)
+			
+			if projDue.Valid {
+				if dueAt == nil {
+					// Default to project due date
+					d := projDue.Time
+					dueAt = &d
+					fmt.Printf("Defaulting due date to project deadline: %s\n", d.Format("2006-01-02"))
+				} else {
+					// Validate
+					// Use 24h buffer or exact? Exact for now.
+					if dueAt.After(projDue.Time) {
+						fmt.Printf("Warning: Task due date (%s) is after project deadline (%s).\n", 
+							dueAt.Format("2006-01-02"), projDue.Time.Format("2006-01-02"))
+					}
+				}
+			}
 		}
 
 		var scheduledAt *time.Time
