@@ -6,8 +6,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/aescoubas/tasc/internal/config"
 	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
+	"github.com/aescoubas/tasc/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -16,6 +18,8 @@ var showCmd = &cobra.Command{
 	Short: "Show detailed information for a task",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		cfg, _ := config.LoadConfig()
+
 		id, err := strconv.Atoi(args[0])
 		if err != nil {
 			fmt.Println("Invalid task ID")
@@ -111,9 +115,10 @@ var showCmd = &cobra.Command{
 		}
 
 		// 2. Display
-		fmt.Printf("Task %d\n", t.ID)
+		style := ui.GetTaskStyle(t, cfg)
+		
+		fmt.Printf(style.Render(fmt.Sprintf("Task %d: %s", t.ID, t.Description)) + "\n")
 		fmt.Println("------------------------------------------------")
-		fmt.Printf("Description:   %s\n", t.Description)
 		fmt.Printf("Project:       %s\n", t.Project)
 		fmt.Printf("Status:        %s\n", t.Status)
 		fmt.Printf("Created:       %s\n", t.CreatedAt.Format("2006-01-02 15:04"))

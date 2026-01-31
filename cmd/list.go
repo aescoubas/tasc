@@ -12,6 +12,7 @@ import (
 	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/priority"
+	"github.com/aescoubas/tasc/internal/ui"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -21,16 +22,6 @@ type taskWithScore struct {
 	task  models.Task
 	score float64
 }
-
-type urgencyTier int
-
-const (
-	tierOverdue urgencyTier = iota
-	tierToday
-	tierTomorrow
-	tierWeek
-	tierDefault
-)
 
 var (
 	sortBy   string
@@ -199,7 +190,7 @@ var listCmd = &cobra.Command{
 			est      string
 			score    string
 			duration string
-			tier     urgencyTier
+			tier     ui.UrgencyTier
 		}
 
 		var rowsData []displayRow
@@ -211,47 +202,11 @@ var listCmd = &cobra.Command{
 			widths[i] = len(h)
 		}
 
-		now := time.Now()
-		startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-		tomorrowStart := startOfDay.AddDate(0, 0, 1)
-		weekStart := startOfDay.AddDate(0, 0, 2) // Start of "Next 7 days excluding tomorrow"
-		weekEnd := startOfDay.AddDate(0, 0, 9)   // End of that week (today + 1 + 1 + 7)
-
-		getTier := func(t *time.Time) urgencyTier {
-			if t == nil {
-				return tierDefault
-			}
-			if t.Before(now) {
-				return tierOverdue
-			}
-			// Check if it's today (since we already checked < now, this covers "rest of today")
-			if t.Before(tomorrowStart) {
-				return tierToday
-			}
-			if t.Before(weekStart) { // Before (Today + 2) means Tomorrow
-				return tierTomorrow
-			}
-			if t.Before(weekEnd) {
-				return tierWeek
-			}
-			return tierDefault
-		}
-
 		for _, item := range tasks {
 			t := item.task
 
 			// Determine Urgency
-			tierDue := getTier(t.DueAt)
-			tierSch := getTier(t.ScheduledAt)
-
-			// Use the most urgent tier (lower enum value is higher urgency)
-			finalTier := tierDefault
-			if tierDue < finalTier {
-				finalTier = tierDue
-			}
-			if tierSch < finalTier {
-				finalTier = tierSch
-			}
+			finalTier := ui.GetUrgencyTier(t)
 
 			// Format Fields
 			dueStr := "-"
@@ -426,20 +381,13 @@ var listCmd = &cobra.Command{
 
 		// Render
 		// Styles
-		styles := make(map[urgencyTier]lipgloss.Style)
-		makeStyle := func(fg, bg string) lipgloss.Style {
-			s := lipgloss.NewStyle().Foreground(lipgloss.Color(fg))
-			if bg != "" {
-				s = s.Background(lipgloss.Color(bg))
-			}
-			return s
-		}
-
-		styles[tierOverdue] = makeStyle(cfg.Colors.Overdue, cfg.Colors.OverdueBg)
-		styles[tierToday] = makeStyle(cfg.Colors.Today, cfg.Colors.TodayBg)
-		styles[tierTomorrow] = makeStyle(cfg.Colors.Tomorrow, cfg.Colors.TomorrowBg)
-		styles[tierWeek] = makeStyle(cfg.Colors.Week, cfg.Colors.WeekBg)
-		styles[tierDefault] = makeStyle(cfg.Colors.Default, cfg.Colors.DefaultBg)
+		styles := make(map[ui.UrgencyTier]lipgloss.Style)
+		
+		styles[ui.TierOverdue] = ui.GetStyleForTier(ui.TierOverdue, cfg)
+		styles[ui.TierToday] = ui.GetStyleForTier(ui.TierToday, cfg)
+		styles[ui.TierTomorrow] = ui.GetStyleForTier(ui.TierTomorrow, cfg)
+		styles[ui.TierWeek] = ui.GetStyleForTier(ui.TierWeek, cfg)
+		styles[ui.TierDefault] = ui.GetStyleForTier(ui.TierDefault, cfg)
 
 		// Header
 		// We pad headers manually too

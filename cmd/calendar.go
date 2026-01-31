@@ -9,6 +9,7 @@ import (
 	"github.com/aescoubas/tasc/internal/config"
 	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
+	"github.com/aescoubas/tasc/internal/ui"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -286,7 +287,8 @@ func renderMonthView(tasks []models.Task, startOfMonth time.Time, width int, cfg
 					desc = desc[:colWidth-3]
 				}
 				// Color dot by project?
-				content.WriteString(fmt.Sprintf("• %s\n", desc))
+				style := ui.GetTaskStyle(t, cfg)
+				content.WriteString(style.Render(fmt.Sprintf("• %s", desc)) + "\n")
 			}
 
 			rowCells = append(rowCells, cellStyle.Render(content.String()))
@@ -374,7 +376,8 @@ func renderQuarterView(tasks []models.Task, startOfQuarter time.Time, width int,
 				if len(desc) > colWidth-5 {
 					desc = desc[:colWidth-5]
 				}
-				content.WriteString(fmt.Sprintf("• %s\n", desc))
+				style := ui.GetTaskStyle(t, cfg)
+				content.WriteString(style.Render(fmt.Sprintf("• %s", desc)) + "\n")
 			}
 			
 			rowCells = append(rowCells, cellStyle.Render(content.String()))
@@ -442,7 +445,9 @@ func renderYearView(tasks []models.Task, startOfYear time.Time, width int, cfg c
 
 func renderTaskBox(t models.Task, width int, cfg config.Config) string {
 	projStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(cfg.Colors.Default))
-	taskStyle := lipgloss.NewStyle().
+	baseStyle := ui.GetTaskStyle(t, cfg)
+	
+	taskStyle := baseStyle.Copy().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("240")).
 		Padding(0, 1).
@@ -470,7 +475,8 @@ func renderTaskBox(t models.Task, width int, cfg config.Config) string {
 }
 
 func renderTaskLine(t models.Task, width int, cfg config.Config) {
-	fmt.Printf("%d\t%s\t%s\n", t.ID, t.Project, t.Description)
+	style := ui.GetTaskStyle(t, cfg)
+	fmt.Println(style.Render(fmt.Sprintf("%d\t%s\t%s", t.ID, t.Project, t.Description)))
 }
 
 func getTaskDate(t models.Task) time.Time {

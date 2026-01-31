@@ -13,10 +13,11 @@ var seedCmd = &cobra.Command{
 	Use:   "seed",
 	Short: "Populate the database with dummy data",
 	Run: func(cmd *cobra.Command, args []string) {
-		projects := []string{"Work", "Personal", "Tasc", "Health", "Finance"}
-		verbs := []string{"Fix", "Buy", "Write", "Call", "Email", "Review", "Clean", "Pay", "Update", "Deploy"}
-		nouns := []string{"bug", "milk", "documentation", "mom", "client", "code", "house", "bills", "dependencies", "server"}
+		projects := []string{"Work", "Personal", "Tasc", "Health", "Finance", "Learning", "Home"}
+		verbs := []string{"Fix", "Buy", "Write", "Call", "Email", "Review", "Clean", "Pay", "Update", "Deploy", "Research", "Design", "Test", "Meeting with"}
+		nouns := []string{"bug", "milk", "documentation", "mom", "client", "code", "house", "bills", "dependencies", "server", "proposal", "architecture", "gym", "groceries"}
 
+		// Seed random number generator
 		rand.Seed(time.Now().UnixNano())
 
 		tx, err := db.DB.Begin()
@@ -25,41 +26,54 @@ var seedCmd = &cobra.Command{
 			return
 		}
 
-		for i := 0; i < 50; i++ {
+		fmt.Println("Seeding database with 100 tasks over the next 60 days...")
+		
+		now := time.Now()
+
+		for i := 0; i < 100; i++ {
 			desc := fmt.Sprintf("%s %s %d", verbs[rand.Intn(len(verbs))], nouns[rand.Intn(len(nouns))], i)
 			proj := projects[rand.Intn(len(projects))]
 
-			// Mostly pending, some completed
+			// Status: mostly backlog
 			status := "backlog"
-			completedAt := "NULL"
-			if rand.Intn(10) > 7 {
+			var completedAt interface{} = nil // database/sql uses nil for NULL
+			
+			if rand.Intn(100) > 90 { // 10% done
 				status = "done"
-				completedAt = "CURRENT_TIMESTAMP"
+				completedAt = now.Format("2006-01-02 15:04:05")
 			}
 
-			dueAt := "NULL"
-			if rand.Intn(10) > 7 {
-				// Random due date in current month
-				days := rand.Intn(28) + 1
-				dueAt = fmt.Sprintf("'2026-01-%02d 12:00:00'", days) // Hardcoded for this demo context
+			// Schedule: mostly scheduled in the next 60 days
+			var scheduledAt interface{} = nil
+			if rand.Intn(10) > 1 { // 80% scheduled
+				// Random day offset 0-60
+				daysOffset := rand.Intn(60)
+				// Random hour 9-17
+				hour := 9 + rand.Intn(9)
+				schTime := now.AddDate(0, 0, daysOffset)
+				schTime = time.Date(schTime.Year(), schTime.Month(), schTime.Day(), hour, 0, 0, 0, schTime.Location())
+				scheduledAt = schTime.Format("2006-01-02 15:04:05")
 			}
 
-			scheduledAt := "NULL"
-			if rand.Intn(10) > 8 {
-				days := rand.Intn(28) + 1
-				scheduledAt = fmt.Sprintf("'2026-01-%02d 09:00:00'", days)
+			// Due Date: sometime after schedule or random
+			var dueAt interface{} = nil
+			if rand.Intn(10) > 5 { // 50% have due date
+				daysOffset := rand.Intn(90) // up to 90 days
+				dueTime := now.AddDate(0, 0, daysOffset)
+				dueAt = dueTime.Format("2006-01-02 15:04:05")
 			}
 
-			estimate := "NULL"
+			// Estimate
+			var estimate interface{} = nil
 			if rand.Intn(10) > 6 {
 				estVals := []string{"30m", "1h", "2h", "4h", "1d"}
-				estimate = fmt.Sprintf("'%s'", estVals[rand.Intn(len(estVals))])
+				estimate = estVals[rand.Intn(len(estVals))]
 			}
 
-			query := fmt.Sprintf(`INSERT INTO tasks (description, project, status, completed_at, created_at, due_at, scheduled_at, estimate) 
-				VALUES ('%s', '%s', '%s', %s, CURRENT_TIMESTAMP, %s, %s, %s)`, desc, proj, status, completedAt, dueAt, scheduledAt, estimate)
+			query := `INSERT INTO tasks (description, project, status, completed_at, created_at, due_at, scheduled_at, estimate) 
+				VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)`
 
-			_, err := tx.Exec(query)
+			_, err := tx.Exec(query, desc, proj, status, completedAt, dueAt, scheduledAt, estimate)
 			if err != nil {
 				tx.Rollback()
 				fmt.Printf("Error inserting task: %v\n", err)
@@ -67,10 +81,16 @@ var seedCmd = &cobra.Command{
 			}
 		}
 
+		// Ensure projects exist in 'projects' table (if we enforced FKs, but for now we just auto-migrate or ignore)
+		// Assuming 'projects' table is populated by 'tasc project' logic or implicitly by 'tasc list' (which creates project entries? No, 'tasc project' manages them).
+		// We should probably insert projects into 'projects' table if they don't exist to be clean.
+		for _, p := range projects {
+			tx.Exec("INSERT OR IGNORE INTO projects (name, description) VALUES (?, ?)", p, "Seeded project")
+		}
+
 		// Add random dependencies
-		// Collect all IDs first? No, we know IDs are 1..50 roughly (autoincrement)
-		// Actually, let's just fetch IDs to be safe.
-		rows, _ := tx.Query("SELECT id FROM tasks")
+	
+rows, _ := tx.Query("SELECT id FROM tasks ORDER BY id DESC LIMIT 100") // Get recent ones
 		var ids []int64
 		for rows.Next() {
 			var id int64
@@ -79,11 +99,13 @@ var seedCmd = &cobra.Command{
 		}
 		rows.Close()
 
-		for i := 0; i < 20; i++ {
-			blocker := ids[rand.Intn(len(ids))]
-			blocked := ids[rand.Intn(len(ids))]
-			if blocker != blocked {
-				tx.Exec("INSERT OR IGNORE INTO task_dependencies (blocker_id, blocked_id) VALUES (?, ?)", blocker, blocked)
+		if len(ids) > 0 {
+			for i := 0; i < 30; i++ {
+				blocker := ids[rand.Intn(len(ids))]
+				blocked := ids[rand.Intn(len(ids))]
+				if blocker != blocked {
+					tx.Exec("INSERT OR IGNORE INTO task_dependencies (blocker_id, blocked_id) VALUES (?, ?)", blocker, blocked)
+				}
 			}
 		}
 
@@ -93,7 +115,7 @@ var seedCmd = &cobra.Command{
 			return
 		}
 
-		fmt.Println("Successfully seeded 50 tasks.")
+		fmt.Println("Successfully seeded 100 tasks.")
 	},
 }
 
