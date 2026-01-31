@@ -111,11 +111,15 @@ echo "[4/5] Creating GitHub Release and uploading assets..."
 # We exclude the folders and just get files.
 ASSETS=$(find dist -maxdepth 1 -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.deb" -o -name "*.rpm" -o -name "checksums.txt" \))
 
+# Push tag explicitly to ensure gh finds it
+echo "[4/5] Pushing tag to origin..."
+git push origin "$VERSION"
+
 # Create release
 # --generate-notes: Auto-generate changelog from PRs
 # --title: Release title
 # --target: Target branch/commit (main)
-# The tag is pushed automatically by 'gh release create' if it doesn't exist on remote.
+echo "Creating GitHub Release..."
 gh release create "$VERSION" \
     --title "Release $VERSION" \
     --generate-notes \
