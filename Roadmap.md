@@ -39,12 +39,24 @@
 - [x] **Velocity Metrics:** Advanced stats for task closure rates and "Burn-down" charts.
 
 ## Phase 7: Distributed Architecture
-- [ ] **Client-Server Separation:** Refactor core logic into a headless server/daemon.
-- [ ] **API Layer:** Expose functionality via REST or gRPC.
-- [ ] **Remote CLI:** Enable the `tasc` binary to connect to a remote server instance.
-- [ ] **Multi-Device Sync:** Enable centralized data management for access across machines.
+- [x] **Client-Server Separation:** Refactor core logic into a headless server/daemon.
+- [x] **API Layer:** Expose functionality via REST or gRPC.
+- [x] **Remote CLI:** Enable the `tasc` binary to connect to a remote server instance.
+- [x] **Multi-Device Sync:** Enable centralized data management for access across machines.
 
 ## Phase 8: Ecosystem Expansion
 - [ ] **Mobile Application:** Lightweight Android/iOS app interacting with the Server API.
 - [ ] **External Integrations:** Two-way sync with external calendars (Google Calendar, CalDAV).
 - [ ] **Web Dashboard:** A visual web interface for high-level planning and drag-and-drop organization.
+
+## Phase 9: Distribution & Packaging
+- [x] **Install Script:** Simple shell script (`install.sh`) for automated local build and install.
+- [x] **Linux Packages:** Generate `.deb` and `.rpm` packages for easy installation on Debian/Ubuntu and Fedora/RHEL.
+- [x] **Homebrew Tap:** Create a Homebrew formula for easy installation on macOS (`brew install aescoubas/tasc/tasc`).
+- [x] **Release Automation:** CI/CD pipeline (GitHub Actions) to auto-publish binaries and packages on new tags.
+
+## Phase 10: Technical Consolidation & Security
+- [ ] **Unit Testing:** Implement comprehensive unit tests aiming for full code coverage.
+- [ ] **Integration Testing:** Develop integration tests to verify system reliability and full coverage.
+- [ ] **Codebase Consistency:** Audit and refactor code for consistency, style, and maintainability.
+- [ ] **Upgrade Strategy:** Implement robust processes for upgrades, including automated schema migrations.

@@ -16,11 +16,39 @@
 
 ## Installation
 
-### Prerequisites
+### Homebrew (macOS)
 
-*   Go 1.24 or higher.
+```bash
+brew install aescoubas/tasc/tasc
+```
+
+### Linux Packages (Debian/Ubuntu/Fedora/RHEL)
+
+Download the latest `.deb` or `.rpm` release from the [Releases Page](https://github.com/aescoubas/tasc/releases).
+
+**Debian/Ubuntu:**
+```bash
+sudo dpkg -i tasc_*.deb
+```
+
+**Fedora/RHEL:**
+```bash
+sudo rpm -i tasc_*.rpm
+```
+
+### Quick Install (Script)
+
+You can also install Tasc quickly using the provided install script:
+
+```bash
+git clone https://github.com/aescoubas/tasc.git
+cd tasc
+./install.sh
+```
 
 ### Build from Source
+
+**Prerequisites:** Go 1.24 or higher.
 
 **Important:** Tasc requires the SQLite `fts5` extension. You *must* include the `-tags fts5` flag when building.
 
@@ -90,6 +118,12 @@ sudo mv tasc /usr/local/bin/
     tasc search "milk"
     ```
 
+*   **Inspect Task:**
+    View detailed information about a task:
+    ```bash
+    tasc show <task_id>
+    ```
+
 *   **Dependencies:**
     Link tasks together:
     ```bash
@@ -129,6 +163,29 @@ sudo mv tasc /usr/local/bin/
     Mark vague tasks that need more clarity:
     ```bash
     tasc vague <task_id>
+    ```
+
+*   **Project Management:**
+    Manage project metadata (descriptions, goals):
+    ```bash
+    tasc project list
+    tasc project add "Work" --desc "Professional tasks"
+    tasc project show "Work"
+    ```
+
+*   **Data Management:**
+    Import from TaskWarrior:
+    ```bash
+    task export | tasc import-tw
+    ```
+    Backup and Restore your database:
+    ```bash
+    tasc backup > tasc_backup.json
+    tasc restore < tasc_backup.json
+    ```
+    Seed with dummy data (for testing):
+    ```bash
+    tasc seed
     ```
 
 ### Distributed Mode (Client-Server)

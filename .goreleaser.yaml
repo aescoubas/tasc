@@ -1,0 +1,97 @@
+version: 2
+
+project_name: tasc
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: tasc-linux
+    binary: tasc
+    env:
+      - CGO_ENABLED=1
+      - CC={{ if eq .Arch "amd64" }}gcc{{ else if eq .Arch "arm64" }}aarch64-linux-gnu-gcc{{ end }}
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -tags=fts5
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+  - id: tasc-macos
+    binary: tasc
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -tags=fts5
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+nfpms:
+  - id: tasc-packages
+    package_name: tasc
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    vendor: "aescoubas"
+    homepage: "https://github.com/aescoubas/tasc"
+    maintainer: "aescoubas <aescoubas@example.com>"
+    description: "A modern, snappy, and powerful CLI task manager built for the terminal."
+    license: "MPL-2.0"
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/local/bin
+    section: utils
+    contents:
+      - src: README.md
+        dst: /usr/share/doc/tasc/README.md
+      - src: LICENSE
+        dst: /usr/share/doc/tasc/LICENSE
+
+brews:
+  - repository:
+      owner: aescoubas
+      name: homebrew-tasc
+    name: tasc
+    homepage: "https://github.com/aescoubas/tasc"
+    description: "Modern CLI task manager with TUI"
+    license: "MPL-2.0"
+    test: |
+      system "#{bin}/tasc --version"
+    install: |
+      bin.install "tasc"
+      bash_completion.install "completions/tasc.bash" => "tasc"
+      zsh_completion.install "completions/tasc.zsh" => "_tasc"
+      fish_completion.install "completions/tasc.fish"
