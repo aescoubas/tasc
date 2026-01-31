@@ -53,7 +53,7 @@
 - [x] **Install Script:** Simple shell script (`install.sh`) for automated local build and install.
 - [x] **Linux Packages:** Generate `.deb` and `.rpm` packages for easy installation on Debian/Ubuntu and Fedora/RHEL.
 - [x] **Homebrew Tap:** Create a Homebrew formula for easy installation on macOS (`brew install aescoubas/tasc/tasc`).
-- [x] **Release Automation:** CI/CD pipeline (GitHub Actions) to auto-publish binaries and packages on new tags.
+- [x] **Release Automation:** Local shell script (`release.sh`) to build and publish releases via GitHub CLI.
 
 ## Phase 10: Technical Consolidation & Security
 - [ ] **Unit Testing:** Implement comprehensive unit tests aiming for full code coverage.
