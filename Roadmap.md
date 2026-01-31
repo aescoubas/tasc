@@ -20,25 +20,30 @@
 - [x] **Anti-Procrastination:** Priority boosting for older tasks (`AgeRule`) and "Quick Wins" (`EstimateRule`).
 - [x] **Reschedule Tracking:** Track and weight tasks based on how often they are rescheduled (`RescheduleRule`).
 
-## Phase 4: Project Management Deep Dive
+## Phase 4: UI Consistency & Polish
+- [ ] **Unified Color Model:** Centralize task coloring logic so `calendar`, `graph`, and `show` match the "official" colorscheme used in `tasc list`.
+- [ ] **Visual Consistency:** Ensure task representations (IDs, Project names, Status indicators) are identical across all views.
+- [ ] **Contextual Highlighting:** Ensure high-priority or blocked tasks retain their visual urgency in Calendar and Graph views.
+
+## Phase 5: Project Management Deep Dive
 - [ ] **Subprojects:** Implement hierarchical structures (Parent -> Child projects) for better organization.
 - [ ] **Cascading Deadlines:** Logic where project deadlines automatically constrain or set defaults for contained tasks.
 - [ ] **Dependency-Aware Priority:** Update scoring to propagate priority from high-value blocked tasks to their blockers.
 - [ ] **Bulk Project Ops:** Commands to archive, move, or delete entire project trees safely.
 
-## Phase 5: Productivity & Insights
+## Phase 6: Productivity & Insights
 - [ ] **Stale Task Analysis:** Reports specifically identifying tasks that are "rotting" (old and untouched).
 - [ ] **Friction Analysis:** Identify tasks with high reschedule counts to highlight roadblocks.
 - [ ] **Estimation Accuracy:** Track "Actual" time vs "Estimated" to improve future planning.
 - [ ] **Velocity Metrics:** Advanced stats for task closure rates and "Burn-down" charts.
 
-## Phase 6: Distributed Architecture
+## Phase 7: Distributed Architecture
 - [ ] **Client-Server Separation:** Refactor core logic into a headless server/daemon.
 - [ ] **API Layer:** Expose functionality via REST or gRPC.
 - [ ] **Remote CLI:** Enable the `tasc` binary to connect to a remote server instance.
 - [ ] **Multi-Device Sync:** Enable centralized data management for access across machines.
 
-## Phase 7: Ecosystem Expansion
+## Phase 8: Ecosystem Expansion
 - [ ] **Mobile Application:** Lightweight Android/iOS app interacting with the Server API.
 - [ ] **External Integrations:** Two-way sync with external calendars (Google Calendar, CalDAV).
 - [ ] **Web Dashboard:** A visual web interface for high-level planning and drag-and-drop organization.
