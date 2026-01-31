@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/recurrence"
 )
@@ -52,12 +51,19 @@ func spawnNextTask(t models.Task) {
 	}
 
 	// Insert new task
-	queryInsert := `INSERT INTO tasks (description, project, recurrence, due_at, scheduled_at, estimate, created_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
-	res, err := db.DB.Exec(queryInsert, t.Description, t.Project, t.Recurrence, newDue, newScheduled, t.Estimate)
+	newTask := models.Task{
+		Description: t.Description,
+		Project:     t.Project,
+		Recurrence:  t.Recurrence,
+		DueAt:       newDue,
+		ScheduledAt: newScheduled,
+		Estimate:    t.Estimate,
+	}
+
+	id, err := CurrentStore.CreateTask(newTask)
 	if err != nil {
 		fmt.Printf("Error creating next recurring task: %v\n", err)
 		return
 	}
-	newID, _ := res.LastInsertId()
-	fmt.Printf("Created next recurring task %d (Scheduled: %s).\n", newID, nextDate.Format("2006-01-02"))
+	fmt.Printf("Created next recurring task %d (Scheduled: %s).\n", id, nextDate.Format("2006-01-02"))
 }

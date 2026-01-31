@@ -33,6 +33,11 @@ type Task struct {
 	IsBlocked   bool       `json:"is_blocked" yaml:"is_blocked"`
 }
 
+type TaskDependency struct {
+	BlockerID int64 `json:"blocker_id"`
+	BlockedID int64 `json:"blocked_id"`
+}
+
 func (t Task) AgeString() string {
 	d := time.Since(t.CreatedAt)
 	if d < time.Minute {

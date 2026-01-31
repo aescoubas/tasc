@@ -1,13 +1,10 @@
 package cmd
 
 import (
-	"database/sql"
 	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/aescoubas/tasc/internal/db"
-	"github.com/aescoubas/tasc/internal/models"
 	"github.com/spf13/cobra"
 )
 
@@ -23,30 +20,14 @@ var deleteCmd = &cobra.Command{
 		}
 
 		// 1. Fetch task details
-		var t models.Task
-		var project sql.NullString
-		var dueAt sql.NullTime
-		var scheduledAt sql.NullTime
-		var estimate sql.NullString
-		var rec sql.NullString
-
-		queryFetch := "SELECT id, description, project, recurrence, due_at, scheduled_at, estimate FROM tasks WHERE id = ?"
-		row := db.DB.QueryRow(queryFetch, id)
-		if err := row.Scan(&t.ID, &t.Description, &project, &rec, &dueAt, &scheduledAt, &estimate); err == nil {
-			// Only process if found, ignore error if not found (delete will fail gracefully or succeed with 0 rows)
-			t.Project = project.String
-			if rec.Valid {
-				t.Recurrence = rec.String
-			}
-			if dueAt.Valid {
-				t.DueAt = &dueAt.Time
-			}
-			if scheduledAt.Valid {
-				t.ScheduledAt = &scheduledAt.Time
-			}
-			if estimate.Valid {
-				t.Estimate = estimate.String
-			}
+		t, err := CurrentStore.GetTask(int64(id))
+		if err != nil {
+			// Ignore if not found? Or report?
+			// Delete will fail if ID invalid anyway usually.
+			// But for CLI UX, maybe report.
+			// Legacy code ignored error on scan if not found?
+			// "Only process if found, ignore error if not found"
+			// But here we need t for recurrence.
 		}
 
 		// 2. Handle Recurrence Prompt
@@ -62,8 +43,7 @@ var deleteCmd = &cobra.Command{
 		}
 
 		// 3. Soft delete
-		query := `UPDATE tasks SET status = 'deleted' WHERE id = ?`
-		_, err = db.DB.Exec(query, id)
+		err = CurrentStore.DeleteTask(int64(id))
 		if err != nil {
 			fmt.Printf("Error deleting task: %v\n", err)
 			return

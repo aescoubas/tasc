@@ -131,6 +131,38 @@ sudo mv tasc /usr/local/bin/
     tasc vague <task_id>
     ```
 
+### Distributed Mode (Client-Server)
+
+Tasc can run in a distributed mode where a central server manages the database, and clients connect to it remotely.
+
+**1. Start the Server:**
+
+You can use the provided start script to build and launch the server:
+
+```bash
+./start-server.sh
+```
+
+Or manually:
+```bash
+tasc serve --port 8081
+```
+
+**2. Configure the Client:**
+
+Set the `TASC_REMOTE` environment variable to point to your server:
+
+```bash
+export TASC_REMOTE=http://localhost:8081
+```
+
+Now, all `tasc` commands (add, list, done, etc.) will operate on the remote server instead of the local database.
+
+You can also specify the remote URL per command using the `--remote` flag:
+```bash
+tasc list --remote http://localhost:8081
+```
+
 ## Contributing
 
 Contributions are welcome!

@@ -1,13 +1,12 @@
 package cmd
 
 import (
-	"database/sql"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/aescoubas/tasc/internal/db"
+	"github.com/aescoubas/tasc/internal/models"
 	"github.com/spf13/cobra"
 	"github.com/tj/go-naturaldate"
 )
@@ -39,22 +38,18 @@ var addCmd = &cobra.Command{
 
 		// Check project deadline
 		if project != "" {
-			var projDue sql.NullTime
-			// We accept error here (project might not exist or have no due date)
-			_ = db.DB.QueryRow("SELECT due_at FROM projects WHERE name = ?", project).Scan(&projDue)
-			
-			if projDue.Valid {
+			p, err := CurrentStore.GetProject(project)
+			// Ignore error (project might not exist)
+			if err == nil && p.DueAt != nil {
 				if dueAt == nil {
 					// Default to project due date
-					d := projDue.Time
-					dueAt = &d
-					fmt.Printf("Defaulting due date to project deadline: %s\n", d.Format("2006-01-02"))
+					dueAt = p.DueAt
+					fmt.Printf("Defaulting due date to project deadline: %s\n", p.DueAt.Format("2006-01-02"))
 				} else {
 					// Validate
-					// Use 24h buffer or exact? Exact for now.
-					if dueAt.After(projDue.Time) {
+					if dueAt.After(*p.DueAt) {
 						fmt.Printf("Warning: Task due date (%s) is after project deadline (%s).\n", 
-							dueAt.Format("2006-01-02"), projDue.Time.Format("2006-01-02"))
+							dueAt.Format("2006-01-02"), p.DueAt.Format("2006-01-02"))
 					}
 				}
 			}
@@ -70,21 +65,21 @@ var addCmd = &cobra.Command{
 			scheduledAt = t
 		}
 
-		query := `INSERT INTO tasks (description, project, due_at, scheduled_at, estimate, recurrence, created_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
-		stmt, err := db.DB.Prepare(query)
-		if err != nil {
-			fmt.Printf("Error preparing statement: %v\n", err)
-			return
-		}
-		defer stmt.Close()
-
-		res, err := stmt.Exec(description, project, dueAt, scheduledAt, estimate, recurrenceFlag)
-		if err != nil {
-			fmt.Printf("Error executing statement: %v\n", err)
-			return
+		task := models.Task{
+			Description: description,
+			Project:     project,
+			DueAt:       dueAt,
+			ScheduledAt: scheduledAt,
+			Estimate:    estimate,
+			Recurrence:  recurrenceFlag,
 		}
 
-		id, _ := res.LastInsertId()
+		id, err := CurrentStore.CreateTask(task)
+		if err != nil {
+			fmt.Printf("Error creating task: %v\n", err)
+			return
+		}
+
 		fmt.Printf("Created task %d.\n", id)
 	},
 }
