@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -154,5 +155,44 @@ func TestSQLiteStore_Projects(t *testing.T) {
 	}
 	if len(list) != 1 {
 		t.Errorf("Expected 1 project")
+	}
+}
+
+func TestSQLiteStore_BatchUpdateTasks(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	s := NewSQLiteStore(db)
+
+	// Create 3 tasks
+	ids := make([]int64, 3)
+	for i := 0; i < 3; i++ {
+		id, _ := s.CreateTask(models.Task{Description: fmt.Sprintf("Task %d", i), Project: "OldProject"})
+		ids[i] = id
+	}
+
+	// Batch update 2 of them
+	updates := map[string]interface{}{
+		"project": "NewProject",
+		"status":  "ongoing",
+	}
+	err := s.BatchUpdateTasks([]int64{ids[0], ids[1]}, updates)
+	if err != nil {
+		t.Fatalf("BatchUpdateTasks failed: %v", err)
+	}
+
+	// Verify
+	t1, _ := s.GetTask(ids[0])
+	if t1.Project != "NewProject" || t1.Status != "ongoing" {
+		t.Errorf("Task 1 not updated correctly: %+v", t1)
+	}
+
+	t2, _ := s.GetTask(ids[1])
+	if t2.Project != "NewProject" || t2.Status != "ongoing" {
+		t.Errorf("Task 2 not updated correctly: %+v", t2)
+	}
+
+	t3, _ := s.GetTask(ids[2])
+	if t3.Project != "OldProject" {
+		t.Errorf("Task 3 should not be updated: %+v", t3)
 	}
 }

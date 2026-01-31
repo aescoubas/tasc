@@ -20,6 +20,7 @@ type Store interface {
 	MarkDone(id int64) error
 	StartTask(id int64) error
 	StopTask(id int64) error
+	BatchUpdateTasks(ids []int64, updates map[string]interface{}) error
     GetActiveTask() (*models.Task, error)
 
 	// Dependencies

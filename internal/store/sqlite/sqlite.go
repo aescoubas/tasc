@@ -97,6 +97,48 @@ func (s *SQLiteStore) UpdateTask(t models.Task) error {
 	return err
 }
 
+func (s *SQLiteStore) BatchUpdateTasks(ids []int64, updates map[string]interface{}) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+
+	query := "UPDATE tasks SET "
+	var args []interface{}
+	var sets []string
+
+	for k, v := range updates {
+		// Whitelist fields
+		switch k {
+		case "project", "status", "estimate", "recurrence", "description":
+			sets = append(sets, fmt.Sprintf("%s = ?", k))
+			args = append(args, v)
+		case "due_at", "scheduled_at", "completed_at":
+			sets = append(sets, fmt.Sprintf("%s = ?", k))
+			args = append(args, v)
+		}
+	}
+
+	if len(sets) == 0 {
+		return nil
+	}
+
+	query += strings.Join(sets, ", ")
+	query += " WHERE id IN ("
+
+	placeholders := make([]string, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	query += strings.Join(placeholders, ", ") + ")"
+
+	_, err := s.db.Exec(query, args...)
+	return err
+}
+
 func (s *SQLiteStore) DeleteTask(id int64) error {
 	query := `UPDATE tasks SET status = 'deleted' WHERE id = ?`
 	_, err := s.db.Exec(query, id)

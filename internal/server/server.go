@@ -44,6 +44,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /tasks/{id}/start", s.handleTaskStart)
 	s.mux.HandleFunc("POST /tasks/stop", s.handleTaskStop)
 	s.mux.HandleFunc("GET /tasks/active", s.handleGetActiveTask)
+	s.mux.HandleFunc("POST /tasks/batch-update", s.handleBatchUpdateTasks)
 
 	s.mux.HandleFunc("GET /projects", s.handleListProjects)
 	s.mux.HandleFunc("POST /projects", s.handleCreateProject)
@@ -303,6 +304,23 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleBatchUpdateTasks(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs     []int64                `json:"ids"`
+		Updates map[string]interface{} `json:"updates"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.store.BatchUpdateTasks(req.IDs, req.Updates); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func respondJSON(w http.ResponseWriter, status int, payload interface{}) {

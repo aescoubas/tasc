@@ -77,6 +77,18 @@ func (ms *MCPServer) registerTools() {
 	ms.server.AddTool(mcp.NewTool("tasc_list_projects",
 		mcp.WithDescription("List all projects"),
 	), ms.handleListProjects)
+
+	// 6. Batch Update Tasks
+	ms.server.AddTool(mcp.NewTool("tasc_batch_update_tasks",
+		mcp.WithDescription("Batch update multiple tasks"),
+		mcp.WithString("ids", mcp.Required(), mcp.Description("Comma-separated list of IDs (e.g. '1,2,3')")),
+		mcp.WithString("project", mcp.Description("New project")),
+		mcp.WithString("status", mcp.Description("New status")),
+		mcp.WithString("due", mcp.Description("New due date")),
+		mcp.WithString("scheduled", mcp.Description("New scheduled date")),
+		mcp.WithBoolean("clear_due", mcp.Description("Clear due date")),
+		mcp.WithBoolean("clear_scheduled", mcp.Description("Clear scheduled date")),
+	), ms.handleBatchUpdate)
 }
 
 func (ms *MCPServer) registerResources() {
@@ -289,5 +301,67 @@ func (ms *MCPServer) handleResourceTasks(ctx context.Context, request mcp.ReadRe
 			Text:     string(jsonData),
 		},
 	}, nil
+}
+
+func (ms *MCPServer) handleBatchUpdate(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	idsStr := request.GetString("ids", "")
+	if idsStr == "" {
+		return mcp.NewToolResultError("IDs are required"), nil
+	}
+
+	var ids []int64
+	parts := strings.Split(idsStr, ",")
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		var id int64
+		_, err := fmt.Sscanf(p, "%d", &id)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid ID: %s", p)), nil
+		}
+		ids = append(ids, id)
+	}
+
+	if len(ids) == 0 {
+		return mcp.NewToolResultError("No valid IDs provided"), nil
+	}
+
+	updates := make(map[string]interface{})
+
+	if p := request.GetString("project", ""); p != "" {
+		updates["project"] = p
+	}
+	if s := request.GetString("status", ""); s != "" {
+		updates["status"] = s
+	}
+
+	if request.GetBool("clear_due", false) {
+		updates["due_at"] = nil
+	} else if d := request.GetString("due", ""); d != "" {
+		t, err := parse.Date(d)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid due date: %v", err)), nil
+		}
+		updates["due_at"] = t
+	}
+
+	if request.GetBool("clear_scheduled", false) {
+		updates["scheduled_at"] = nil
+	} else if s := request.GetString("scheduled", ""); s != "" {
+		t, err := parse.Date(s)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid scheduled date: %v", err)), nil
+		}
+		updates["scheduled_at"] = t
+	}
+
+	err := ms.store.BatchUpdateTasks(ids, updates)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Error batch updating tasks: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("Updated %d tasks.", len(ids))), nil
 }
 

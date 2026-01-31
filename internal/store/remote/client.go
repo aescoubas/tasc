@@ -89,6 +89,28 @@ func (c *Client) UpdateTask(t models.Task) error {
 	return nil
 }
 
+func (c *Client) BatchUpdateTasks(ids []int64, updates map[string]interface{}) error {
+	reqBody := map[string]interface{}{
+		"ids":     ids,
+		"updates": updates,
+	}
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.http.Post(c.baseURL+"/tasks/batch-update", "application/json", bytes.NewBuffer(data))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("server error: %s", resp.Status)
+	}
+	return nil
+}
+
 func (c *Client) DeleteTask(id int64) error {
 	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/tasks/%d", c.baseURL, id), nil)
 	if err != nil {
