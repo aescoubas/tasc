@@ -100,8 +100,10 @@ var calendarCmd = &cobra.Command{
 			renderWeekView(tasks, start, width, cfg, now)
 		case "month":
 			renderMonthView(tasks, start, width, cfg, now)
-		case "quarter", "year":
-			renderSimpleList(tasks, start, end, cfg)
+		case "quarter":
+			renderQuarterView(tasks, start, width, cfg, now)
+		case "year":
+			renderYearView(tasks, start, width, cfg, now)
 		}
 	},
 }
@@ -294,18 +296,148 @@ func renderMonthView(tasks []models.Task, startOfMonth time.Time, width int, cfg
 	}
 }
 
-func renderSimpleList(tasks []models.Task, start, end time.Time, cfg config.Config) {
-	// Group by Month
-	currentMonth := ""
+func renderQuarterView(tasks []models.Task, startOfQuarter time.Time, width int, cfg config.Config, now time.Time) {
+	// Grid: 4 columns
+	colWidth := (width / 4) - 2
+	if colWidth < 15 {
+		colWidth = 15
+	}
+	
+	// Bucket tasks by Week (relative to startOfQuarter)
+	// We'll just iterate 13-14 weeks
+	weekTasks := make(map[int][]models.Task)
+	
+	// Determine "Standard" Weeks starting Monday
+	// Align startOfQuarter to the preceding Monday
+	qStartMonday := startOfQuarter
+	for qStartMonday.Weekday() != time.Monday {
+		qStartMonday = qStartMonday.AddDate(0, 0, -1)
+	}
+
 	for _, t := range tasks {
 		d := getTaskDate(t)
-		monthStr := d.Format("January 2006")
-		if monthStr != currentMonth {
-			fmt.Printf("\n--- %s ---\n", monthStr)
-			currentMonth = monthStr
-		}
-		fmt.Printf("[%s] %s: %s\n", d.Format("02"), t.Project, t.Description)
+		// Find which week index this task belongs to
+		// Days since qStartMonday
+		diff := int(d.Sub(qStartMonday).Hours() / 24)
+		if diff < 0 { continue }
+		weekIdx := diff / 7
+		weekTasks[weekIdx] = append(weekTasks[weekIdx], t)
 	}
+
+	cellStyle := lipgloss.NewStyle().
+		Width(colWidth).
+		Height(6). // Enough for header + a few tasks
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("238"))
+
+	var rows []string
+	
+	// 4 columns per row
+	// Usually 13-14 weeks in a quarter
+	weeksInQuarter := 14 
+	
+	for i := 0; i < weeksInQuarter; i += 4 {
+		var rowCells []string
+		for j := 0; j < 4; j++ {
+			weekIdx := i + j
+			if weekIdx >= weeksInQuarter {
+				rowCells = append(rowCells, cellStyle.Render(""))
+				continue
+			}
+			
+			// Week Start Date
+			wStart := qStartMonday.AddDate(0, 0, weekIdx*7)
+			wEnd := wStart.AddDate(0, 0, 6)
+			
+			// Header
+			header := fmt.Sprintf("W%d: %s", weekIdx+1, wStart.Format("Jan 02"))
+			if wStart.Month() != wEnd.Month() {
+				header = fmt.Sprintf("W%d: %s-%s", weekIdx+1, wStart.Format("Jan 02"), wEnd.Format("02"))
+			}
+			
+			// Highlight if "Now" is in this week
+			if now.After(wStart) && now.Before(wEnd.AddDate(0,0,1)) {
+				header = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.Colors.Today)).Bold(true).Render(header)
+			}
+			
+			var content strings.Builder
+			content.WriteString(header + "\n")
+			content.WriteString(strings.Repeat("-", colWidth-2) + "\n")
+			
+			ts := weekTasks[weekIdx]
+			content.WriteString(fmt.Sprintf("Total: %d\n", len(ts)))
+			
+			// List top 3
+			for k, t := range ts {
+				if k >= 3 { break }
+				desc := t.Description
+				if len(desc) > colWidth-5 {
+					desc = desc[:colWidth-5]
+				}
+				content.WriteString(fmt.Sprintf("• %s\n", desc))
+			}
+			
+			rowCells = append(rowCells, cellStyle.Render(content.String()))
+		}
+		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, rowCells...))
+	}
+	
+	fmt.Println(lipgloss.JoinVertical(lipgloss.Left, rows...))
+}
+
+func renderYearView(tasks []models.Task, startOfYear time.Time, width int, cfg config.Config, now time.Time) {
+	// Grid: 4 columns x 3 rows = 12 months
+	colWidth := (width / 4) - 2
+	if colWidth < 15 {
+		colWidth = 15
+	}
+	
+	// Bucket by Month (1-12)
+	monthTasks := make(map[time.Month][]models.Task)
+	for _, t := range tasks {
+		d := getTaskDate(t)
+		monthTasks[d.Month()] = append(monthTasks[d.Month()], t)
+	}
+
+	cellStyle := lipgloss.NewStyle().
+		Width(colWidth).
+		Height(5).
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("238"))
+
+	var rows []string
+	
+	for i := 1; i <= 12; i += 4 {
+		var rowCells []string
+		for j := 0; j < 4; j++ {
+			monthIdx := i + j
+			if monthIdx > 12 { break }
+			
+			m := time.Month(monthIdx)
+			ts := monthTasks[m]
+			
+			header := m.String()
+			if now.Month() == m && now.Year() == startOfYear.Year() {
+				header = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.Colors.Today)).Bold(true).Render(header)
+			}
+			
+			var content strings.Builder
+			content.WriteString(header + "\n")
+			content.WriteString(strings.Repeat("-", colWidth-2) + "\n")
+			content.WriteString(fmt.Sprintf("Tasks: %d\n", len(ts)))
+			
+			// Maybe a mini bar chart? "||||"
+			bars := len(ts)
+			if bars > colWidth - 2 { bars = colWidth - 2 }
+			if bars > 0 {
+				content.WriteString(strings.Repeat("■", bars))
+			}
+			
+			rowCells = append(rowCells, cellStyle.Render(content.String()))
+		}
+		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, rowCells...))
+	}
+	fmt.Println(lipgloss.JoinVertical(lipgloss.Left, rows...))
 }
 
 func renderTaskBox(t models.Task, width int, cfg config.Config) string {
