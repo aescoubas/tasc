@@ -111,7 +111,9 @@ var calendarCmd = &cobra.Command{
 
 func fetchTasksInRange(start, end time.Time) ([]models.Task, error) {
 	query := `
-		SELECT id, description, project, status, due_at, scheduled_at, estimate 
+		SELECT 
+			id, description, project, status, due_at, scheduled_at, estimate,
+			EXISTS(SELECT 1 FROM task_dependencies WHERE blocked_id = tasks.id) as is_blocked
 		FROM tasks 
 		WHERE status NOT IN ('done', 'deleted', 'undefined') 
 		AND (
@@ -135,13 +137,15 @@ func fetchTasksInRange(start, end time.Time) ([]models.Task, error) {
 		var t models.Task
 		var dueAt, scheduledAt *time.Time
 		var est string
-		err := rows.Scan(&t.ID, &t.Description, &t.Project, &t.Status, &dueAt, &scheduledAt, &est)
+		var isBlocked bool
+		err := rows.Scan(&t.ID, &t.Description, &t.Project, &t.Status, &dueAt, &scheduledAt, &est, &isBlocked)
 		if err != nil {
 			continue
 		}
 		t.DueAt = dueAt
 		t.ScheduledAt = scheduledAt
 		t.Estimate = est
+		t.IsBlocked = isBlocked
 		tasks = append(tasks, t)
 	}
 	return tasks, nil
@@ -286,9 +290,19 @@ func renderMonthView(tasks []models.Task, startOfMonth time.Time, width int, cfg
 				if len(desc) > colWidth-3 {
 					desc = desc[:colWidth-3]
 				}
+				
+				icon := "•"
+				if t.IsBlocked {
+					icon = "🚫"
+				} else if t.Status == "ongoing" {
+					icon = "▶"
+				} else if t.Status == "done" {
+					icon = "✓"
+				}
+
 				// Color dot by project?
 				style := ui.GetTaskStyle(t, cfg)
-				content.WriteString(style.Render(fmt.Sprintf("• %s", desc)) + "\n")
+				content.WriteString(style.Render(fmt.Sprintf("%s %s", icon, desc)) + "\n")
 			}
 
 			rowCells = append(rowCells, cellStyle.Render(content.String()))
@@ -376,8 +390,18 @@ func renderQuarterView(tasks []models.Task, startOfQuarter time.Time, width int,
 				if len(desc) > colWidth-5 {
 					desc = desc[:colWidth-5]
 				}
+				
+				icon := "•"
+				if t.IsBlocked {
+					icon = "🚫"
+				} else if t.Status == "ongoing" {
+					icon = "▶"
+				} else if t.Status == "done" {
+					icon = "✓"
+				}
+
 				style := ui.GetTaskStyle(t, cfg)
-				content.WriteString(style.Render(fmt.Sprintf("• %s", desc)) + "\n")
+				content.WriteString(style.Render(fmt.Sprintf("%s %s", icon, desc)) + "\n")
 			}
 			
 			rowCells = append(rowCells, cellStyle.Render(content.String()))
@@ -464,7 +488,9 @@ func renderTaskBox(t models.Task, width int, cfg config.Config) string {
 	}
 	
 	statusChar := " "
-	if t.Status == "done" {
+	if t.IsBlocked {
+		statusChar = "🚫"
+	} else if t.Status == "done" {
 		statusChar = "✓"
 	} else if t.Status == "ongoing" {
 		statusChar = "▶"
@@ -475,8 +501,7 @@ func renderTaskBox(t models.Task, width int, cfg config.Config) string {
 }
 
 func renderTaskLine(t models.Task, width int, cfg config.Config) {
-	style := ui.GetTaskStyle(t, cfg)
-	fmt.Println(style.Render(fmt.Sprintf("%d\t%s\t%s", t.ID, t.Project, t.Description)))
+	fmt.Println(ui.FormatTask(t, cfg))
 }
 
 func getTaskDate(t models.Task) time.Time {

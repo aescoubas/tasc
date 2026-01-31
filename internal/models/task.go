@@ -30,6 +30,7 @@ type Task struct {
 	ActiveStart *time.Time `json:"active_start,omitempty" yaml:"active_start,omitempty"`
 	TimeSpent   int64      `json:"time_spent" yaml:"time_spent"` // in seconds
 	RescheduleCount int    `json:"reschedule_count" yaml:"reschedule_count"`
+	IsBlocked   bool       `json:"is_blocked" yaml:"is_blocked"`
 }
 
 func (t Task) AgeString() string {

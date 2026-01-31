@@ -22,8 +22,8 @@
 
 ## Phase 4: UI Consistency & Polish
 - [x] **Unified Color Model:** Centralize task coloring logic so `calendar`, `graph`, and `show` match the "official" colorscheme used in `tasc list`.
-- [ ] **Visual Consistency:** Ensure task representations (IDs, Project names, Status indicators) are identical across all views.
-- [ ] **Contextual Highlighting:** Ensure high-priority or blocked tasks retain their visual urgency in Calendar and Graph views.
+- [x] **Visual Consistency:** Ensure task representations (IDs, Project names, Status indicators) are identical across all views.
+- [x] **Contextual Highlighting:** Ensure high-priority or blocked tasks retain their visual urgency in Calendar and Graph views.
 
 ## Phase 5: Project Management Deep Dive
 - [ ] **Subprojects:** Implement hierarchical structures (Parent -> Child projects) for better organization.

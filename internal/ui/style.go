@@ -11,7 +11,8 @@ import (
 type UrgencyTier int
 
 const (
-	TierOverdue UrgencyTier = iota
+	TierBlocked UrgencyTier = iota
+	TierOverdue
 	TierToday
 	TierTomorrow
 	TierWeek
@@ -20,6 +21,10 @@ const (
 
 // GetUrgencyTier determines the urgency level of a task based on its DueAt and ScheduledAt times.
 func GetUrgencyTier(t models.Task) UrgencyTier {
+	if t.IsBlocked || t.Status == models.StatusBlocked {
+		return TierBlocked
+	}
+
 	now := time.Now()
 	// Standardize "Today" boundaries
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
@@ -73,6 +78,8 @@ func GetStyleForTier(tier UrgencyTier, cfg config.Config) lipgloss.Style {
 	}
 
 	switch tier {
+	case TierBlocked:
+		return makeStyle(cfg.Colors.Blocked, cfg.Colors.BlockedBg)
 	case TierOverdue:
 		return makeStyle(cfg.Colors.Overdue, cfg.Colors.OverdueBg)
 	case TierToday:

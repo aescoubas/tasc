@@ -77,7 +77,7 @@ var showCmd = &cobra.Command{
 			t.CompletedAt = &completedAt.Time
 		}
 
-		// 1. Fetch Dependencies
+		// 2. Fetch Dependencies
 		// Blocked By
 		blockedByRows, err := db.DB.Query(`
 			SELECT t.id, t.description 
@@ -114,7 +114,8 @@ var showCmd = &cobra.Command{
 			}
 		}
 
-		// 2. Display
+		// 3. Display
+		t.IsBlocked = len(blockedBy) > 0
 		style := ui.GetTaskStyle(t, cfg)
 		
 		fmt.Printf(style.Render(fmt.Sprintf("Task %d: %s", t.ID, t.Description)) + "\n")

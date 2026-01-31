@@ -40,7 +40,13 @@ var listCmd = &cobra.Command{
 			cfg = config.DefaultConfig()
 		}
 
-		rows, err := db.DB.Query("SELECT id, description, project, status, created_at, due_at, scheduled_at, estimate, active_start, time_spent, reschedule_count FROM tasks WHERE status NOT IN ('done', 'deleted', 'undefined')")
+		rows, err := db.DB.Query(`
+			SELECT 
+				id, description, project, status, created_at, due_at, scheduled_at, estimate, active_start, time_spent, reschedule_count,
+				EXISTS(SELECT 1 FROM task_dependencies WHERE blocked_id = tasks.id) as is_blocked
+			FROM tasks 
+			WHERE status NOT IN ('done', 'deleted', 'undefined')
+		`)
 		if err != nil {
 			fmt.Printf("Error querying tasks: %v\n", err)
 			return
@@ -58,13 +64,15 @@ var listCmd = &cobra.Command{
 			var estimate sql.NullString
 			var activeStart sql.NullTime
 			var timeSpent sql.NullInt64
+			var isBlocked bool
 
-			err := rows.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt, &dueAt, &scheduledAt, &estimate, &activeStart, &timeSpent, &t.RescheduleCount)
+			err := rows.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt, &dueAt, &scheduledAt, &estimate, &activeStart, &timeSpent, &t.RescheduleCount, &isBlocked)
 			if err != nil {
 				fmt.Printf("Error scanning row: %v\n", err)
 				continue
 			}
 			t.Project = project.String
+			t.IsBlocked = isBlocked
 
 			if dueAt.Valid {
 				t.DueAt = &dueAt.Time

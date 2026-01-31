@@ -62,6 +62,14 @@ var graphCmd = &cobra.Command{
 			hasIncoming[t2.ID] = true
 		}
 
+		// Mark blocked tasks
+		for id, t := range tasks {
+			if hasIncoming[id] {
+				t.IsBlocked = true
+				tasks[id] = t
+			}
+		}
+
 		// Find roots (tasks that are not blocked by anything in this graph subset)
 		var roots []int64
 		for id := range adj {
@@ -105,10 +113,10 @@ func printTree(id int64, adj map[int64][]models.Task, tasks map[int64]models.Tas
 	}
 
 	t := tasks[id]
-	style := ui.GetTaskStyle(t, cfg)
-	
-	line := fmt.Sprintf("%d: %s", t.ID, t.Description)
-	fmt.Printf("%s%s %s\n", indent, arrow, style.Render(line))
+	// Use FormatTask for consistent rendering (handles color, icons, etc.)
+	// But we might want to trim it slightly if it's too long? FormatTask doesn't truncate.
+	line := ui.FormatTask(t, cfg)
+	fmt.Printf("%s%s %s\n", indent, arrow, line)
 
 	for _, child := range adj[id] {
 		printTree(child.ID, adj, tasks, level+1, cfg)

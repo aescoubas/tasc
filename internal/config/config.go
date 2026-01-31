@@ -16,6 +16,8 @@ type Colors struct {
 	TomorrowBg string `yaml:"tomorrow_bg"`
 	Week       string `yaml:"week"`
 	WeekBg     string `yaml:"week_bg"`
+	Blocked    string `yaml:"blocked"`
+	BlockedBg  string `yaml:"blocked_bg"`
 	Default    string `yaml:"default"`
 	DefaultBg  string `yaml:"default_bg"`
 }
@@ -37,6 +39,8 @@ func DefaultConfig() Config {
 			TomorrowBg: "",
 			Week:      "11",  // ANSI Bright Yellow
 			WeekBg:    "",
+			Blocked:   "240", // ANSI Dark Grey
+			BlockedBg: "",
 			Default:   "7",   // ANSI White/Light Grey
 			DefaultBg: "",
 		},
