@@ -140,6 +140,20 @@ sudo mv tasc /usr/local/bin/
     tasc ask "How should I prioritize my day?"
     ```
 
+*   **AI Integration (MCP):**
+    Run an MCP server to let AI agents (like Gemini) manage your tasks:
+    ```bash
+    tasc mcp
+    ```
+    **Configuration:**
+    To use with Gemini CLI, add this to your config:
+    ```yaml
+    mcpServers:
+      tasc:
+        command: "tasc"
+        args: ["mcp"]
+    ```
+
 *   **Calendar:**
     View upcoming tasks on a calendar:
     ```bash

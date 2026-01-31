@@ -62,8 +62,13 @@
 - [x] **Upgrade Strategy:** Implement robust processes for upgrades, including automated schema migrations.
 
 ## Phase 11: AI Integration (Gemini via MCP)
-- [ ] **MCP Server Implementation:** Implement the Model Context Protocol (MCP) server interface within `tasc` (e.g., `tasc mcp`).
-- [ ] **Tool Exposure:** Expose core functionalities (`add`, `list`, `done`, `edit`, `projects`) as MCP tools for the LLM.
-- [ ] **Resource Exposure:** Expose task lists and details as MCP resources for providing context to the LLM.
-- [ ] **Gemini CLI Config:** Document how to configure Gemini CLI to connect to `tasc`'s MCP server.
-- [ ] **Natural Language Interaction:** Verify that Gemini can "Add a task to buy milk", "List my high priority tasks", etc.
+
+- [x] **MCP Server Implementation:** Implement the Model Context Protocol (MCP) server interface within `tasc` (e.g., `tasc mcp`).
+
+- [x] **Tool Exposure:** Expose core functionalities (`add`, `list`, `done`, `edit`, `projects`) as MCP tools for the LLM.
+
+- [x] **Resource Exposure:** Expose task lists and details as MCP resources for providing context to the LLM.
+
+- [x] **Gemini CLI Config:** Document how to configure Gemini CLI to connect to `tasc`'s MCP server.
+
+- [x] **Natural Language Interaction:** Verify that Gemini can "Add a task to buy milk", "List my high priority tasks", etc.
