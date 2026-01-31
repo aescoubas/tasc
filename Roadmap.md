@@ -33,10 +33,10 @@
 - [x] **Progress Tracking:** Show completion percentage in project list.
 
 ## Phase 6: Productivity & Insights
-- [ ] **Stale Task Analysis:** Reports specifically identifying tasks that are "rotting" (old and untouched).
-- [ ] **Friction Analysis:** Identify tasks with high reschedule counts to highlight roadblocks.
-- [ ] **Estimation Accuracy:** Track "Actual" time vs "Estimated" to improve future planning.
-- [ ] **Velocity Metrics:** Advanced stats for task closure rates and "Burn-down" charts.
+- [x] **Stale Task Analysis:** Reports specifically identifying tasks that are "rotting" (old and untouched).
+- [x] **Friction Analysis:** Identify tasks with high reschedule counts to highlight roadblocks.
+- [x] **Estimation Accuracy:** Track "Actual" time vs "Estimated" to improve future planning.
+- [x] **Velocity Metrics:** Advanced stats for task closure rates and "Burn-down" charts.
 
 ## Phase 7: Distributed Architecture
 - [ ] **Client-Server Separation:** Refactor core logic into a headless server/daemon.

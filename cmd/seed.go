@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/aescoubas/tasc/internal/db"
@@ -63,17 +64,33 @@ var seedCmd = &cobra.Command{
 				dueAt = dueTime.Format("2006-01-02 15:04:05")
 			}
 
-			// Estimate
-			var estimate interface{} = nil
-			if rand.Intn(10) > 6 {
-				estVals := []string{"30m", "1h", "2h", "4h", "1d"}
-				estimate = estVals[rand.Intn(len(estVals))]
+			// Estimate (Always present now)
+			estVals := []string{"30m", "1h", "2h", "4h", "1d"}
+			estStr := estVals[rand.Intn(len(estVals))]
+			estimate := estStr
+
+			// Time Spent (Actual)
+			// Only meaningful if we have an estimate and status is done (or ongoing, but stats checks done)
+			var timeSpent int64 = 0
+			if status == "done" {
+				// Parse estimate to get base duration
+				d, _ := time.ParseDuration(estStr)
+				if strings.HasSuffix(estStr, "d") {
+					d = 24 * time.Hour // Simple fallback for "1d" since ParseDuration might fail on "d" depending on version/logic, but let's stick to simple
+				}
+				
+				baseSeconds := d.Seconds()
+				
+				// Variance: +/- 50%
+				variance := (rand.Float64() - 0.5) // -0.5 to 0.5
+				actualSeconds := baseSeconds * (1.0 + variance)
+				timeSpent = int64(actualSeconds)
 			}
 
-			query := `INSERT INTO tasks (description, project, status, completed_at, created_at, due_at, scheduled_at, estimate) 
-				VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)`
+			query := `INSERT INTO tasks (description, project, status, completed_at, created_at, due_at, scheduled_at, estimate, time_spent) 
+				VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)`
 
-			_, err := tx.Exec(query, desc, proj, status, completedAt, dueAt, scheduledAt, estimate)
+			_, err := tx.Exec(query, desc, proj, status, completedAt, dueAt, scheduledAt, estimate, timeSpent)
 			if err != nil {
 				tx.Rollback()
 				fmt.Printf("Error inserting task: %v\n", err)
