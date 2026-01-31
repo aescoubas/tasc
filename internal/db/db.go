@@ -12,6 +12,9 @@ import (
 var DB *sql.DB
 
 func GetDBPath() string {
+	if env := os.Getenv("TASC_DB_PATH"); env != "" {
+		return env
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatal(err)
