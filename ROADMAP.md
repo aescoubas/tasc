@@ -74,13 +74,9 @@
 ## Phase 13: AI Integration (Gemini via MCP)
 
 - [x] **MCP Server Implementation:** Implement the Model Context Protocol (MCP) server interface within `tasc` (e.g., `tasc mcp`).
-
 - [x] **Tool Exposure:** Expose core functionalities (`add`, `list`, `done`, `edit`, `projects`) as MCP tools for the LLM.
-
 - [x] **Resource Exposure:** Expose task lists and details as MCP resources for providing context to the LLM.
-
 - [x] **Gemini CLI Config:** Document how to configure Gemini CLI to connect to `tasc`'s MCP server.
-
 - [x] **Natural Language Interaction:** Verify that Gemini can "Add a task to buy milk", "List my high priority tasks", etc.
 
 ## Phase 14: Advanced MCP & Batch Operations

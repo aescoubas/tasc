@@ -46,6 +46,7 @@ func (ms *MCPServer) registerTools() {
 		mcp.WithString("due", mcp.Description("Due date (YYYY-MM-DD or natural language like 'tomorrow')")),
 		mcp.WithString("scheduled", mcp.Description("Scheduled date (YYYY-MM-DD)")),
 		mcp.WithString("estimate", mcp.Description("Time estimate (e.g. 30m, 2h)")),
+		mcp.WithString("recurrence", mcp.Description("Recurrence rule (e.g. 'daily', 'every 2 weeks')")),
 	), ms.handleAdd)
 
 	// 2. List Tasks
@@ -71,6 +72,7 @@ func (ms *MCPServer) registerTools() {
 		mcp.WithString("due", mcp.Description("New due date")),
 		mcp.WithString("scheduled", mcp.Description("New scheduled date")),
 		mcp.WithString("estimate", mcp.Description("New time estimate")),
+		mcp.WithString("recurrence", mcp.Description("New recurrence rule")),
 	), ms.handleUpdate)
 
 	// 5. List Projects
@@ -89,6 +91,63 @@ func (ms *MCPServer) registerTools() {
 		mcp.WithBoolean("clear_due", mcp.Description("Clear due date")),
 		mcp.WithBoolean("clear_scheduled", mcp.Description("Clear scheduled date")),
 	), ms.handleBatchUpdate)
+
+	// 7. Delete Task
+	ms.server.AddTool(mcp.NewTool("tasc_delete_task",
+		mcp.WithDescription("Delete a task (soft delete)"),
+		mcp.WithNumber("id", mcp.Required(), mcp.Description("The ID of the task to delete")),
+	), ms.handleDelete)
+
+	// 8. Start Task
+	ms.server.AddTool(mcp.NewTool("tasc_start_task",
+		mcp.WithDescription("Start tracking time for a task"),
+		mcp.WithNumber("id", mcp.Required(), mcp.Description("The ID of the task to start")),
+	), ms.handleStart)
+
+	// 9. Stop Task
+	ms.server.AddTool(mcp.NewTool("tasc_stop_task",
+		mcp.WithDescription("Stop tracking time for the active task"),
+		mcp.WithNumber("id", mcp.Description("Optional: The ID of the task to stop. If omitted, stops the currently active task.")),
+	), ms.handleStop)
+
+	// 10. Add Dependency
+	ms.server.AddTool(mcp.NewTool("tasc_add_dependency",
+		mcp.WithDescription("Add a dependency between two tasks (Blocker blocks Blocked)"),
+		mcp.WithNumber("blocker_id", mcp.Required(), mcp.Description("The ID of the blocking task")),
+		mcp.WithNumber("blocked_id", mcp.Required(), mcp.Description("The ID of the blocked task")),
+	), ms.handleAddDependency)
+
+	// 11. Add Project
+	ms.server.AddTool(mcp.NewTool("tasc_add_project",
+		mcp.WithDescription("Create a new project"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Project name")),
+		mcp.WithString("description", mcp.Description("Project description")),
+		mcp.WithString("parent", mcp.Description("Parent project name")),
+		mcp.WithString("due", mcp.Description("Due date")),
+	), ms.handleAddProject)
+
+	// 12. Update Project
+	ms.server.AddTool(mcp.NewTool("tasc_update_project",
+		mcp.WithDescription("Update a project"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Current project name")),
+		mcp.WithString("new_name", mcp.Description("New project name")),
+		mcp.WithString("description", mcp.Description("New description")),
+		mcp.WithString("parent", mcp.Description("New parent project")),
+		mcp.WithString("status", mcp.Description("New status (active, archived)")),
+		mcp.WithString("due", mcp.Description("New due date")),
+	), ms.handleUpdateProject)
+
+	// 13. Delete Project
+	ms.server.AddTool(mcp.NewTool("tasc_delete_project",
+		mcp.WithDescription("Delete a project"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Project name")),
+	), ms.handleDeleteProject)
+
+	// 14. Search Tasks
+	ms.server.AddTool(mcp.NewTool("tasc_search_tasks",
+		mcp.WithDescription("Fuzzy search tasks by description or project"),
+		mcp.WithString("query", mcp.Required(), mcp.Description("Search query")),
+	), ms.handleSearch)
 }
 
 func (ms *MCPServer) registerResources() {
@@ -106,6 +165,7 @@ func (ms *MCPServer) handleAdd(ctx context.Context, request mcp.CallToolRequest)
 	dueStr := request.GetString("due", "")
 	schStr := request.GetString("scheduled", "")
 	est := request.GetString("estimate", "")
+	rec := request.GetString("recurrence", "")
 
 	var dueAt, scheduledAt *time.Time
 
@@ -131,6 +191,7 @@ func (ms *MCPServer) handleAdd(ctx context.Context, request mcp.CallToolRequest)
 		DueAt:       dueAt,
 		ScheduledAt: scheduledAt,
 		Estimate:    est,
+		Recurrence:  rec,
 	}
 
 	id, err := ms.store.CreateTask(task)
@@ -212,29 +273,22 @@ func (ms *MCPServer) handleUpdate(ctx context.Context, request mcp.CallToolReque
 		return mcp.NewToolResultError(fmt.Sprintf("Task not found: %v", err)), nil
 	}
 
+	args := request.GetArguments()
+
 	if d := request.GetString("description", ""); d != "" {
 		task.Description = d
 	}
 	if p := request.GetString("project", ""); p != "" {
 		task.Project = p
 	}
-	if est := request.GetString("estimate", ""); est != "" {
-		task.Estimate = est
+	
+	if _, ok := args["estimate"]; ok {
+		task.Estimate = request.GetString("estimate", "")
+	}
+	if _, ok := args["recurrence"]; ok {
+		task.Recurrence = request.GetString("recurrence", "")
 	}
 
-	// For dates, we need to know if they were provided to possibly clear them?
-	// The helpers return default if missing.
-	// If the user wants to clear, they might send empty string.
-	// If they don't send anything, we shouldn't clear.
-	// But GetString returns "" if missing OR if explicitly "".
-	// So we can't distinguish.
-	// For now, let's assume empty string means "no change" unless we check params key existence.
-	// We can use request.Params.Arguments map to check existence if needed.
-	// But let's keep it simple: if provided (non-empty), update. If you want to clear, maybe use a specific flag?
-	// Or check the map directly for existence.
-	
-	args := request.GetArguments()
-	
 	if _, ok := args["due"]; ok {
 		dueStr := request.GetString("due", "")
 		if dueStr == "" {
@@ -365,3 +419,175 @@ func (ms *MCPServer) handleBatchUpdate(ctx context.Context, request mcp.CallTool
 	return mcp.NewToolResultText(fmt.Sprintf("Updated %d tasks.", len(ids))), nil
 }
 
+func (ms *MCPServer) handleDelete(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id := int64(request.GetInt("id", 0))
+	if id == 0 {
+		return mcp.NewToolResultError("Invalid ID"), nil
+	}
+
+	err := ms.store.DeleteTask(id)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Error deleting task: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("Task %d deleted.", id)), nil
+}
+
+func (ms *MCPServer) handleStart(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id := int64(request.GetInt("id", 0))
+	if id == 0 {
+		return mcp.NewToolResultError("Invalid ID"), nil
+	}
+
+	err := ms.store.StartTask(id)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Error starting task: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("Started task %d.", id)), nil
+}
+
+func (ms *MCPServer) handleStop(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := request.GetArguments()
+	targetID := int64(-1)
+	if _, ok := args["id"]; ok {
+		targetID = int64(request.GetInt("id", 0))
+	}
+
+	err := ms.store.StopTask(targetID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Error stopping task: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText("Stopped active task."), nil
+}
+
+func (ms *MCPServer) handleAddDependency(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	blockerID := int64(request.GetInt("blocker_id", 0))
+	blockedID := int64(request.GetInt("blocked_id", 0))
+	
+	if blockerID == 0 || blockedID == 0 {
+		return mcp.NewToolResultError("Both blocker_id and blocked_id are required"), nil
+	}
+
+	err := ms.store.AddDependency(blockerID, blockedID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Error adding dependency: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("Task %d now blocks task %d.", blockerID, blockedID)), nil
+}
+
+func (ms *MCPServer) handleAddProject(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	name := request.GetString("name", "")
+	if name == "" {
+		return mcp.NewToolResultError("name is required"), nil
+	}
+	desc := request.GetString("description", "")
+	parent := request.GetString("parent", "")
+	dueStr := request.GetString("due", "")
+	
+	var dueAt *time.Time
+	if dueStr != "" {
+		t, err := parse.Date(dueStr)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid due date: %v", err)), nil
+		}
+		dueAt = t
+	}
+
+	p := models.Project{
+		Name:        name,
+		Description: desc,
+		Parent:      parent,
+		DueAt:       dueAt,
+		Status:      models.ProjectStatusActive,
+	}
+
+	err := ms.store.CreateProject(p)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Error creating project: %v", err)), nil
+	}
+	
+	return mcp.NewToolResultText(fmt.Sprintf("Project '%s' created.", name)), nil
+}
+
+func (ms *MCPServer) handleUpdateProject(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	name := request.GetString("name", "")
+	if name == "" {
+		return mcp.NewToolResultError("name is required"), nil
+	}
+
+	p, err := ms.store.GetProject(name)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Project not found: %v", err)), nil
+	}
+	
+	args := request.GetArguments()
+
+	if newName := request.GetString("new_name", ""); newName != "" {
+		p.Name = newName
+	}
+	if _, ok := args["description"]; ok {
+		p.Description = request.GetString("description", "")
+	}
+	if _, ok := args["parent"]; ok {
+		p.Parent = request.GetString("parent", "")
+	}
+	if s := request.GetString("status", ""); s != "" {
+		p.Status = models.ProjectStatus(s)
+	}
+	if _, ok := args["due"]; ok {
+		d := request.GetString("due", "")
+		if d == "" {
+			p.DueAt = nil
+		} else {
+			t, err := parse.Date(d)
+			if err != nil { return mcp.NewToolResultError(fmt.Sprintf("Invalid due date: %v", err)), nil }
+			p.DueAt = t
+		}
+	}
+
+	err = ms.store.UpdateProject(name, p)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Error updating project: %v", err)), nil
+	}
+	return mcp.NewToolResultText(fmt.Sprintf("Project '%s' updated.", name)), nil
+}
+
+func (ms *MCPServer) handleDeleteProject(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	name := request.GetString("name", "")
+	if name == "" {
+		return mcp.NewToolResultError("name is required"), nil
+	}
+
+	err := ms.store.DeleteProject(name)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Error deleting project: %v", err)), nil
+	}
+	
+	return mcp.NewToolResultText(fmt.Sprintf("Project '%s' deleted.", name)), nil
+}
+
+func (ms *MCPServer) handleSearch(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	query := request.GetString("query", "")
+	if query == "" {
+		return mcp.NewToolResultError("Query is required"), nil
+	}
+
+	tasks, err := ms.store.SearchTasks(query)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Error searching tasks: %v", err)), nil
+	}
+	
+	if len(tasks) == 0 {
+		return mcp.NewToolResultText("No matches found."), nil
+	}
+
+	var sb strings.Builder
+	for _, t := range tasks {
+		sb.WriteString(fmt.Sprintf("- [%d] %s (Project: %s, Status: %s)\n", t.ID, t.Description, t.Project, t.Status))
+	}
+
+	return mcp.NewToolResultText(sb.String()), nil
+}
