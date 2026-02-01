@@ -44,24 +44,28 @@
 - [x] **Remote CLI:** Enable the `tasc` binary to connect to a remote server instance.
 - [x] **Multi-Device Sync:** Enable centralized data management for access across machines.
 
-## Phase 8: Ecosystem Expansion
+## Phase 8: Mobile Applications
 - [ ] **Mobile Application:** Lightweight Android/iOS app interacting with the Server API.
+
+## Phase 9: External Integrations
 - [ ] **External Integrations:** Two-way sync with external calendars (Google Calendar, CalDAV).
+
+## Phase 10: Web Dashboard
 - [ ] **Web Dashboard:** A visual web interface for high-level planning and drag-and-drop organization.
 
-## Phase 9: Distribution & Packaging
+## Phase 11: Distribution & Packaging
 - [x] **Install Script:** Simple shell script (`install.sh`) for automated local build and install.
 - [x] **Linux Packages:** Generate `.deb` and `.rpm` packages for easy installation on Debian/Ubuntu and Fedora/RHEL.
 - [x] **Homebrew Tap:** Create a Homebrew formula for easy installation on macOS (`brew install aescoubas/tasc/tasc`).
 - [x] **Release Automation:** Local shell script (`release.sh`) to build and publish releases via GitHub CLI.
 
-## Phase 10: Technical Consolidation & Security
+## Phase 12: Technical Consolidation & Security
 - [x] **Unit Testing:** Implement comprehensive unit tests aiming for full code coverage.
 - [x] **Integration Testing:** Develop integration tests to verify system reliability and full coverage.
 - [x] **Codebase Consistency:** Audit and refactor code for consistency, style, and maintainability.
 - [x] **Upgrade Strategy:** Implement robust processes for upgrades, including automated schema migrations.
 
-## Phase 11: AI Integration (Gemini via MCP)
+## Phase 13: AI Integration (Gemini via MCP)
 
 - [x] **MCP Server Implementation:** Implement the Model Context Protocol (MCP) server interface within `tasc` (e.g., `tasc mcp`).
 
@@ -73,6 +77,6 @@
 
 - [x] **Natural Language Interaction:** Verify that Gemini can "Add a task to buy milk", "List my high priority tasks", etc.
 
-## Phase 12: Advanced MCP & Batch Operations
+## Phase 14: Advanced MCP & Batch Operations
 - [x] **Complex Query Support:** Enable Gemini to perform batch modifications (e.g., "reschedule all my laserbiolabs tasks to next week").
 - [x] **Batch Update Tool:** Expose a dedicated MCP tool or enhance `update` to handle multiple IDs or filter-based updates to support efficient bulk changes.
