@@ -26,6 +26,16 @@ func NewServer(s store.Store) *Server {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// CORS Middleware
+	w.Header().Set("Access-Control-Allow-Origin", "*") // Allow all for local dev convenience
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	// Simple logger middleware
 	start := time.Now()
 	log.Printf("%s %s", r.Method, r.URL.Path)

@@ -56,8 +56,8 @@
 - [ ] **Recurrence Translation:** accurately map `tasc` recurrence rules to GCal RRULEs.
 
 ## Phase 10: Web Dashboard
-- [ ] **React Dashboard:** Build a responsive web interface for high-level planning and visualization.
-- [ ] **Visual Planning:** Implement drag-and-drop Kanban and grid views sharing components with the mobile build.
+- [x] **React Dashboard:** Build a responsive web interface for high-level planning and visualization.
+- [x] **Visual Planning:** Implement drag-and-drop Kanban and grid views sharing components with the mobile build.
 
 ## Phase 11: Distribution & Packaging
 - [x] **Install Script:** Simple shell script (`install.sh`) for automated local build and install.

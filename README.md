@@ -202,6 +202,23 @@ sudo mv tasc /usr/local/bin/
     tasc seed
     ```
 
+### Web Dashboard
+
+Tasc comes with a modern React-based web dashboard for visual planning.
+
+1.  **Start the API Server:**
+    ```bash
+    tasc serve
+    ```
+
+2.  **Start the Web UI:**
+    ```bash
+    cd web
+    npm install
+    npm run dev
+    ```
+    Open `http://localhost:5173` to view your Kanban board and task lists.
+
 ### Distributed Mode (Client-Server)
 
 Tasc can run in a distributed mode where a central server manages the database, and clients connect to it remotely.
