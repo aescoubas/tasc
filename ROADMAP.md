@@ -45,13 +45,19 @@
 - [x] **Multi-Device Sync:** Enable centralized data management for access across machines.
 
 ## Phase 8: Mobile Applications
-- [ ] **Mobile Application:** Lightweight Android/iOS app interacting with the Server API.
+- [ ] **Unified Architecture:** Adopt a shared React-based framework to maximize code reuse between Web and Mobile interfaces.
+- [ ] **Hybrid Packaging:** Implement a build pipeline using Capacitor to package the React web application as a native Android app.
+- [ ] **Secure Connectivity:** Integrate with Cloudflare Tunnel (cloudflared) to securely expose the homelab server without open ports.
 
 ## Phase 9: External Integrations
-- [ ] **External Integrations:** Two-way sync with external calendars (Google Calendar, CalDAV).
+- [ ] **Google OAuth2:** Implement secure authentication flow to connect `tasc` with Google Calendar API.
+- [ ] **Event Mapping:** Define logic to translate Tasc projects/priorities into GCal colors and task durations into event blocks.
+- [ ] **Bidirectional Sync:** Develop a sync engine to handle updates, deletions, and conflicts between Tasc and Google Calendar.
+- [ ] **Recurrence Translation:** accurately map `tasc` recurrence rules to GCal RRULEs.
 
 ## Phase 10: Web Dashboard
-- [ ] **Web Dashboard:** A visual web interface for high-level planning and drag-and-drop organization.
+- [ ] **React Dashboard:** Build a responsive web interface for high-level planning and visualization.
+- [ ] **Visual Planning:** Implement drag-and-drop Kanban and grid views sharing components with the mobile build.
 
 ## Phase 11: Distribution & Packaging
 - [x] **Install Script:** Simple shell script (`install.sh`) for automated local build and install.
