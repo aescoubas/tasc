@@ -1,0 +1,16 @@
+[Unit]
+Description=Tasc Task Manager API Server
+Documentation=https://github.com/aescoubas/tasc
+After=network.target
+
+[Service]
+Type=simple
+# Assumes installation to /usr/local/bin via install.sh
+ExecStart=/usr/local/bin/tasc serve --port 8081
+Restart=on-failure
+RestartSec=5s
+# Tasc stores the DB in ~/.tasc.db by default
+# Systemd user services inherit HOME, so this works out of the box.
+
+[Install]
+WantedBy=default.target

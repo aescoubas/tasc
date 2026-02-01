@@ -46,3 +46,32 @@ echo "--------------------------------------------------"
 echo "Success! tasc has been installed to $INSTALL_DIR/tasc"
 echo "Run 'tasc --help' to get started."
 echo "--------------------------------------------------"
+
+# Systemd Integration
+if command -v systemctl &> /dev/null; then
+    echo
+    read -p "Do you want to install and enable the 'tasc' background service (user-level)? [y/N] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        # Ensure user systemd dir exists
+        SYSTEMD_DIR="$HOME/.config/systemd/user"
+        mkdir -p "$SYSTEMD_DIR"
+        
+        echo "Installing service file to $SYSTEMD_DIR/tasc.service..."
+        # Check if source file exists
+        if [ -f "dist/systemd/tasc.service" ]; then
+            cp dist/systemd/tasc.service "$SYSTEMD_DIR/"
+            
+            echo "Reloading systemd..."
+            systemctl --user daemon-reload
+            
+            echo "Enabling and starting tasc.service..."
+            systemctl --user enable --now tasc
+            
+            echo "Service active. Check status with: systemctl --user status tasc"
+        else
+            echo "Error: Service file 'dist/systemd/tasc.service' not found. Skipping service installation."
+        fi
+    fi
+fi
+

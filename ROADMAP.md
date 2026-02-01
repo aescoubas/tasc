@@ -64,6 +64,7 @@
 - [x] **Linux Packages:** Generate `.deb` and `.rpm` packages for easy installation on Debian/Ubuntu and Fedora/RHEL.
 - [x] **Homebrew Tap:** Create a Homebrew formula for easy installation on macOS (`brew install aescoubas/tasc/tasc`).
 - [x] **Release Automation:** Local shell script (`release.sh`) to build and publish releases via GitHub CLI.
+- [x] **Systemd Service:** Create a systemd unit file to manage the backend server process and update `install.sh` to configure it.
 
 ## Phase 12: Technical Consolidation & Security
 - [x] **Unit Testing:** Implement comprehensive unit tests aiming for full code coverage.
