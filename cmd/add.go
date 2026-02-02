@@ -36,6 +36,21 @@ var addCmd = &cobra.Command{
 			dueAt = t
 		}
 
+		var scheduledAt *time.Time
+		if scheduled != "" {
+			t, err := parse.Date(scheduled)
+			if err != nil {
+				fmt.Printf("Invalid scheduled date format: %v\n", err)
+				return
+			}
+			scheduledAt = t
+		}
+
+		// If scheduled is set but due is not, default due to scheduled
+		if dueAt == nil && scheduledAt != nil {
+			dueAt = scheduledAt
+		}
+
 		// Check project deadline
 		if project != "" {
 			p, err := CurrentStore.GetProject(project)
@@ -48,21 +63,11 @@ var addCmd = &cobra.Command{
 				} else {
 					// Validate
 					if dueAt.After(*p.DueAt) {
-						fmt.Printf("Warning: Task due date (%s) is after project deadline (%s).\n", 
+						fmt.Printf("Warning: Task due date (%s) is after project deadline (%s).\n",
 							dueAt.Format("2006-01-02"), p.DueAt.Format("2006-01-02"))
 					}
 				}
 			}
-		}
-
-		var scheduledAt *time.Time
-		if scheduled != "" {
-			t, err := parse.Date(scheduled)
-			if err != nil {
-				fmt.Printf("Invalid scheduled date format: %v\n", err)
-				return
-			}
-			scheduledAt = t
 		}
 
 		if estimate == "" {

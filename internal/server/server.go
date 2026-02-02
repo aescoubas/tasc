@@ -135,6 +135,10 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if t.DueAt == nil && t.ScheduledAt != nil {
+		t.DueAt = t.ScheduledAt
+	}
+
 	id, err := s.store.CreateTask(t)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

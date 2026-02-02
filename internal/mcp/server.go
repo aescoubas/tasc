@@ -188,6 +188,10 @@ func (ms *MCPServer) handleAdd(ctx context.Context, request mcp.CallToolRequest)
 		scheduledAt = t
 	}
 
+	if dueAt == nil && scheduledAt != nil {
+		dueAt = scheduledAt
+	}
+
 	task := models.Task{
 		Title:       title,
 		Description: desc,
