@@ -41,7 +41,8 @@ func (ms *MCPServer) registerTools() {
 	// 1. Add Task
 	ms.server.AddTool(mcp.NewTool("tasc_add_task",
 		mcp.WithDescription("Add a new task to the list"),
-		mcp.WithString("description", mcp.Required(), mcp.Description("The task description")),
+		mcp.WithString("title", mcp.Required(), mcp.Description("The task title")),
+		mcp.WithString("description", mcp.Description("Optional detailed description")),
 		mcp.WithString("project", mcp.Description("The project name (optional)")),
 		mcp.WithString("due", mcp.Description("Due date (YYYY-MM-DD or natural language like 'tomorrow')")),
 		mcp.WithString("scheduled", mcp.Description("Scheduled date (YYYY-MM-DD)")),
@@ -67,7 +68,8 @@ func (ms *MCPServer) registerTools() {
 	ms.server.AddTool(mcp.NewTool("tasc_update_task",
 		mcp.WithDescription("Update an existing task"),
 		mcp.WithNumber("id", mcp.Required(), mcp.Description("The ID of the task to update")),
-		mcp.WithString("description", mcp.Description("New description")),
+		mcp.WithString("title", mcp.Description("New title")),
+		mcp.WithString("description", mcp.Description("New detailed description")),
 		mcp.WithString("project", mcp.Description("New project")),
 		mcp.WithString("due", mcp.Description("New due date")),
 		mcp.WithString("scheduled", mcp.Description("New scheduled date")),
@@ -160,6 +162,7 @@ func (ms *MCPServer) registerResources() {
 // Handlers
 
 func (ms *MCPServer) handleAdd(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	title := request.GetString("title", "")
 	desc := request.GetString("description", "")
 	proj := request.GetString("project", "")
 	dueStr := request.GetString("due", "")
@@ -186,6 +189,7 @@ func (ms *MCPServer) handleAdd(ctx context.Context, request mcp.CallToolRequest)
 	}
 
 	task := models.Task{
+		Title:       title,
 		Description: desc,
 		Project:     proj,
 		DueAt:       dueAt,
@@ -199,7 +203,7 @@ func (ms *MCPServer) handleAdd(ctx context.Context, request mcp.CallToolRequest)
 		return mcp.NewToolResultError(fmt.Sprintf("Error creating task: %v", err)), nil
 	}
 
-	return mcp.NewToolResultText(fmt.Sprintf("Created task %d: %s", id, desc)), nil
+	return mcp.NewToolResultText(fmt.Sprintf("Created task %d: %s", id, title)), nil
 }
 
 func (ms *MCPServer) handleList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -243,7 +247,7 @@ func (ms *MCPServer) handleList(ctx context.Context, request mcp.CallToolRequest
 			due = fmt.Sprintf(" Due: %s", t.DueAt.Format("2006-01-02"))
 		}
 
-		sb.WriteString(fmt.Sprintf("- [%d] %s (Project: %s, Status: %s)%s\n", t.ID, t.Description, t.Project, status, due))
+		sb.WriteString(fmt.Sprintf("- [%d] %s (Project: %s, Status: %s)%s\n", t.ID, t.Title, t.Project, status, due))
 	}
 
 	return mcp.NewToolResultText(sb.String()), nil
@@ -277,13 +281,16 @@ func (ms *MCPServer) handleUpdate(ctx context.Context, request mcp.CallToolReque
 
 	args := request.GetArguments()
 
+	if t := request.GetString("title", ""); t != "" {
+		task.Title = t
+	}
 	if d := request.GetString("description", ""); d != "" {
 		task.Description = d
 	}
 	if p := request.GetString("project", ""); p != "" {
 		task.Project = p
 	}
-	
+// ... (rest is same but I need to include context to match block)
 	if _, ok := args["estimate"]; ok {
 		task.Estimate = request.GetString("estimate", "")
 	}
@@ -324,7 +331,6 @@ func (ms *MCPServer) handleUpdate(ctx context.Context, request mcp.CallToolReque
 
 	return mcp.NewToolResultText(fmt.Sprintf("Task %d updated.", id)), nil
 }
-
 func (ms *MCPServer) handleListProjects(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	projects, err := ms.store.ListProjects()
 	if err != nil {
@@ -570,7 +576,7 @@ func (ms *MCPServer) handleDeleteProject(ctx context.Context, request mcp.CallTo
 	
 	return mcp.NewToolResultText(fmt.Sprintf("Project '%s' deleted.", name)), nil
 }
-
+// ... (handleSearch)
 func (ms *MCPServer) handleSearch(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	query := request.GetString("query", "")
 	if query == "" {
@@ -588,7 +594,7 @@ func (ms *MCPServer) handleSearch(ctx context.Context, request mcp.CallToolReque
 
 	var sb strings.Builder
 	for _, t := range tasks {
-		sb.WriteString(fmt.Sprintf("- [%d] %s (Project: %s, Status: %s)\n", t.ID, t.Description, t.Project, t.Status))
+		sb.WriteString(fmt.Sprintf("- [%d] %s (Project: %s, Status: %s)\n", t.ID, t.Title, t.Project, t.Status))
 	}
 
 	return mcp.NewToolResultText(sb.String()), nil

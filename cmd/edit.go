@@ -22,17 +22,19 @@ var editCmd = &cobra.Command{
 		// 1. Fetch Task
 		var t models.Task
 		var project sql.NullString
+		var description sql.NullString
 		var estimate sql.NullString
 		var recurrence sql.NullString
 
-		query := "SELECT id, description, project, status, created_at, due_at, scheduled_at, estimate, recurrence FROM tasks WHERE id = ?"
+		query := "SELECT id, title, description, project, status, created_at, due_at, scheduled_at, estimate, recurrence FROM tasks WHERE id = ?"
 		row := db.DB.QueryRow(query, idStr)
 
-		err := row.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt, &t.DueAt, &t.ScheduledAt, &estimate, &recurrence)
+		err := row.Scan(&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt, &t.DueAt, &t.ScheduledAt, &estimate, &recurrence)
 		if err != nil {
 			fmt.Printf("Error fetching task: %v\n", err)
 			return
 		}
+		t.Description = description.String
 		t.Project = project.String
 		t.Estimate = estimate.String
 		t.Recurrence = recurrence.String
@@ -99,8 +101,8 @@ var editCmd = &cobra.Command{
 			rescheduleIncrement = 1
 		}
 
-		updateQuery := `UPDATE tasks SET description = ?, project = ?, status = ?, due_at = ?, scheduled_at = ?, estimate = ?, recurrence = ?, reschedule_count = reschedule_count + ? WHERE id = ?`
-		_, err = db.DB.Exec(updateQuery, newT.Description, newT.Project, newT.Status, newT.DueAt, newT.ScheduledAt, newT.Estimate, newT.Recurrence, rescheduleIncrement, newT.ID)
+		updateQuery := `UPDATE tasks SET title = ?, description = ?, project = ?, status = ?, due_at = ?, scheduled_at = ?, estimate = ?, recurrence = ?, reschedule_count = reschedule_count + ? WHERE id = ?`
+		_, err = db.DB.Exec(updateQuery, newT.Title, newT.Description, newT.Project, newT.Status, newT.DueAt, newT.ScheduledAt, newT.Estimate, newT.Recurrence, rescheduleIncrement, newT.ID)
 		if err != nil {
 			fmt.Printf("Error updating task: %v\n", err)
 			return

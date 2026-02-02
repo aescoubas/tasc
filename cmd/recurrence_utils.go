@@ -52,6 +52,7 @@ func spawnNextTask(t models.Task) {
 
 	// Insert new task
 	newTask := models.Task{
+		Title:       t.Title,
 		Description: t.Description,
 		Project:     t.Project,
 		Recurrence:  t.Recurrence,

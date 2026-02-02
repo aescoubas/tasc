@@ -10,7 +10,7 @@ import (
 )
 
 var modifyCmd = &cobra.Command{
-	Use:   "modify [id] [description]",
+	Use:   "modify [id] [title]",
 	Short: "Modify a task",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -48,7 +48,11 @@ var modifyCmd = &cobra.Command{
 
 		// Check if description is provided as args
 		if len(args) > 1 {
-			t.Description = strings.Join(args[1:], " ")
+			t.Title = strings.Join(args[1:], " ")
+		}
+
+		if cmd.Flags().Changed("desc") {
+			t.Description = description
 		}
 
 		// Check flags
@@ -115,6 +119,7 @@ var modifyCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(modifyCmd)
 	modifyCmd.Flags().StringVarP(&project, "project", "p", "", "Project name")
+	modifyCmd.Flags().StringVarP(&description, "desc", "m", "", "Detailed description")
 	modifyCmd.Flags().StringVarP(&due, "due", "d", "", "Due date (YYYY-MM-DD)")
 	modifyCmd.Flags().StringVarP(&scheduled, "scheduled", "s", "", "Scheduled date (YYYY-MM-DD)")
 	modifyCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate")

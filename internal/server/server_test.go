@@ -34,8 +34,8 @@ func TestServer_CreateAndListTasks(t *testing.T) {
 
 	// 1. Create Task
 	task := models.Task{
-		Description: "API Task",
-		Project:     "API",
+		Title:   "API Task",
+		Project: "API",
 	}
 	body, _ := json.Marshal(task)
 	req, _ := http.NewRequest("POST", "/tasks", bytes.NewBuffer(body))
@@ -68,7 +68,7 @@ func TestServer_CreateAndListTasks(t *testing.T) {
 	if len(tasks) != 1 {
 		t.Errorf("Expected 1 task, got %d", len(tasks))
 	}
-	if tasks[0].Description != "API Task" {
+	if tasks[0].Title != "API Task" {
 		t.Errorf("Task description mismatch")
 	}
 }
@@ -88,7 +88,7 @@ func TestServer_GetActiveTask(t *testing.T) {
 	}
 
 	// Create and start task
-	task := models.Task{Description: "Active Task"}
+	task := models.Task{Title: "Active Task"}
 	id, _ := st.CreateTask(task)
 	st.StartTask(id)
 

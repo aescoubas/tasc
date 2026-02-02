@@ -13,9 +13,9 @@ type item struct {
 
 func (i item) Title() string {
 	if i.task.ActiveStart != nil {
-		return "▶ " + i.task.Description
+		return "▶ " + i.task.Title
 	}
-	return i.task.Description
+	return i.task.Title
 }
 func (i item) Description() string {
 	desc := fmt.Sprintf("[%s]", i.task.Project)
@@ -40,4 +40,4 @@ func (i item) Description() string {
 	desc += fmt.Sprintf(" Age: %s", i.task.AgeString())
 	return desc
 }
-func (i item) FilterValue() string { return i.task.Description + " " + i.task.Project }
+func (i item) FilterValue() string { return i.task.Title + " " + i.task.Project }

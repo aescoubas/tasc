@@ -185,7 +185,7 @@ func renderStaleTasks() string {
 	sb.WriteString(sectionStyle.Render("Stale Tasks (>30d)") + "\n")
 
 	query := `
-		SELECT id, description, created_at 
+		SELECT id, title, created_at 
 		FROM tasks 
 		WHERE status != 'done' AND status != 'deleted' AND created_at < datetime('now', '-30 days')
 		ORDER BY created_at ASC 
@@ -206,21 +206,21 @@ rows, err := db.DB.Query(query)
 	for rows.Next() {
 		count++
 		var id int
-		var desc string
+		var title string
 		var created time.Time
-		if err := rows.Scan(&id, &desc, &created); err != nil {
+		if err := rows.Scan(&id, &title, &created); err != nil {
 			continue
 		}
 		
 		age := time.Since(created)
 		days := int(age.Hours() / 24)
 		
-		descShort := desc
-		if len(descShort) > 20 {
-			descShort = descShort[:17] + "..."
+		titleShort := title
+		if len(titleShort) > 20 {
+			titleShort = titleShort[:17] + "..."
 		}
 
-		fmt.Fprintf(w, "%d\t%dd\t%s\n", id, days, descShort)
+		fmt.Fprintf(w, "%d\t%dd\t%s\n", id, days, titleShort)
 	}
 	w.Flush()
 
@@ -235,7 +235,7 @@ func renderFrictionAnalysis() string {
 	sb.WriteString(sectionStyle.Render("Top Rescheduled") + "\n")
 
 	query := `
-		SELECT id, description, reschedule_count 
+		SELECT id, title, reschedule_count 
 		FROM tasks 
 		WHERE reschedule_count > 0 AND status != 'deleted'
 		ORDER BY reschedule_count DESC 
@@ -256,18 +256,18 @@ rows, err := db.DB.Query(query)
 	for rows.Next() {
 		count++
 		var id int
-		var desc string
+		var title string
 		var rCount int
-		if err := rows.Scan(&id, &desc, &rCount); err != nil {
+		if err := rows.Scan(&id, &title, &rCount); err != nil {
 			continue
 		}
 		
-		descShort := desc
-		if len(descShort) > 20 {
-			descShort = descShort[:17] + "..."
+		titleShort := title
+		if len(titleShort) > 20 {
+			titleShort = titleShort[:17] + "..."
 		}
 
-		fmt.Fprintf(w, "%d\t%d\t%s\n", id, rCount, descShort)
+		fmt.Fprintf(w, "%d\t%d\t%s\n", id, rCount, titleShort)
 	}
 	w.Flush()
 

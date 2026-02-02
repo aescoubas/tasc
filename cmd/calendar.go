@@ -116,7 +116,7 @@ var calendarCmd = &cobra.Command{
 func fetchTasksInRange(start, end time.Time) ([]models.Task, error) {
 	query := `
 		SELECT 
-			id, description, project, status, due_at, scheduled_at, estimate,
+			id, title, project, status, due_at, scheduled_at, estimate,
 			EXISTS(SELECT 1 FROM task_dependencies WHERE blocked_id = tasks.id) as is_blocked
 		FROM tasks 
 		WHERE status NOT IN ('done', 'deleted', 'undefined') 
@@ -142,7 +142,7 @@ func fetchTasksInRange(start, end time.Time) ([]models.Task, error) {
 		var dueAt, scheduledAt *time.Time
 		var est string
 		var isBlocked bool
-		err := rows.Scan(&t.ID, &t.Description, &t.Project, &t.Status, &dueAt, &scheduledAt, &est, &isBlocked)
+		err := rows.Scan(&t.ID, &t.Title, &t.Project, &t.Status, &dueAt, &scheduledAt, &est, &isBlocked)
 		if err != nil {
 			continue
 		}
@@ -290,7 +290,7 @@ func renderMonthView(tasks []models.Task, startOfMonth time.Time, width int, cfg
 					break
 				}
 				// Tiny: "• Desc"
-				desc := t.Description
+				desc := t.Title
 				if len(desc) > colWidth-3 {
 					desc = desc[:colWidth-3]
 				}
@@ -390,7 +390,7 @@ func renderQuarterView(tasks []models.Task, startOfQuarter time.Time, width int,
 			// List top 3
 			for k, t := range ts {
 				if k >= 3 { break }
-				desc := t.Description
+				desc := t.Title
 				if len(desc) > colWidth-5 {
 					desc = desc[:colWidth-5]
 				}
@@ -486,7 +486,7 @@ func renderTaskBox(t models.Task, width int, cfg config.Config) string {
 		line1 = line1[:width-4]
 	}
 	
-	desc := strings.ReplaceAll(t.Description, "\n", " ")
+	desc := strings.ReplaceAll(t.Title, "\n", " ")
 	if len(desc) > width-6 {
 		desc = desc[:width-6] + ".."
 	}

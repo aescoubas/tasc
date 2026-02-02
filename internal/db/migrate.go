@@ -18,6 +18,58 @@ var migrations = []Migration{
 		Description: "Baseline Schema",
 		Up:          baselineSchema,
 	},
+	{
+		Version:     2,
+		Description: "Rename description to title, add rich description",
+		Up: func(db *sql.DB) error {
+			// 1. Rename column
+			if _, err := db.Exec("ALTER TABLE tasks RENAME COLUMN description TO title"); err != nil {
+				return fmt.Errorf("failed to rename column: %w", err)
+			}
+			// 2. Add new description column
+			if _, err := db.Exec("ALTER TABLE tasks ADD COLUMN description TEXT"); err != nil {
+				return fmt.Errorf("failed to add description column: %w", err)
+			}
+
+			// 3. Rebuild FTS
+			if _, err := db.Exec("DROP TABLE IF EXISTS tasks_fts"); err != nil {
+				return fmt.Errorf("failed to drop tasks_fts: %w", err)
+			}
+			if _, err := db.Exec("CREATE VIRTUAL TABLE tasks_fts USING fts5(title, description, project, content='tasks', content_rowid='id')"); err != nil {
+				return fmt.Errorf("failed to create tasks_fts: %w", err)
+			}
+
+			// 4. Update Triggers
+			db.Exec("DROP TRIGGER IF EXISTS tasks_ai")
+			db.Exec("DROP TRIGGER IF EXISTS tasks_ad")
+			db.Exec("DROP TRIGGER IF EXISTS tasks_au")
+
+			triggers := `
+			CREATE TRIGGER tasks_ai AFTER INSERT ON tasks BEGIN
+			  INSERT INTO tasks_fts(rowid, title, description, project) VALUES (new.id, new.title, new.description, new.project);
+			END;
+
+			CREATE TRIGGER tasks_ad AFTER DELETE ON tasks BEGIN
+			  INSERT INTO tasks_fts(tasks_fts, rowid, title, description, project) VALUES('delete', old.id, old.title, old.description, old.project);
+			END;
+
+			CREATE TRIGGER tasks_au AFTER UPDATE ON tasks BEGIN
+			  INSERT INTO tasks_fts(tasks_fts, rowid, title, description, project) VALUES('delete', old.id, old.title, old.description, old.project);
+			  INSERT INTO tasks_fts(rowid, title, description, project) VALUES (new.id, new.title, new.description, new.project);
+			END;
+			`
+			if _, err := db.Exec(triggers); err != nil {
+				return fmt.Errorf("failed to create triggers: %w", err)
+			}
+
+			// 5. Re-populate FTS
+			if _, err := db.Exec("INSERT INTO tasks_fts(tasks_fts) VALUES('rebuild')"); err != nil {
+				return fmt.Errorf("failed to rebuild fts: %w", err)
+			}
+
+			return nil
+		},
+	},
 }
 
 // RunMigrations executes pending migrations.

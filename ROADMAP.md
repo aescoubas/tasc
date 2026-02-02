@@ -92,10 +92,10 @@
 - [x] **Default Estimate:** Set the default time estimate to 20 minutes for new tasks.
 
 ## Phase 16: UI Refinements & Configuration
-- [ ] **Relative Time Display:** Implement configurable relative time formatting (e.g., "3d", "10m", "-5h") for "Due" and "Scheduled" columns.
+- [x] **Relative Time Display:** Implement configurable relative time formatting (e.g., "3d", "10m", "-5h") for "Due" and "Scheduled" columns.
 
 ## Phase 17: Data Model Evolution
-- [ ] **Schema Refactor:** Rename the existing `description` field to `title`.
-- [ ] **Rich Descriptions:** Add a new optional, multi-line `description` field for detailed notes.
-- [ ] **View Updates:** Display `title` in `tasc list` and the full `description` only in `tasc show`.
-- [ ] **Editor Integration:** Ensure `tasc edit` opens the multi-line description in the system's preferred text editor for easy modification.
+- [x] **Schema Refactor:** Rename the existing `description` field to `title`.
+- [x] **Rich Descriptions:** Add a new optional, multi-line `description` field for detailed notes.
+- [x] **View Updates:** Display `title` in `tasc list` and the full `description` only in `tasc show`.
+- [x] **Editor Integration:** Ensure `tasc edit` opens the multi-line description in the system's preferred text editor for easy modification.

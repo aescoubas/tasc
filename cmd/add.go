@@ -11,19 +11,20 @@ import (
 )
 
 var (
-	project    string
-	due        string
-	scheduled  string
-	estimate   string
+	project        string
+	description    string
+	due            string
+	scheduled      string
+	estimate       string
 	recurrenceFlag string
 )
 
 var addCmd = &cobra.Command{
-	Use:   "add [description]",
+	Use:   "add [title]",
 	Short: "Add a new task",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		description := strings.Join(args, " ")
+		title := strings.Join(args, " ")
 
 		var dueAt *time.Time
 		if due != "" {
@@ -69,6 +70,7 @@ var addCmd = &cobra.Command{
 		}
 
 		task := models.Task{
+			Title:       title,
 			Description: description,
 			Project:     project,
 			DueAt:       dueAt,
@@ -90,6 +92,7 @@ var addCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(addCmd)
 	addCmd.Flags().StringVarP(&project, "project", "p", "", "Project name")
+	addCmd.Flags().StringVarP(&description, "desc", "m", "", "Detailed description")
 	addCmd.Flags().StringVarP(&due, "due", "d", "", "Due date (YYYY-MM-DD)")
 	addCmd.Flags().StringVarP(&scheduled, "scheduled", "s", "", "Scheduled date (YYYY-MM-DD)")
 	addCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate (e.g. 2h, 30m)")

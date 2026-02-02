@@ -25,6 +25,7 @@ type Colors struct {
 type Config struct {
 	Colors    Colors `yaml:"colors"`
 	BackupDir string `yaml:"backup_dir"`
+	RelativeDates bool `yaml:"relative_dates"`
 }
 
 func DefaultConfig() Config {
@@ -45,6 +46,7 @@ func DefaultConfig() Config {
 			DefaultBg: "",
 		},
 		BackupDir: filepath.Join(home, ".config", "tasc", "backups"),
+		RelativeDates: true,
 	}
 }
 

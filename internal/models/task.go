@@ -18,7 +18,8 @@ const (
 
 type Task struct {
 	ID          int64      `json:"id" yaml:"id"`
-	Description string     `json:"description" yaml:"description"`
+	Title       string     `json:"title" yaml:"title"`
+	Description string     `json:"description,omitempty" yaml:"description,omitempty"`
 	Project     string     `json:"project" yaml:"project"`
 	Status      TaskStatus `json:"status" yaml:"status"`
 	CreatedAt   time.Time  `json:"created_at" yaml:"created_at"`

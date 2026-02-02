@@ -21,8 +21,8 @@ var graphCmd = &cobra.Command{
 		// Fetch all dependencies with details for coloring
 		rows, err := db.DB.Query(`
 			SELECT 
-				t1.id, t1.description, t1.project, t1.status, t1.due_at, t1.scheduled_at,
-				t2.id, t2.description, t2.project, t2.status, t2.due_at, t2.scheduled_at
+				t1.id, t1.title, t1.project, t1.status, t1.due_at, t1.scheduled_at,
+				t2.id, t2.title, t2.project, t2.status, t2.due_at, t2.scheduled_at
 			FROM task_dependencies td
 			JOIN tasks t1 ON td.blocker_id = t1.id
 			JOIN tasks t2 ON td.blocked_id = t2.id
@@ -45,8 +45,8 @@ var graphCmd = &cobra.Command{
 			var due1, sch1, due2, sch2 sql.NullTime
 
 			if err := rows.Scan(
-				&t1.ID, &t1.Description, &t1.Project, &t1.Status, &due1, &sch1,
-				&t2.ID, &t2.Description, &t2.Project, &t2.Status, &due2, &sch2,
+				&t1.ID, &t1.Title, &t1.Project, &t1.Status, &due1, &sch1,
+				&t2.ID, &t2.Title, &t2.Project, &t2.Status, &due2, &sch2,
 			); err != nil {
 				continue
 			}

@@ -21,7 +21,7 @@ var searchCmd = &cobra.Command{
 
 		// Use FTS5 MATCH operator
 		query := `
-			SELECT id, description, project, status, created_at 
+			SELECT id, title, project, status, created_at 
 			FROM tasks 
 			WHERE id IN (
 				SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ? ORDER BY rank
@@ -36,20 +36,20 @@ var searchCmd = &cobra.Command{
 		defer rows.Close()
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-		fmt.Fprintln(w, "ID\tProject\tStatus\tDescription\tCreated")
+		fmt.Fprintln(w, "ID\tProject\tStatus\tTitle\tCreated")
 
 		count := 0
 		for rows.Next() {
 			count++
 			var t models.Task
 			var project sql.NullString
-			err := rows.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt)
+			err := rows.Scan(&t.ID, &t.Title, &project, &t.Status, &t.CreatedAt)
 			if err != nil {
 				fmt.Printf("Error scanning row: %v\n", err)
 				continue
 			}
 			t.Project = project.String
-			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\n", t.ID, t.Project, t.Status, t.Description, t.CreatedAt.Format("2006-01-02"))
+			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\n", t.ID, t.Project, t.Status, t.Title, t.CreatedAt.Format("2006-01-02"))
 		}
 		w.Flush()
 

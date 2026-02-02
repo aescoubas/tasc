@@ -11,11 +11,11 @@ import (
 )
 
 var logCmd = &cobra.Command{
-	Use:   "log [description]",
+	Use:   "log [title]",
 	Short: "Log a task that is already completed",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		description := strings.Join(args, " ")
+		title := strings.Join(args, " ")
 
 		var dueAt *time.Time
 		if due != "" {
@@ -37,7 +37,7 @@ var logCmd = &cobra.Command{
 			scheduledAt = t
 		}
 
-		query := `INSERT INTO tasks (description, project, due_at, scheduled_at, estimate, status, created_at, completed_at) VALUES (?, ?, ?, ?, ?, 'done', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+		query := `INSERT INTO tasks (title, project, due_at, scheduled_at, estimate, status, created_at, completed_at) VALUES (?, ?, ?, ?, ?, 'done', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
 		stmt, err := db.DB.Prepare(query)
 		if err != nil {
 			fmt.Printf("Error preparing statement: %v\n", err)
@@ -45,7 +45,7 @@ var logCmd = &cobra.Command{
 		}
 		defer stmt.Close()
 
-		res, err := stmt.Exec(description, project, dueAt, scheduledAt, estimate)
+		res, err := stmt.Exec(title, project, dueAt, scheduledAt, estimate)
 		if err != nil {
 			fmt.Printf("Error executing statement: %v\n", err)
 			return

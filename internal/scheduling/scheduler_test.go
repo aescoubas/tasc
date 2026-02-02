@@ -22,7 +22,7 @@ func TestApplyAutoSchedule(t *testing.T) {
 	// Fixed: 07:10 - 07:30 (assuming 20m estimate)
 	tFixed := models.Task{
 		ID:          1,
-		Description: "Fixed Task",
+		Title:       "Fixed Task",
 		ScheduledAt: fixedTime(7, 10),
 		Estimate:    "20m",
 		CreatedAt:   time.Now(),
@@ -32,7 +32,7 @@ func TestApplyAutoSchedule(t *testing.T) {
 	due := time.Now().Add(1 * time.Hour)
 	tFloatHigh := models.Task{
 		ID:          2,
-		Description: "High Priority",
+		Title:       "High Priority",
 		ScheduledAt: floatingTime(),
 		Estimate:    "20m",
 		DueAt:       &due,
@@ -43,7 +43,7 @@ func TestApplyAutoSchedule(t *testing.T) {
 	dueLater := time.Now().Add(100 * time.Hour)
 	tFloatLow := models.Task{
 		ID:          3,
-		Description: "Low Priority",
+		Title:       "Low Priority",
 		ScheduledAt: floatingTime(),
 		Estimate:    "20m",
 		DueAt:       &dueLater,

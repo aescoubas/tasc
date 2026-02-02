@@ -37,7 +37,7 @@ func TestSQLiteStore_TaskCRUD(t *testing.T) {
 	// Let's rely on driver handling.
 	
 	task := models.Task{
-		Description: "Test Task",
+		Title:       "Test Task",
 		Project:     "TestProject",
 		Estimate:    "30m",
 		DueAt:       &now,
@@ -56,8 +56,8 @@ func TestSQLiteStore_TaskCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTask failed: %v", err)
 	}
-	if fetched.Description != task.Description {
-		t.Errorf("Description mismatch: got %q, want %q", fetched.Description, task.Description)
+	if fetched.Title != task.Title {
+		t.Errorf("Title mismatch: got %q, want %q", fetched.Title, task.Title)
 	}
 	if fetched.Project != task.Project {
 		t.Errorf("Project mismatch: got %q, want %q", fetched.Project, task.Project)
@@ -73,7 +73,7 @@ func TestSQLiteStore_TaskCRUD(t *testing.T) {
 	}
 
 	// 3. Update
-	fetched.Description = "Updated Task"
+	fetched.Title = "Updated Task"
 	fetched.Status = models.StatusOngoing
 	err = s.UpdateTask(fetched)
 	if err != nil {
@@ -84,8 +84,8 @@ func TestSQLiteStore_TaskCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTask(updated) failed: %v", err)
 	}
-	if updated.Description != "Updated Task" {
-		t.Errorf("Update failed, description: %q", updated.Description)
+	if updated.Title != "Updated Task" {
+		t.Errorf("Update failed, title: %q", updated.Title)
 	}
 	if updated.Status != models.StatusOngoing {
 		t.Errorf("Update failed, status: %q", updated.Status)
@@ -166,7 +166,7 @@ func TestSQLiteStore_BatchUpdateTasks(t *testing.T) {
 	// Create 3 tasks
 	ids := make([]int64, 3)
 	for i := 0; i < 3; i++ {
-		id, _ := s.CreateTask(models.Task{Description: fmt.Sprintf("Task %d", i), Project: "OldProject"})
+		id, _ := s.CreateTask(models.Task{Title: fmt.Sprintf("Task %d", i), Project: "OldProject"})
 		ids[i] = id
 	}
 

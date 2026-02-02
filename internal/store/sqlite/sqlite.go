@@ -54,14 +54,14 @@ func (s *SQLiteStore) CreateTask(t models.Task) (int64, error) {
 		return 0, err
 	}
 
-	query := `INSERT INTO tasks (description, project, due_at, scheduled_at, estimate, recurrence, created_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+	query := `INSERT INTO tasks (title, description, project, due_at, scheduled_at, estimate, recurrence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
 	stmt, err := s.db.Prepare(query)
 	if err != nil {
 		return 0, err
 	}
 	defer stmt.Close()
 
-	res, err := stmt.Exec(t.Description, t.Project, t.DueAt, t.ScheduledAt, t.Estimate, t.Recurrence)
+	res, err := stmt.Exec(t.Title, t.Description, t.Project, t.DueAt, t.ScheduledAt, t.Estimate, t.Recurrence)
 	if err != nil {
 		return 0, err
 	}
@@ -72,6 +72,7 @@ func (s *SQLiteStore) CreateTask(t models.Task) (int64, error) {
 func (s *SQLiteStore) GetTask(id int64) (models.Task, error) {
 	var t models.Task
 	var project sql.NullString
+	var description sql.NullString
 	var dueAt sql.NullTime
 	var scheduledAt sql.NullTime
 	var estimate sql.NullString
@@ -81,14 +82,14 @@ func (s *SQLiteStore) GetTask(id int64) (models.Task, error) {
 	var completedAt sql.NullTime
 
 	query := `SELECT 
-		id, description, project, status, created_at, 
+		id, title, description, project, status, created_at, 
 		completed_at, due_at, scheduled_at, estimate, 
 		recurrence, active_start, time_spent, reschedule_count 
 	FROM tasks WHERE id = ?`
 
 	row := s.db.QueryRow(query, id)
 	err := row.Scan(
-		&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt,
+		&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt,
 		&completedAt, &dueAt, &scheduledAt, &estimate,
 		&recurrence, &activeStart, &timeSpent, &t.RescheduleCount,
 	)
@@ -97,6 +98,7 @@ func (s *SQLiteStore) GetTask(id int64) (models.Task, error) {
 		return t, err
 	}
 
+	t.Description = description.String
 	t.Project = project.String
 	t.Estimate = estimate.String
 	t.Recurrence = recurrence.String
@@ -116,13 +118,6 @@ func (s *SQLiteStore) GetTask(id int64) (models.Task, error) {
 		t.CompletedAt = &completedAt.Time
 	}
 	
-	// Check is_blocked
-	// This is a separate query in GetTask generally, or could be joined. 
-	// For simplicity, let's leave IsBlocked false here or do a quick check?
-	// Show command does separate queries for detailed block info.
-	// List command does EXISTS subquery.
-	// Let's match List command behavior if possible, or just ignore for single Get unless requested.
-	// t.IsBlocked logic usually happens in List.
 	return t, nil
 }
 
@@ -138,8 +133,8 @@ func (s *SQLiteStore) UpdateTask(t models.Task) error {
 		return err
 	}
 
-	query := `UPDATE tasks SET description = ?, project = ?, status = ?, due_at = ?, scheduled_at = ?, estimate = ?, recurrence = ?, reschedule_count = ? WHERE id = ?`
-	_, err = s.db.Exec(query, t.Description, t.Project, t.Status, t.DueAt, t.ScheduledAt, t.Estimate, t.Recurrence, t.RescheduleCount, t.ID)
+	query := `UPDATE tasks SET title = ?, description = ?, project = ?, status = ?, due_at = ?, scheduled_at = ?, estimate = ?, recurrence = ?, reschedule_count = ? WHERE id = ?`
+	_, err = s.db.Exec(query, t.Title, t.Description, t.Project, t.Status, t.DueAt, t.ScheduledAt, t.Estimate, t.Recurrence, t.RescheduleCount, t.ID)
 	if err != nil {
 		return err
 	}
@@ -204,7 +199,7 @@ func (s *SQLiteStore) BatchUpdateTasks(ids []int64, updates map[string]interface
 	for k, v := range updates {
 		// Whitelist fields
 		switch k {
-		case "project", "status", "estimate", "recurrence", "description":
+		case "project", "status", "estimate", "recurrence", "title", "description":
 			sets = append(sets, fmt.Sprintf("%s = ?", k))
 			args = append(args, v)
 		case "due_at", "scheduled_at", "completed_at":
@@ -253,7 +248,7 @@ func (s *SQLiteStore) DeleteTask(id int64) error {
 func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) {
 	baseQuery := `
 		SELECT 
-			id, description, project, status, created_at, due_at, scheduled_at, estimate, active_start, time_spent, reschedule_count,
+			id, title, description, project, status, created_at, due_at, scheduled_at, estimate, active_start, time_spent, reschedule_count,
 			EXISTS(SELECT 1 FROM task_dependencies WHERE blocked_id = tasks.id) as is_blocked
 		FROM tasks 
 		WHERE 1=1
@@ -316,6 +311,7 @@ func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) 
 	for rows.Next() {
 		var t models.Task
 		var project sql.NullString
+		var description sql.NullString
 		var dueAt sql.NullTime
 		var scheduledAt sql.NullTime
 		var estimate sql.NullString
@@ -323,10 +319,11 @@ func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) 
 		var timeSpent sql.NullInt64
 		var isBlocked bool
 
-		err := rows.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt, &dueAt, &scheduledAt, &estimate, &activeStart, &timeSpent, &t.RescheduleCount, &isBlocked)
+		err := rows.Scan(&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt, &dueAt, &scheduledAt, &estimate, &activeStart, &timeSpent, &t.RescheduleCount, &isBlocked)
 		if err != nil {
 			continue
 		}
+		t.Description = description.String
 		t.Project = project.String
 		t.IsBlocked = isBlocked
 
@@ -457,16 +454,18 @@ func (s *SQLiteStore) StopTask(id int64) error {
 
 	return tx.Commit()
 }
+// ... GetActiveTask needs update ...
 
 func (s *SQLiteStore) GetActiveTask() (*models.Task, error) {
 	query := `SELECT 
-		id, description, project, status, created_at, 
+		id, title, description, project, status, created_at, 
 		completed_at, due_at, scheduled_at, estimate, 
 		recurrence, active_start, time_spent, reschedule_count 
 	FROM tasks WHERE active_start IS NOT NULL LIMIT 1`
 
 	var t models.Task
 	var project sql.NullString
+	var description sql.NullString
 	var dueAt sql.NullTime
 	var scheduledAt sql.NullTime
 	var estimate sql.NullString
@@ -477,7 +476,7 @@ func (s *SQLiteStore) GetActiveTask() (*models.Task, error) {
 
 	row := s.db.QueryRow(query)
 	err := row.Scan(
-		&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt,
+		&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt,
 		&completedAt, &dueAt, &scheduledAt, &estimate,
 		&recurrence, &activeStart, &timeSpent, &t.RescheduleCount,
 	)
@@ -489,6 +488,7 @@ func (s *SQLiteStore) GetActiveTask() (*models.Task, error) {
 		return nil, err
 	}
 
+	t.Description = description.String
 	t.Project = project.String
 	t.Estimate = estimate.String
 	t.Recurrence = recurrence.String
@@ -633,7 +633,7 @@ func (s *SQLiteStore) DeleteProject(name string) error {
 
 func (s *SQLiteStore) SearchTasks(queryStr string) ([]models.Task, error) {
 	query := `
-		SELECT id, description, project, status, created_at 
+		SELECT id, title, description, project, status, created_at 
 		FROM tasks 
 		WHERE id IN (
 			SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ? ORDER BY rank
@@ -649,10 +649,12 @@ func (s *SQLiteStore) SearchTasks(queryStr string) ([]models.Task, error) {
 	for rows.Next() {
 		var t models.Task
 		var project sql.NullString
-		err := rows.Scan(&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt)
+		var description sql.NullString
+		err := rows.Scan(&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt)
 		if err != nil {
 			continue
 		}
+		t.Description = description.String
 		t.Project = project.String
 		tasks = append(tasks, t)
 	}

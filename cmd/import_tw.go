@@ -86,9 +86,9 @@ type twTask struct {
 	
 		stmt, err := tx.Prepare(`
 			INSERT INTO tasks (
-				description, project, status, created_at, 
+				title, description, project, status, created_at, 
 				completed_at, due_at, scheduled_at, active_start
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`)
 		if err != nil {
 			fmt.Printf("Error preparing statement: %v\n", err)
@@ -110,22 +110,25 @@ type twTask struct {
 				status = models.StatusBacklog
 			}
 	
-			// 2. Map Description (Append Tags, Priority, Annotations)
-			desc := tw.Description
+			// 2. Map Title (Append Tags, Priority)
+			title := tw.Description
 			if tw.Priority != "" {
-				desc += fmt.Sprintf(" [Priority: %s]", tw.Priority)
+				title += fmt.Sprintf(" [Priority: %s]", tw.Priority)
 			}
 			if len(tw.Tags) > 0 {
 				var tags []string
 				for _, t := range tw.Tags {
 					tags = append(tags, "#"+t)
 				}
-				desc += " " + strings.Join(tags, " ")
+				title += " " + strings.Join(tags, " ")
 			}
+			
+			// Map Description (Annotations)
+			description := ""
 			if len(tw.Annotations) > 0 {
-				desc += "\n-- Annotations --"
+				description = "-- Annotations --"
 				for _, ann := range tw.Annotations {
-					desc += fmt.Sprintf("\n- %s", ann.Description)
+					description += fmt.Sprintf("\n- %s", ann.Description)
 				}
 			}
 	
@@ -145,7 +148,7 @@ type twTask struct {
 			activeStart := parseTwDatePtr(tw.Start)
 	
 			// 4. Insert
-			res, err := stmt.Exec(desc, tw.Project, status, createdAt, completedAt, dueAt, scheduledAt, activeStart)
+			res, err := stmt.Exec(title, description, tw.Project, status, createdAt, completedAt, dueAt, scheduledAt, activeStart)
 			if err != nil {
 				fmt.Printf("Failed to insert task %s: %v\n", tw.UUID, err)
 				continue

@@ -32,7 +32,7 @@ var askCmd = &cobra.Command{
 		}
 
 		// 1. Fetch all pending tasks
-		query := "SELECT id, description, project, created_at, due_at FROM tasks WHERE status != 'done' AND status != 'deleted'"
+		query := "SELECT id, title, project, created_at, due_at FROM tasks WHERE status != 'done' AND status != 'deleted'"
 		rows, err := db.DB.Query(query)
 		if err != nil {
 			log.Fatalf("Error querying tasks: %v", err)
@@ -47,7 +47,7 @@ var askCmd = &cobra.Command{
 			var t models.Task
 			var project sql.NullString
 			var dueAt sql.NullTime // use NullTime for scanning
-			if err := rows.Scan(&t.ID, &t.Description, &project, &t.CreatedAt, &dueAt); err != nil {
+			if err := rows.Scan(&t.ID, &t.Title, &project, &t.CreatedAt, &dueAt); err != nil {
 				continue
 			}
 			due := "No due date"
@@ -56,7 +56,7 @@ var askCmd = &cobra.Command{
 			}
 
 			sb.WriteString(fmt.Sprintf("- [ID: %d] %s (Project: %s, Created: %s, Due: %s)\n",
-				t.ID, t.Description, project.String, t.CreatedAt.Format("2006-01-02"), due))
+				t.ID, t.Title, project.String, t.CreatedAt.Format("2006-01-02"), due))
 			count++
 		}
 

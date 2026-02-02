@@ -29,6 +29,8 @@ var (
 	sortBy   string
 	sortDesc bool
 	showAll  bool
+	forceRelative bool
+	showAbsolute bool
 
 	// Filters
 	filterProjects  []string
@@ -48,6 +50,15 @@ var listCmd = &cobra.Command{
 		cfg, err := config.LoadConfig()
 		if err != nil {
 			cfg = config.DefaultConfig()
+		}
+
+		if cmd.Flags().Changed("relative") {
+			cfg.RelativeDates = forceRelative
+		}
+		if cmd.Flags().Changed("absolute") {
+			if showAbsolute {
+				cfg.RelativeDates = false
+			}
 		}
 
 		// Parse Filters
@@ -193,8 +204,8 @@ var listCmd = &cobra.Command{
 				less = t1.ID < t2.ID
 			case "project":
 				less = strings.ToLower(t1.Project) < strings.ToLower(t2.Project)
-			case "description", "desc":
-				less = strings.ToLower(t1.Description) < strings.ToLower(t2.Description)
+			case "title", "description", "desc":
+				less = strings.ToLower(t1.Title) < strings.ToLower(t2.Title)
 			case "created", "created_at":
 				less = t1.CreatedAt.Before(t2.CreatedAt)
 			case "age":
@@ -260,12 +271,11 @@ var listCmd = &cobra.Command{
 			tier     ui.UrgencyTier
 		}
 
-				var rowsData []displayRow
-				widths := make([]int, 12) 
-				headers := []string{"ID", "Project", "Status", "Description", "Created", "Age", "Due", "Scheduled", "Rsch", "Est", "Score", "Duration"}
-		
-				for i, h := range headers {
-					widths[i] = len(h)
+						var rowsData []displayRow
+						widths := make([]int, 12)
+						headers := []string{"ID", "Project", "Status", "Title", "Created", "Age", "Due", "Scheduled", "Rsch", "Est", "Score", "Duration"}
+				
+						for i, h := range headers {					widths[i] = len(h)
 				}
 		
 				for _, item := range tasks {
@@ -275,12 +285,20 @@ var listCmd = &cobra.Command{
 		
 					dueStr := "-"
 					if t.DueAt != nil {
-						dueStr = t.DueAt.Format("2006-01-02")
+						if cfg.RelativeDates {
+							dueStr = ui.FormatRelative(*t.DueAt)
+						} else {
+							dueStr = t.DueAt.Format("2006-01-02")
+						}
 					}
 		
 					schStr := "-"
 					if t.ScheduledAt != nil {
-						schStr = t.ScheduledAt.Format("2006-01-02")
+						if cfg.RelativeDates {
+							schStr = ui.FormatRelative(*t.ScheduledAt)
+						} else {
+							schStr = t.ScheduledAt.Format("2006-01-02")
+						}
 					}
 		
 					rschStr := "-"
@@ -293,7 +311,7 @@ var listCmd = &cobra.Command{
 						estStr = t.Estimate
 					}
 		
-					desc := strings.ReplaceAll(t.Description, "\n", " ")
+					desc := strings.ReplaceAll(t.Title, "\n", " ")
 					if len(desc) > 50 {
 						desc = desc[:47] + "..."
 					}
@@ -454,6 +472,8 @@ func init() {
 	listCmd.Flags().StringVarP(&sortBy, "sort", "s", "", "Sort by field (id, project, description, created, age, due, scheduled, estimate, score, duration)")
 	listCmd.Flags().BoolVarP(&sortDesc, "desc", "d", false, "Sort in descending order")
 	listCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all tasks (do not truncate to screen height)")
+	listCmd.Flags().BoolVarP(&forceRelative, "relative", "R", false, "Force relative dates")
+	listCmd.Flags().BoolVarP(&showAbsolute, "absolute", "A", false, "Force absolute dates")
 
 	listCmd.Flags().StringSliceVarP(&filterProjects, "project", "p", nil, "Filter by project (comma separated)")
 	listCmd.Flags().StringSliceVarP(&filterIDs, "id", "i", nil, "Filter by ID (comma separated)")

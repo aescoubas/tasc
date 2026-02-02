@@ -29,6 +29,7 @@ var showCmd = &cobra.Command{
 		// 1. Fetch Task
 		var t models.Task
 		var project sql.NullString
+		var description sql.NullString
 		var dueAt sql.NullTime
 		var scheduledAt sql.NullTime
 		var estimate sql.NullString
@@ -38,14 +39,14 @@ var showCmd = &cobra.Command{
 		var completedAt sql.NullTime
 
 		query := `SELECT 
-			id, description, project, status, created_at, 
+			id, title, description, project, status, created_at, 
 			completed_at, due_at, scheduled_at, estimate, 
 			recurrence, active_start, time_spent, reschedule_count 
 		FROM tasks WHERE id = ?`
 
 		row := db.DB.QueryRow(query, id)
 		err = row.Scan(
-			&t.ID, &t.Description, &project, &t.Status, &t.CreatedAt,
+			&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt,
 			&completedAt, &dueAt, &scheduledAt, &estimate,
 			&recurrence, &activeStart, &timeSpent, &t.RescheduleCount,
 		)
@@ -58,6 +59,7 @@ var showCmd = &cobra.Command{
 			return
 		}
 
+		t.Description = description.String
 		t.Project = project.String
 		t.Estimate = estimate.String
 		t.Recurrence = recurrence.String
@@ -80,7 +82,7 @@ var showCmd = &cobra.Command{
 		// 2. Fetch Dependencies
 		// Blocked By
 		blockedByRows, err := db.DB.Query(`
-			SELECT t.id, t.description 
+			SELECT t.id, t.title 
 			FROM task_dependencies td 
 			JOIN tasks t ON td.blocker_id = t.id 
 			WHERE td.blocked_id = ?`, id)
@@ -89,16 +91,16 @@ var showCmd = &cobra.Command{
 			defer blockedByRows.Close()
 			for blockedByRows.Next() {
 				var bID int64
-				var bDesc string
-				if err := blockedByRows.Scan(&bID, &bDesc); err == nil {
-					blockedBy = append(blockedBy, fmt.Sprintf("%d (%s)", bID, bDesc))
+				var bTitle string
+				if err := blockedByRows.Scan(&bID, &bTitle); err == nil {
+					blockedBy = append(blockedBy, fmt.Sprintf("%d (%s)", bID, bTitle))
 				}
 			}
 		}
 
 		// Blocking
 		blockingRows, err := db.DB.Query(`
-			SELECT t.id, t.description 
+			SELECT t.id, t.title 
 			FROM task_dependencies td 
 			JOIN tasks t ON td.blocked_id = t.id 
 			WHERE td.blocker_id = ?`, id)
@@ -107,9 +109,9 @@ var showCmd = &cobra.Command{
 			defer blockingRows.Close()
 			for blockingRows.Next() {
 				var bID int64
-				var bDesc string
-				if err := blockingRows.Scan(&bID, &bDesc); err == nil {
-					blocking = append(blocking, fmt.Sprintf("%d (%s)", bID, bDesc))
+				var bTitle string
+				if err := blockingRows.Scan(&bID, &bTitle); err == nil {
+					blocking = append(blocking, fmt.Sprintf("%d (%s)", bID, bTitle))
 				}
 			}
 		}
@@ -118,7 +120,11 @@ var showCmd = &cobra.Command{
 		t.IsBlocked = len(blockedBy) > 0
 		style := ui.GetTaskStyle(t, cfg)
 		
-		fmt.Println(style.Render(fmt.Sprintf("Task %d: %s", t.ID, t.Description)))
+		fmt.Println(style.Render(fmt.Sprintf("Task %d: %s", t.ID, t.Title)))
+		if t.Description != "" {
+			fmt.Println("------------------------------------------------")
+			fmt.Println(t.Description)
+		}
 		fmt.Println("------------------------------------------------")
 		fmt.Printf("Project:       %s\n", t.Project)
 		fmt.Printf("Status:        %s\n", t.Status)

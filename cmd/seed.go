@@ -87,7 +87,7 @@ var seedCmd = &cobra.Command{
 				timeSpent = int64(actualSeconds)
 			}
 
-			query := `INSERT INTO tasks (description, project, status, completed_at, created_at, due_at, scheduled_at, estimate, time_spent) 
+			query := `INSERT INTO tasks (title, project, status, completed_at, created_at, due_at, scheduled_at, estimate, time_spent) 
 				VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)`
 
 			_, err := tx.Exec(query, desc, proj, status, completedAt, dueAt, scheduledAt, estimate, timeSpent)
