@@ -1,11 +1,20 @@
 package store
 
-import "github.com/aescoubas/tasc/internal/models"
+import (
+	"time"
+
+	"github.com/aescoubas/tasc/internal/models"
+)
 
 type TaskFilter struct {
-	Status         []models.TaskStatus
-	Project        string
-	IncludeDeleted bool
+	Status          []models.TaskStatus
+	Projects        []string
+	IDs             []int64
+	IncludeDeleted  bool
+	DueBefore       *time.Time
+	DueAfter        *time.Time
+	ScheduledBefore *time.Time
+	ScheduledAfter  *time.Time
 }
 
 type Store interface {

@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aescoubas/tasc/internal/models"
@@ -84,20 +85,41 @@ func (s *Server) handleGetActiveTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
-	// Parse filters
-	// ?status=pending,ongoing&project=Work
 	filter := store.TaskFilter{}
-	
-	statusParam := r.URL.Query().Get("status")
-	if statusParam != "" {
-		// status=done,backlog
-		// Basic split? Or accept single?
-		// models.TaskStatus is string
-		// filter.Status = []models.TaskStatus{models.TaskStatus(statusParam)}
+	q := r.URL.Query()
+
+	if projects := q.Get("projects"); projects != "" {
+		filter.Projects = strings.Split(projects, ",")
+	}
+	// Support legacy 'project' param
+	if p := q.Get("project"); p != "" {
+		filter.Projects = append(filter.Projects, p)
 	}
 
-	filter.Project = r.URL.Query().Get("project")
-	
+	if ids := q.Get("ids"); ids != "" {
+		for _, idStr := range strings.Split(ids, ",") {
+			id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
+			if err == nil {
+				filter.IDs = append(filter.IDs, id)
+			}
+		}
+	}
+
+	parseDate := func(param string) *time.Time {
+		if val := q.Get(param); val != "" {
+			t, err := time.Parse(time.RFC3339, val)
+			if err == nil {
+				return &t
+			}
+		}
+		return nil
+	}
+
+	filter.DueBefore = parseDate("due_before")
+	filter.DueAfter = parseDate("due_after")
+	filter.ScheduledBefore = parseDate("scheduled_before")
+	filter.ScheduledAfter = parseDate("scheduled_after")
+
 	tasks, err := s.store.ListTasks(filter)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -9,6 +9,7 @@ import (
 	"github.com/aescoubas/tasc/internal/config"
 	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
+	"github.com/aescoubas/tasc/internal/scheduling"
 	"github.com/aescoubas/tasc/internal/ui"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
@@ -85,6 +86,9 @@ var calendarCmd = &cobra.Command{
 			fmt.Printf("Error fetching tasks: %v\n", err)
 			return
 		}
+
+		// Apply Smart Auto-Schedule (Virtual Times)
+		tasks = scheduling.ApplyAutoSchedule(tasks)
 
 		// Render
 		width, _, err := term.GetSize(int(os.Stdout.Fd()))

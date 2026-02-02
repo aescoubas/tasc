@@ -208,8 +208,10 @@ func (ms *MCPServer) handleList(ctx context.Context, request mcp.CallToolRequest
 	incDel := request.GetBool("include_deleted", false)
 
 	filter := store.TaskFilter{
-		Project:        proj,
 		IncludeDeleted: incDel,
+	}
+	if proj != "" {
+		filter.Projects = []string{proj}
 	}
 
 	if statusStr != "" {

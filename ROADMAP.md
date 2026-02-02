@@ -83,3 +83,19 @@
 ## Phase 14: Advanced MCP & Batch Operations
 - [x] **Complex Query Support:** Enable Gemini to perform batch modifications (e.g., "reschedule all my laserbiolabs tasks to next week").
 - [x] **Batch Update Tool:** Expose a dedicated MCP tool or enhance `update` to handle multiple IDs or filter-based updates to support efficient bulk changes.
+
+## Phase 15: Smart Scheduling & Time Management
+- [x] **Seamless Rescheduling:** Streamline the workflow for moving tasks to new dates or times.
+- [x] **Time Specificity:** Add support for specifying exact times (HH:MM) for task scheduling and deadlines.
+- [x] **Smart Auto-Schedule:** Implement logic to automatically arrange daily tasks starting at 07:00, 20m duration each, strictly following priority order.
+- [x] **Dynamic Reordering:** Ensure the daily schedule automatically adapts and reorders when task priorities shift.
+- [x] **Default Estimate:** Set the default time estimate to 20 minutes for new tasks.
+
+## Phase 16: UI Refinements & Configuration
+- [ ] **Relative Time Display:** Implement configurable relative time formatting (e.g., "3d", "10m", "-5h") for "Due" and "Scheduled" columns.
+
+## Phase 17: Data Model Evolution
+- [ ] **Schema Refactor:** Rename the existing `description` field to `title`.
+- [ ] **Rich Descriptions:** Add a new optional, multi-line `description` field for detailed notes.
+- [ ] **View Updates:** Display `title` in `tasc list` and the full `description` only in `tasc show`.
+- [ ] **Editor Integration:** Ensure `tasc edit` opens the multi-line description in the system's preferred text editor for easy modification.

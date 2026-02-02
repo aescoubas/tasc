@@ -13,11 +13,18 @@ func Date(s string) (*time.Time, error) {
 	formats := []string{
 		"2006-01-02",
 		"2006/01/02",
+		"2006-01-02 15:04",
+		"15:04",
 		time.RFC3339,
 	}
 	for _, f := range formats {
-		t, err := time.Parse(f, s)
+		t, err := time.ParseInLocation(f, s, time.Local)
 		if err == nil {
+			// If format was just time (15:04), add today's date
+			if f == "15:04" {
+				now := time.Now()
+				t = time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), 0, 0, time.Local)
+			}
 			return &t, nil
 		}
 	}

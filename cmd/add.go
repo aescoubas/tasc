@@ -64,6 +64,10 @@ var addCmd = &cobra.Command{
 			scheduledAt = t
 		}
 
+		if estimate == "" {
+			estimate = "20m"
+		}
+
 		task := models.Task{
 			Description: description,
 			Project:     project,

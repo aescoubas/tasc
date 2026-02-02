@@ -47,6 +47,28 @@ echo "Success! tasc has been installed to $INSTALL_DIR/tasc"
 echo "Run 'tasc --help' to get started."
 echo "--------------------------------------------------"
 
+echo "Installing shell autocompletion..."
+
+# Bash
+BASH_COMP_DIR="$HOME/.local/share/bash-completion/completions"
+if [ ! -d "$BASH_COMP_DIR" ]; then
+    mkdir -p "$BASH_COMP_DIR"
+fi
+"$INSTALL_DIR/tasc" completion bash > "$BASH_COMP_DIR/tasc"
+echo "Bash completion installed to $BASH_COMP_DIR/tasc"
+
+# Zsh
+ZSH_COMP_DIR="$HOME/.zsh/completion"
+if [ ! -d "$ZSH_COMP_DIR" ]; then
+    mkdir -p "$ZSH_COMP_DIR"
+fi
+"$INSTALL_DIR/tasc" completion zsh > "$ZSH_COMP_DIR/_tasc"
+echo "Zsh completion installed to $ZSH_COMP_DIR/_tasc"
+echo "Note: For Zsh, ensure '$ZSH_COMP_DIR' is in your \$fpath in .zshrc:"
+echo "      fpath=($ZSH_COMP_DIR \$fpath)"
+echo "      autoload -U compinit; compinit"
+echo "--------------------------------------------------"
+
 # Systemd Integration
 if command -v systemctl &> /dev/null; then
     echo

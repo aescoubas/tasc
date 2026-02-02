@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/aescoubas/tasc/internal/config"
 	"github.com/aescoubas/tasc/internal/models"
+	"github.com/aescoubas/tasc/internal/parse"
 	"github.com/aescoubas/tasc/internal/priority"
+	"github.com/aescoubas/tasc/internal/scheduling"
 	"github.com/aescoubas/tasc/internal/store"
 	"github.com/aescoubas/tasc/internal/ui"
 	"github.com/charmbracelet/lipgloss"
@@ -26,6 +29,16 @@ var (
 	sortBy   string
 	sortDesc bool
 	showAll  bool
+
+	// Filters
+	filterProjects  []string
+	filterIDs       []string
+	filterDueBefore string
+	filterDueAfter  string
+	filterSchBefore string
+	filterSchAfter  string
+	filterScoreMin  float64
+	filterScoreMax  float64
 )
 
 var listCmd = &cobra.Command{
@@ -37,12 +50,51 @@ var listCmd = &cobra.Command{
 			cfg = config.DefaultConfig()
 		}
 
+		// Parse Filters
+		filter := store.TaskFilter{}
+		filter.Projects = filterProjects
+
+		for _, s := range filterIDs {
+			id, err := strconv.ParseInt(s, 10, 64)
+			if err == nil {
+				filter.IDs = append(filter.IDs, id)
+			}
+		}
+
+		if filterDueBefore != "" {
+			t, err := parse.Date(filterDueBefore)
+			if err == nil {
+				filter.DueBefore = t
+			}
+		}
+		if filterDueAfter != "" {
+			t, err := parse.Date(filterDueAfter)
+			if err == nil {
+				filter.DueAfter = t
+			}
+		}
+		if filterSchBefore != "" {
+			t, err := parse.Date(filterSchBefore)
+			if err == nil {
+				filter.ScheduledBefore = t
+			}
+		}
+		if filterSchAfter != "" {
+			t, err := parse.Date(filterSchAfter)
+			if err == nil {
+				filter.ScheduledAfter = t
+			}
+		}
+
 		// 1. Fetch tasks via Store
-		fetchedTasks, err := CurrentStore.ListTasks(store.TaskFilter{})
+		fetchedTasks, err := CurrentStore.ListTasks(filter)
 		if err != nil {
 			fmt.Printf("Error querying tasks: %v\n", err)
 			return
 		}
+
+		// Apply Smart Auto-Schedule (Virtual Times)
+		fetchedTasks = scheduling.ApplyAutoSchedule(fetchedTasks)
 
 		var tasks []taskWithScore
 		calc := priority.NewCalculator()
@@ -50,6 +102,21 @@ var listCmd = &cobra.Command{
 		for _, t := range fetchedTasks {
 			score := calc.Calculate(t)
 			tasks = append(tasks, taskWithScore{task: t, score: score})
+		}
+
+		// Filter by Score (Post-calculation)
+		if cmd.Flags().Changed("score-min") || cmd.Flags().Changed("score-max") {
+			var filtered []taskWithScore
+			for _, t := range tasks {
+				if cmd.Flags().Changed("score-min") && t.score < filterScoreMin {
+					continue
+				}
+				if cmd.Flags().Changed("score-max") && t.score > filterScoreMax {
+					continue
+				}
+				filtered = append(filtered, t)
+			}
+			tasks = filtered
 		}
 
 		// --- Dependency-Aware Priority Propagation ---
@@ -387,5 +454,32 @@ func init() {
 	listCmd.Flags().StringVarP(&sortBy, "sort", "s", "", "Sort by field (id, project, description, created, age, due, scheduled, estimate, score, duration)")
 	listCmd.Flags().BoolVarP(&sortDesc, "desc", "d", false, "Sort in descending order")
 	listCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all tasks (do not truncate to screen height)")
+
+	listCmd.Flags().StringSliceVarP(&filterProjects, "project", "p", nil, "Filter by project (comma separated)")
+	listCmd.Flags().StringSliceVarP(&filterIDs, "id", "i", nil, "Filter by ID (comma separated)")
+
+	listCmd.Flags().StringVar(&filterDueBefore, "due-before", "", "Filter tasks due before date")
+	listCmd.Flags().StringVar(&filterDueAfter, "due-after", "", "Filter tasks due after date")
+	listCmd.Flags().StringVar(&filterSchBefore, "scheduled-before", "", "Filter tasks scheduled before date")
+	listCmd.Flags().StringVar(&filterSchAfter, "scheduled-after", "", "Filter tasks scheduled after date")
+
+	listCmd.Flags().Float64Var(&filterScoreMin, "score-min", 0, "Minimum priority score")
+	listCmd.Flags().Float64Var(&filterScoreMax, "score-max", 0, "Maximum priority score")
+
+	listCmd.RegisterFlagCompletionFunc("project", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if CurrentStore == nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		projects, err := CurrentStore.ListProjects()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		var names []string
+		for _, p := range projects {
+			names = append(names, p.Name)
+		}
+		return names, cobra.ShellCompDirectiveNoFileComp
+	})
+
 	rootCmd.AddCommand(listCmd)
 }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/store"
@@ -136,8 +137,27 @@ func (c *Client) ListTasks(filter store.TaskFilter) ([]models.Task, error) {
 	}
 
 	q := u.Query()
-	if filter.Project != "" {
-		q.Set("project", filter.Project)
+	if len(filter.Projects) > 0 {
+		q.Set("projects", strings.Join(filter.Projects, ","))
+	}
+	if len(filter.IDs) > 0 {
+		var ids []string
+		for _, id := range filter.IDs {
+			ids = append(ids, fmt.Sprintf("%d", id))
+		}
+		q.Set("ids", strings.Join(ids, ","))
+	}
+	if filter.DueBefore != nil {
+		q.Set("due_before", filter.DueBefore.Format(time.RFC3339))
+	}
+	if filter.DueAfter != nil {
+		q.Set("due_after", filter.DueAfter.Format(time.RFC3339))
+	}
+	if filter.ScheduledBefore != nil {
+		q.Set("scheduled_before", filter.ScheduledBefore.Format(time.RFC3339))
+	}
+	if filter.ScheduledAfter != nil {
+		q.Set("scheduled_after", filter.ScheduledAfter.Format(time.RFC3339))
 	}
 	// Status handling simplified for now
 	u.RawQuery = q.Encode()
