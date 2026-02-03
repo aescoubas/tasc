@@ -35,6 +35,7 @@ var (
 	// Filters
 	filterProjects  []string
 	filterIDs       []string
+	filterStatus    []string
 	filterDueBefore string
 	filterDueAfter  string
 	filterSchBefore string
@@ -64,6 +65,10 @@ var listCmd = &cobra.Command{
 		// Parse Filters
 		filter := store.TaskFilter{}
 		filter.Projects = filterProjects
+
+		for _, s := range filterStatus {
+			filter.Status = append(filter.Status, models.TaskStatus(s))
+		}
 
 		for _, s := range filterIDs {
 			id, err := strconv.ParseInt(s, 10, 64)
@@ -476,6 +481,7 @@ func init() {
 	listCmd.Flags().BoolVarP(&showAbsolute, "absolute", "A", false, "Force absolute dates")
 
 	listCmd.Flags().StringSliceVarP(&filterProjects, "project", "p", nil, "Filter by project (comma separated)")
+	listCmd.Flags().StringSliceVar(&filterStatus, "status", nil, "Filter by status (comma separated: backlog, ongoing, done, blocked)")
 	listCmd.Flags().StringSliceVarP(&filterIDs, "id", "i", nil, "Filter by ID (comma separated)")
 
 	listCmd.Flags().StringVar(&filterDueBefore, "due-before", "", "Filter tasks due before date")
