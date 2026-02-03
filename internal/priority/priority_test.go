@@ -17,12 +17,12 @@ func TestDueRule(t *testing.T) {
 		minScore float64
 		maxScore float64
 	}{
-		{"Overdue by 1 hour", -1 * time.Hour, true, 20.0, 22.0},
-		{"Overdue by 5 days", -5 * 24 * time.Hour, true, 30.0, 30.0}, // 20 + 5*2
-		{"Due in 1 hour (Today)", 1 * time.Hour, false, 15.0, 15.0},
-		{"Due in 2 days (Soon)", 48 * time.Hour, false, 10.0, 10.0},
-		{"Due in 5 days (Week)", 5 * 24 * time.Hour, false, 5.0, 5.0},
-		{"Due in 10 days (Later)", 10 * 24 * time.Hour, false, -5.0, -5.0},
+		{"Overdue by 1 hour", -1 * time.Hour, true, 40.0, 42.0},
+		{"Overdue by 5 days", -5 * 24 * time.Hour, true, 50.0, 50.0}, // 40 + 5*2
+		{"Due in 1 hour (Today)", 1 * time.Hour, false, 35.0, 35.0},
+		{"Due in 2 days (Soon)", 48 * time.Hour, false, 30.0, 30.0},
+		{"Due in 5 days (Week)", 5 * 24 * time.Hour, false, 25.0, 25.0},
+		{"Due in 10 days (Later)", 10 * 24 * time.Hour, false, 20.0, 20.0},
 	}
 
 	for _, tt := range tests {
@@ -42,6 +42,37 @@ func TestDueRule(t *testing.T) {
 		task := models.Task{DueAt: nil}
 		if score := DueRule(task); score != 0 {
 			t.Errorf("DueRule() = %v, want 0", score)
+		}
+	})
+}
+
+func TestScheduledRule(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name          string
+		scheduleDelta time.Duration // relative to now
+		want          float64
+	}{
+		{"Scheduled Past", -1 * time.Hour, 35.0},  // 20 + 15
+		{"Scheduled Future", 1 * time.Hour, 20.0}, // 20
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheduled := now.Add(tt.scheduleDelta)
+			task := models.Task{ScheduledAt: &scheduled}
+
+			if got := ScheduledRule(task); got != tt.want {
+				t.Errorf("ScheduledRule() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+	t.Run("No Scheduled Date", func(t *testing.T) {
+		task := models.Task{ScheduledAt: nil}
+		if score := ScheduledRule(task); score != 0 {
+			t.Errorf("ScheduledRule() = %v, want 0", score)
 		}
 	})
 }

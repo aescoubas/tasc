@@ -37,25 +37,20 @@ func (c *Calculator) Calculate(t models.Task) float64 {
 }
 
 // ScheduledRule calculates priority based on the ScheduledAt field.
-// - If scheduled date is present: +5
-// - If scheduled date is in the past (or today): +10 (Cumulative +15)
-// - If scheduled date is in the future: -5 (Cumulative 0)
-// This effectively hides or lowers future scheduled tasks while boosting current ones.
+// - If scheduled date is present: +20 (Base)
+// - If scheduled date is in the past (or today): +15 (Cumulative +35)
+// This ensures scheduled tasks are always prioritized over backlog tasks.
 func ScheduledRule(t models.Task) float64 {
 	if t.ScheduledAt == nil {
 		return 0
 	}
 
-	score := 5.0
+	score := 20.0
 	now := time.Now()
 
 	// If scheduled time is before now (meaning we passed the start time), boost it.
 	if t.ScheduledAt.Before(now) {
-		score += 10.0
-	} else {
-		// If it's in the future, we might want to lower it so it doesn't clutter the view
-		// of actionable things.
-		score -= 10.0
+		score += 15.0
 	}
 
 	return score
@@ -88,19 +83,19 @@ func DueRule(t models.Task) float64 {
 	if diff < 0 {
 		// Overdue: High priority + scale with lateness
 		daysOverdue := int(-diff.Hours() / 24)
-		score = 20.0 + float64(daysOverdue)*2.0
+		score = 40.0 + float64(daysOverdue)*2.0
 	} else if diff < 24*time.Hour {
 		// Due today/tomorrow (within 24h)
-		score = 15.0
+		score = 35.0
 	} else if diff < 3*24*time.Hour {
 		// Due soon (3 days)
-		score = 10.0
+		score = 30.0
 	} else if diff < 7*24*time.Hour {
 		// Due this week
-		score = 5.0
+		score = 25.0
 	} else {
 		// Due later
-		score = -5.0
+		score = 20.0
 	}
 
 	return score
