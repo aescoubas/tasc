@@ -118,25 +118,25 @@ var listCmd = &cobra.Command{
 		}
 
 		if filterDueBefore != "" {
-			t, err := parse.Date(filterDueBefore)
+			t, err := parse.Date(filterDueBefore, "")
 			if err == nil {
 				filter.DueBefore = t
 			}
 		}
 		if filterDueAfter != "" {
-			t, err := parse.Date(filterDueAfter)
+			t, err := parse.Date(filterDueAfter, "")
 			if err == nil {
 				filter.DueAfter = t
 			}
 		}
 		if filterSchBefore != "" {
-			t, err := parse.Date(filterSchBefore)
+			t, err := parse.Date(filterSchBefore, "")
 			if err == nil {
 				filter.ScheduledBefore = t
 			}
 		}
 		if filterSchAfter != "" {
-			t, err := parse.Date(filterSchAfter)
+			t, err := parse.Date(filterSchAfter, "")
 			if err == nil {
 				filter.ScheduledAfter = t
 			}

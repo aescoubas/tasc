@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aescoubas/tasc/internal/config"
 	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/parse"
 	"github.com/spf13/cobra"
@@ -15,11 +16,16 @@ var logCmd = &cobra.Command{
 	Short: "Log a task that is already completed",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+
 		title := strings.Join(args, " ")
 
 		var dueAt *time.Time
 		if due != "" {
-			t, err := parse.Date(due)
+			t, err := parse.Date(due, cfg.EndOfDay)
 			if err != nil {
 				fmt.Printf("Invalid due date format: %v\n", err)
 				return
@@ -29,7 +35,7 @@ var logCmd = &cobra.Command{
 
 		var scheduledAt *time.Time
 		if scheduled != "" {
-			t, err := parse.Date(scheduled)
+			t, err := parse.Date(scheduled, cfg.EndOfDay)
 			if err != nil {
 				fmt.Printf("Invalid scheduled date format: %v\n", err)
 				return

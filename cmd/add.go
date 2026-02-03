@@ -26,11 +26,16 @@ var addCmd = &cobra.Command{
 	Short: "Add a new task",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+
 		title := strings.Join(args, " ")
 
 		var dueAt *time.Time
 		if due != "" {
-			t, err := parse.Date(due)
+			t, err := parse.Date(due, cfg.EndOfDay)
 			if err != nil {
 				fmt.Printf("Invalid due date format: %v\n", err)
 				return
@@ -40,7 +45,7 @@ var addCmd = &cobra.Command{
 
 		var scheduledAt *time.Time
 		if scheduled != "" {
-			t, err := parse.Date(scheduled)
+			t, err := parse.Date(scheduled, cfg.EndOfDay)
 			if err != nil {
 				fmt.Printf("Invalid scheduled date format: %v\n", err)
 				return

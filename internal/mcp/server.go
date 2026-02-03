@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aescoubas/tasc/internal/config"
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/parse"
 	"github.com/aescoubas/tasc/internal/store"
@@ -17,14 +18,21 @@ import (
 type MCPServer struct {
 	store  store.Store
 	server *server.MCPServer
+	config config.Config
 }
 
 func NewServer(s store.Store) *MCPServer {
 	mcpServer := server.NewMCPServer("tasc", "0.1.0")
+	
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
 
 	ms := &MCPServer{
 		store:  s,
 		server: mcpServer,
+		config: cfg,
 	}
 
 	ms.registerTools()
@@ -173,7 +181,7 @@ func (ms *MCPServer) handleAdd(ctx context.Context, request mcp.CallToolRequest)
 	var dueAt, scheduledAt *time.Time
 
 	if dueStr != "" {
-		t, err := parse.Date(dueStr)
+		t, err := parse.Date(dueStr, ms.config.EndOfDay)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Invalid due date: %v", err)), nil
 		}
@@ -181,7 +189,7 @@ func (ms *MCPServer) handleAdd(ctx context.Context, request mcp.CallToolRequest)
 	}
 
 	if schStr != "" {
-		t, err := parse.Date(schStr)
+		t, err := parse.Date(schStr, ms.config.EndOfDay)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Invalid scheduled date: %v", err)), nil
 		}
@@ -307,7 +315,7 @@ func (ms *MCPServer) handleUpdate(ctx context.Context, request mcp.CallToolReque
 		if dueStr == "" {
 			task.DueAt = nil
 		} else {
-			t, err := parse.Date(dueStr)
+			t, err := parse.Date(dueStr, ms.config.EndOfDay)
 			if err != nil {
 				return mcp.NewToolResultError(fmt.Sprintf("Invalid due date: %v", err)), nil
 			}
@@ -320,7 +328,7 @@ func (ms *MCPServer) handleUpdate(ctx context.Context, request mcp.CallToolReque
 		if schStr == "" {
 			task.ScheduledAt = nil
 		} else {
-			t, err := parse.Date(schStr)
+			t, err := parse.Date(schStr, ms.config.EndOfDay)
 			if err != nil {
 				return mcp.NewToolResultError(fmt.Sprintf("Invalid scheduled date: %v", err)), nil
 			}
@@ -406,7 +414,7 @@ func (ms *MCPServer) handleBatchUpdate(ctx context.Context, request mcp.CallTool
 	if request.GetBool("clear_due", false) {
 		updates["due_at"] = nil
 	} else if d := request.GetString("due", ""); d != "" {
-		t, err := parse.Date(d)
+		t, err := parse.Date(d, ms.config.EndOfDay)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Invalid due date: %v", err)), nil
 		}
@@ -416,7 +424,7 @@ func (ms *MCPServer) handleBatchUpdate(ctx context.Context, request mcp.CallTool
 	if request.GetBool("clear_scheduled", false) {
 		updates["scheduled_at"] = nil
 	} else if s := request.GetString("scheduled", ""); s != "" {
-		t, err := parse.Date(s)
+		t, err := parse.Date(s, ms.config.EndOfDay)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Invalid scheduled date: %v", err)), nil
 		}
@@ -501,7 +509,7 @@ func (ms *MCPServer) handleAddProject(ctx context.Context, request mcp.CallToolR
 	
 	var dueAt *time.Time
 	if dueStr != "" {
-		t, err := parse.Date(dueStr)
+		t, err := parse.Date(dueStr, ms.config.EndOfDay)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Invalid due date: %v", err)), nil
 		}
@@ -554,7 +562,7 @@ func (ms *MCPServer) handleUpdateProject(ctx context.Context, request mcp.CallTo
 		if d == "" {
 			p.DueAt = nil
 		} else {
-			t, err := parse.Date(d)
+			t, err := parse.Date(d, ms.config.EndOfDay)
 			if err != nil { return mcp.NewToolResultError(fmt.Sprintf("Invalid due date: %v", err)), nil }
 			p.DueAt = t
 		}

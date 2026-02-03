@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aescoubas/tasc/internal/config"
 	"github.com/aescoubas/tasc/internal/parse"
 	"github.com/spf13/cobra"
 )
@@ -15,6 +16,11 @@ var rescheduleCmd = &cobra.Command{
 	Short:   "Reschedule a task to a new date/time",
 	Args:    cobra.MinimumNArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+
 		id, err := strconv.Atoi(args[0])
 		if err != nil {
 			fmt.Println("Invalid task ID")
@@ -22,7 +28,7 @@ var rescheduleCmd = &cobra.Command{
 		}
 
 		dateStr := strings.Join(args[1:], " ")
-		newDate, err := parse.Date(dateStr)
+		newDate, err := parse.Date(dateStr, cfg.EndOfDay)
 		if err != nil {
 			fmt.Printf("Invalid date format: %v\n", err)
 			return

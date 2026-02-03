@@ -10,6 +10,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/aescoubas/tasc/internal/config"
 	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/parse"
@@ -154,11 +155,16 @@ var projectCreateCmd = &cobra.Command{
 	Short: "Create a new project",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+
 		name := args[0]
 		
 		var dueAt *time.Time
 		if projDue != "" {
-			t, err := parse.Date(projDue)
+			t, err := parse.Date(projDue, cfg.EndOfDay)
 			if err != nil {
 				fmt.Printf("Invalid due date: %v\n", err)
 				return
@@ -179,7 +185,7 @@ var projectCreateCmd = &cobra.Command{
 		}
 
 		query := `INSERT INTO projects (name, description, parent, due_at, status) VALUES (?, ?, ?, ?, 'active')`
-		_, err := db.DB.Exec(query, name, projDesc, parent, dueAt)
+		_, err = db.DB.Exec(query, name, projDesc, parent, dueAt)
 		if err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 				fmt.Printf("Project '%s' already exists.\n", name)
@@ -198,6 +204,11 @@ var projectEditCmd = &cobra.Command{
 	Short:   "Edit a project",
 	Args:    cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+
 		oldName := args[0]
 		
 		// 1. Fetch current project state
@@ -237,7 +248,7 @@ var projectEditCmd = &cobra.Command{
 				if projDue == "" {
 					p.DueAt = nil
 				} else {
-					t, err := parse.Date(projDue)
+					t, err := parse.Date(projDue, cfg.EndOfDay)
 					if err != nil {
 						fmt.Printf("Invalid due date: %v\n", err)
 						return
@@ -339,7 +350,7 @@ var projectEditCmd = &cobra.Command{
 			p.Status = models.ProjectStatus(newY.Status)
 			
 			if newY.DueAt != "" {
-				t, err := parse.Date(newY.DueAt)
+				t, err := parse.Date(newY.DueAt, cfg.EndOfDay)
 				if err != nil {
 					fmt.Printf("Invalid due date in YAML: %v\n", err)
 					return

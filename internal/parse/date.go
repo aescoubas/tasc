@@ -9,34 +9,68 @@ import (
 	"github.com/tj/go-naturaldate"
 )
 
-func Date(s string) (*time.Time, error) {
-	formats := []string{
-		"2006-01-02",
-		"2006/01/02",
-		"2006-01-02 15:04",
-		"15:04",
-		time.RFC3339,
+func Date(s string, defaultTime string) (*time.Time, error) {
+	// 1. Explicit formats
+	formats := []struct {
+		layout  string
+		hasTime bool
+	}{
+		{"2006-01-02", false},
+		{"2006/01/02", false},
+		{"2006-01-02 15:04", true},
+		{"15:04", true},
+		{time.RFC3339, true},
 	}
+
 	for _, f := range formats {
-		t, err := time.ParseInLocation(f, s, time.Local)
+		t, err := time.ParseInLocation(f.layout, s, time.Local)
 		if err == nil {
-			// If format was just time (15:04), add today's date
-			if f == "15:04" {
+			if f.layout == "15:04" {
 				now := time.Now()
 				t = time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), 0, 0, time.Local)
+				return &t, nil
+			}
+			
+			if !f.hasTime && defaultTime != "" {
+				// Apply default time
+				t = applyTime(t, defaultTime)
 			}
 			return &t, nil
 		}
 	}
 
-	// Try natural date parsing
+	// 2. Natural date parsing
 	processed := PreprocessDate(s)
-	t, err := naturaldate.Parse(processed, time.Now())
+	// We use 00:00:00 today as reference to avoid "now" time leaking into dates like "tomorrow"
+	now := time.Now()
+	ref := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	
+	t, err := naturaldate.Parse(processed, ref)
 	if err == nil {
+		// Heuristic: If the input string contains time indicators, trust the result.
+		// If not, apply defaultTime.
+		// Check original string 's' for time patterns
+		hasTime := regexp.MustCompile(`(\d{1,2}:\d{2})|(?i)(am|pm|morning|afternoon|evening|noon|midnight)`).MatchString(s)
+		
+		if !hasTime && defaultTime != "" {
+			t = applyTime(t, defaultTime)
+		}
 		return &t, nil
 	}
 
 	return nil, fmt.Errorf("could not parse date %q", s)
+}
+
+func applyTime(t time.Time, hm string) time.Time {
+	parts := strings.Split(hm, ":")
+	if len(parts) != 2 {
+		return t
+	}
+	// Parse HH:MM loosely
+	var h, m int
+	fmt.Sscanf(parts[0], "%d", &h)
+	fmt.Sscanf(parts[1], "%d", &m)
+	return time.Date(t.Year(), t.Month(), t.Day(), h, m, 0, 0, t.Location())
 }
 
 func PreprocessDate(s string) string {

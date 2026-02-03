@@ -32,6 +32,7 @@ type Config struct {
 	BackupDir     string               `yaml:"backup_dir"`
 	RelativeDates bool                 `yaml:"relative_dates"`
 	DateFormat    string               `yaml:"date_format"`
+	EndOfDay      string               `yaml:"end_of_day"`
 	TimeBlocks    map[string]TimeBlock `yaml:"time_blocks"`
 }
 
@@ -55,6 +56,7 @@ func DefaultConfig() Config {
 		BackupDir:     filepath.Join(home, ".config", "tasc", "backups"),
 		RelativeDates: true,
 		DateFormat:    "02-01-2006", // Default to DD-MM-YYYY
+		EndOfDay:      "18:00",
 		TimeBlocks: map[string]TimeBlock{
 			"morning":   {Start: "06:00", End: "12:00"},
 			"afternoon": {Start: "13:00", End: "18:00"},
