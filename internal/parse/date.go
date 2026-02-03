@@ -41,6 +41,22 @@ func Date(s string) (*time.Time, error) {
 
 func PreprocessDate(s string) string {
 	s = strings.TrimSpace(s)
+	s = strings.ToLower(s)
+
+	// Map words to digits for common durations
+	wordMap := map[string]string{
+		"one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
+		"six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10",
+	}
+
+	parts := strings.Fields(s)
+	if len(parts) > 0 {
+		if val, ok := wordMap[parts[0]]; ok {
+			parts[0] = val
+			s = strings.Join(parts, " ")
+		}
+	}
+
 	// 1. Split number and unit if stuck together: "10days" -> "10 days"
 	re := regexp.MustCompile(`^(\d+)([a-zA-Z]+)$`)
 	s = re.ReplaceAllString(s, "$1 $2")

@@ -64,7 +64,47 @@ var listCmd = &cobra.Command{
 
 		// Parse Filters
 		filter := store.TaskFilter{}
-		filter.Projects = filterProjects
+		
+		// Fetch all projects to handle hierarchy
+		projectParent := make(map[string]string)
+		projectShortName := make(map[string]string)
+		projectChildren := make(map[string][]string)
+		if allProjects, err := CurrentStore.ListProjects(); err == nil {
+			for _, p := range allProjects {
+				if p.ShortName != "" {
+					projectShortName[p.Name] = p.ShortName
+				}
+				if p.Parent != "" {
+					projectParent[p.Name] = p.Parent
+					projectChildren[p.Parent] = append(projectChildren[p.Parent], p.Name)
+				}
+			}
+		}
+
+		// Expand filterProjects to include children
+		if len(filterProjects) > 0 {
+			expanded := make(map[string]bool)
+			var queue []string
+			queue = append(queue, filterProjects...)
+			
+			for len(queue) > 0 {
+				curr := queue[0]
+				queue = queue[1:]
+				if expanded[curr] { continue }
+				expanded[curr] = true
+				
+				if children, ok := projectChildren[curr]; ok {
+					queue = append(queue, children...)
+				}
+			}
+			
+			filter.Projects = nil
+			for p := range expanded {
+				filter.Projects = append(filter.Projects, p)
+			}
+		} else {
+			filter.Projects = filterProjects
+		}
 
 		for _, s := range filterStatus {
 			filter.Status = append(filter.Status, models.TaskStatus(s))
@@ -293,7 +333,7 @@ var listCmd = &cobra.Command{
 						if cfg.RelativeDates {
 							dueStr = ui.FormatRelative(*t.DueAt)
 						} else {
-							dueStr = t.DueAt.Format("2006-01-02")
+							dueStr = ui.FormatDate(*t.DueAt, cfg)
 						}
 					}
 		
@@ -302,7 +342,7 @@ var listCmd = &cobra.Command{
 						if cfg.RelativeDates {
 							schStr = ui.FormatRelative(*t.ScheduledAt)
 						} else {
-							schStr = t.ScheduledAt.Format("2006-01-02")
+							schStr = ui.FormatDate(*t.ScheduledAt, cfg)
 						}
 					}
 		
@@ -333,6 +373,32 @@ var listCmd = &cobra.Command{
 					}
 		
 					projectStr := t.Project
+					// Resolve full project path
+					// Strategy: Use ShortName for ancestors, FullName for the leaf (task's project)
+					// to keep it compact but recognizable.
+					
+					pathParts := []string{t.Project}
+					currP := t.Project
+					for {
+						parent, ok := projectParent[currP]
+						if !ok || parent == "" {
+							break
+						}
+						
+						displayName := parent
+						if sn, ok := projectShortName[parent]; ok && sn != "" {
+							displayName = sn
+						}
+						
+						pathParts = append([]string{displayName}, pathParts...)
+						currP = parent
+					}
+					if len(pathParts) > 1 {
+						prefix := strings.Join(pathParts[:len(pathParts)-1], ".")
+						leaf := pathParts[len(pathParts)-1]
+						projectStr = fmt.Sprintf("[%s] %s", prefix, leaf)
+					}
+
 					if len(projectStr) > 20 {
 						projectStr = projectStr[:17] + "..."
 					}
@@ -344,7 +410,7 @@ var listCmd = &cobra.Command{
 						project:  projectStr,
 						status:   statusStr,
 						desc:     desc,
-						created:  t.CreatedAt.Format("2006-01-02"),
+						created:  ui.FormatDate(t.CreatedAt, cfg),
 					age:      t.AgeString(),
 					due:      dueStr,
 					sch:      schStr,

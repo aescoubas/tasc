@@ -18,15 +18,78 @@ func NewSQLiteStore(db *sql.DB) *SQLiteStore {
 	return &SQLiteStore{db: db}
 }
 
+func (s *SQLiteStore) generateUniqueShortName(name string) (string, error) {
+	clean := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		if r >= 'A' && r <= 'Z' {
+			return r + 32 // to lower
+		}
+		return -1
+	}, name)
+
+	if len(clean) == 0 {
+		clean = "unk"
+	}
+
+	candidates := []string{}
+	
+	// If short, try as is
+	if len(clean) <= 3 {
+		candidates = append(candidates, clean)
+	} else {
+		// Try prefix
+		candidates = append(candidates, clean[:3])
+	}
+	if len(clean) >= 4 {
+		candidates = append(candidates, clean[:4])
+	}
+	// Fallback numbers
+	for i := 1; i <= 20; i++ {
+		candidates = append(candidates, fmt.Sprintf("%s%d", clean[:2], i))
+	}
+
+	for _, cand := range candidates {
+		var exists int
+		err := s.db.QueryRow("SELECT COUNT(*) FROM projects WHERE short_name = ?", cand).Scan(&exists)
+		if err != nil {
+			return "", err
+		}
+		if exists == 0 {
+			return cand, nil
+		}
+	}
+	
+	// Ultimate fallback
+	return fmt.Sprintf("%s%d", clean[:2], time.Now().Unix()%1000), nil
+}
+
 func (s *SQLiteStore) ensureProjectExists(name string) error {
 	if name == "" {
 		return nil
 	}
-	// Insert if new, or update status to active if existing
-	// SQLite UPSERT syntax:
-	query := `INSERT INTO projects (name, description, status) VALUES (?, '', 'active') 
-	          ON CONFLICT(name) DO UPDATE SET status = 'active'`
-	_, err := s.db.Exec(query, name)
+	
+	// Check if exists first to avoid generating short name unnecessarily
+	var exists int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM projects WHERE name = ?", name).Scan(&exists)
+	if err != nil {
+		return err
+	}
+	if exists > 0 {
+		// Just ensure it is active
+		_, err := s.db.Exec("UPDATE projects SET status = 'active' WHERE name = ?", name)
+		return err
+	}
+
+	// Create new
+	shortName, err := s.generateUniqueShortName(name)
+	if err != nil {
+		return err
+	}
+
+	query := `INSERT INTO projects (name, short_name, description, status) VALUES (?, ?, '', 'active')`
+	_, err = s.db.Exec(query, name, shortName)
 	return err
 }
 
@@ -532,7 +595,7 @@ func (s *SQLiteStore) GetDependencies() ([]models.TaskDependency, error) {
 
 func (s *SQLiteStore) ListProjects() ([]models.Project, error) {
 	query := `
-		SELECT name, description, parent, status, due_at, created_at
+		SELECT name, description, parent, status, due_at, created_at, short_name
 		FROM projects ORDER BY name
 	`
 	rows, err := s.db.Query(query)
@@ -544,15 +607,16 @@ func (s *SQLiteStore) ListProjects() ([]models.Project, error) {
 	var projects []models.Project
 	for rows.Next() {
 		var p models.Project
-		var desc, parent, status sql.NullString
+		var desc, parent, status, sn sql.NullString
 		var due sql.NullTime
 		
-		err := rows.Scan(&p.Name, &desc, &parent, &status, &due, &p.CreatedAt)
+		err := rows.Scan(&p.Name, &desc, &parent, &status, &due, &p.CreatedAt, &sn)
 		if err != nil {
 			continue
 		}
 		p.Description = desc.String
 		p.Parent = parent.String
+		p.ShortName = sn.String
 		p.Status = models.ProjectStatus(status.String)
 		if due.Valid {
 			p.DueAt = &due.Time
@@ -563,20 +627,21 @@ func (s *SQLiteStore) ListProjects() ([]models.Project, error) {
 }
 
 func (s *SQLiteStore) GetProject(name string) (models.Project, error) {
-	query := `SELECT name, description, parent, status, due_at, created_at FROM projects WHERE name = ?`
+	query := `SELECT name, description, parent, status, due_at, created_at, short_name FROM projects WHERE name = ?`
 	row := s.db.QueryRow(query, name)
 	
 	var p models.Project
-	var desc, parent, status sql.NullString
+	var desc, parent, status, sn sql.NullString
 	var due sql.NullTime
 
-	err := row.Scan(&p.Name, &desc, &parent, &status, &due, &p.CreatedAt)
+	err := row.Scan(&p.Name, &desc, &parent, &status, &due, &p.CreatedAt, &sn)
 	if err != nil {
 		return p, err
 	}
 
 	p.Description = desc.String
 	p.Parent = parent.String
+	p.ShortName = sn.String
 	p.Status = models.ProjectStatus(status.String)
 	if due.Valid {
 		p.DueAt = &due.Time
@@ -585,12 +650,20 @@ func (s *SQLiteStore) GetProject(name string) (models.Project, error) {
 }
 
 func (s *SQLiteStore) CreateProject(p models.Project) error {
-	query := `INSERT INTO projects (name, description, parent, due_at, status) VALUES (?, ?, ?, ?, ?)`
+	if p.ShortName == "" {
+		var err error
+		p.ShortName, err = s.generateUniqueShortName(p.Name)
+		if err != nil {
+			return err
+		}
+	}
+
+	query := `INSERT INTO projects (name, short_name, description, parent, due_at, status) VALUES (?, ?, ?, ?, ?, ?)`
 	var parent *string
 	if p.Parent != "" {
 		parent = &p.Parent
 	}
-	_, err := s.db.Exec(query, p.Name, p.Description, parent, p.DueAt, p.Status)
+	_, err := s.db.Exec(query, p.Name, p.ShortName, p.Description, parent, p.DueAt, p.Status)
 	return err
 }
 
@@ -607,8 +680,19 @@ func (s *SQLiteStore) UpdateProject(oldName string, p models.Project) error {
 		parent = &p.Parent
 	}
 
-	query := `UPDATE projects SET name = ?, description = ?, parent = ?, status = ?, due_at = ? WHERE name = ?`
-	_, err = tx.Exec(query, p.Name, p.Description, parent, p.Status, p.DueAt, oldName)
+	if p.ShortName == "" {
+		// Keep old if not provided? Or regenerate? 
+		// Assuming we keep old if empty is safer for simple renames unless explicit reset requested
+		// But let's fetch old if needed. For now, let's assume it's passed or we fetch it.
+		// Actually, let's just update what we have.
+		// Use a subquery or fetch-before-update pattern if we wanted partial updates, but this method replaces usually.
+		// Let's generate if missing to be safe, or just allow empty (DB allows null? No, should be strict).
+		// Let's generate if empty.
+		p.ShortName, _ = s.generateUniqueShortName(p.Name)
+	}
+
+	query := `UPDATE projects SET name = ?, short_name = ?, description = ?, parent = ?, status = ?, due_at = ? WHERE name = ?`
+	_, err = tx.Exec(query, p.Name, p.ShortName, p.Description, parent, p.Status, p.DueAt, oldName)
 	if err != nil {
 		return err
 	}

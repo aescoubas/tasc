@@ -136,13 +136,13 @@ var showCmd = &cobra.Command{
 		
 		dueStr := "-"
 		if t.DueAt != nil {
-			dueStr = t.DueAt.Format("2006-01-02")
+			dueStr = ui.FormatDate(*t.DueAt, cfg)
 		}
 		fmt.Printf("Due:           %s\n", dueStr)
 
 		schStr := "-"
 		if t.ScheduledAt != nil {
-			schStr = t.ScheduledAt.Format("2006-01-02")
+			schStr = ui.FormatDate(*t.ScheduledAt, cfg)
 		}
 		fmt.Printf("Scheduled:     %s\n", schStr)
 		

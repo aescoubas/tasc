@@ -59,6 +59,28 @@ func FormatRelative(t time.Time) string {
     if diff < 24*time.Hour {
         return prefix + fmt.Sprintf("%dh", int(diff.Hours())) + suffix
     }
-    return prefix + fmt.Sprintf("%dd", int(diff.Hours()/24)) + suffix
-}
-
+    	return prefix + fmt.Sprintf("%dd", int(diff.Hours()/24)) + suffix
+    }
+    
+    func FormatDate(t time.Time, cfg config.Config) string {
+    	format := cfg.DateFormat
+    	if format == "" {
+    		format = "02-01-2006"
+    	}
+    	
+    	// Map common user-friendly formats to Go layout
+    	switch format {
+    	case "YYYY-MM-DD":
+    		format = "2006-01-02"
+    	case "DD-MM-YYYY":
+    		format = "02-01-2006"
+    	case "MM-DD-YYYY":
+    		format = "01-02-2006"
+    	case "YYYY/MM/DD":
+    		format = "2006/01/02"
+    	case "DD/MM/YYYY":
+    		format = "02/01/2006"
+    	}
+    	
+    	return t.Format(format)
+    }

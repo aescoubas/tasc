@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
+	"time"
 )
 
 type Migration struct {
@@ -78,6 +80,90 @@ var migrations = []Migration{
 				return fmt.Errorf("failed to add schedule_block column: %w", err)
 			}
 			return nil
+		},
+	},
+	{
+		Version:     4,
+		Description: "Add short_name to projects",
+		Up: func(db *sql.DB) error {
+			// 1. Add Column
+			if _, err := db.Exec("ALTER TABLE projects ADD COLUMN short_name TEXT"); err != nil {
+				return fmt.Errorf("failed to add short_name column: %w", err)
+			}
+
+			// 2. Backfill
+			rows, err := db.Query("SELECT name FROM projects ORDER BY created_at")
+			if err != nil {
+				return err
+			}
+			var names []string
+			for rows.Next() {
+				var n string
+				rows.Scan(&n)
+				names = append(names, n)
+			}
+			rows.Close()
+
+			used := make(map[string]bool)
+			
+			// Helper to generate
+			gen := func(n string) string {
+				clean := strings.Map(func(r rune) rune {
+					if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+						return r
+					}
+					if r >= 'A' && r <= 'Z' {
+						return r + 32 // to lower
+					}
+					return -1
+				}, n)
+				
+				if len(clean) == 0 {
+					clean = "unk"
+				}
+
+				// If short enough, try as is first
+				if len(clean) <= 3 {
+					if !used[clean] { return clean }
+				}
+
+				// Try 3 chars
+				if len(clean) >= 3 {
+					c := clean[:3]
+					if !used[c] { return c }
+				}
+
+				// Try 4 chars
+				if len(clean) >= 4 {
+					c := clean[:4]
+					if !used[c] { return c }
+				}
+
+				// Try 1st + 3rd + 4th (skip vowels strategy simulation)
+				// Fallback to appended numbers
+				for i := 1; i < 100; i++ {
+					c := fmt.Sprintf("%s%d", clean[:2], i)
+					if !used[c] { return c }
+				}
+				
+				// Final fallback: unique by full name hash/append? 
+				// Just append more numbers
+				return clean[:3] + fmt.Sprintf("%d", time.Now().UnixNano()%1000)
+			}
+
+			tx, err := db.Begin()
+			if err != nil { return err }
+			defer tx.Rollback()
+
+			for _, name := range names {
+				sn := gen(name)
+				used[sn] = true
+				if _, err := tx.Exec("UPDATE projects SET short_name = ? WHERE name = ?", sn, name); err != nil {
+					return err
+				}
+			}
+			
+			return tx.Commit()
 		},
 	},
 }
@@ -177,6 +263,7 @@ func baselineSchema(db *sql.DB) error {
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS projects (
 			name TEXT PRIMARY KEY,
+			short_name TEXT,
 			description TEXT,
 			parent TEXT,
 			status TEXT DEFAULT 'active',
@@ -194,6 +281,7 @@ func baselineSchema(db *sql.DB) error {
 		"ALTER TABLE projects ADD COLUMN parent TEXT",
 		"ALTER TABLE projects ADD COLUMN status TEXT DEFAULT 'active'",
 		"ALTER TABLE projects ADD COLUMN due_at DATETIME",
+		"ALTER TABLE projects ADD COLUMN short_name TEXT",
 	}
 	for _, col := range projCols {
 		_, _ = db.Exec(col)

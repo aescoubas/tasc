@@ -3,14 +3,19 @@ package cmd
 import (
 	"database/sql"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"os/exec"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/aescoubas/tasc/internal/db"
+	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/parse"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+	"gopkg.in/yaml.v3"
 )
 
 // Flags
@@ -188,111 +193,170 @@ var projectCreateCmd = &cobra.Command{
 }
 
 var projectEditCmd = &cobra.Command{
-	Use:   "edit [old_name]",
-	Short: "Edit a project",
-	Args:  cobra.ExactArgs(1),
+	Use:     "edit [old_name]",
+	Aliases: []string{"modify"},
+	Short:   "Edit a project",
+	Args:    cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		oldName := args[0]
-
-		tx, err := db.DB.Begin()
-		if err != nil {
-			fmt.Printf("Error starting transaction: %v\n", err)
-			return
-		}
-		defer tx.Rollback()
-
-		var exists int
-		err = tx.QueryRow("SELECT 1 FROM projects WHERE name = ?", oldName).Scan(&exists)
-		if err != nil {
-			fmt.Printf("Project '%s' not found.\n", oldName)
-			return
-		}
-
-		if cmd.Flags().Changed("desc") {
-			_, err = tx.Exec("UPDATE projects SET description = ? WHERE name = ?", projDesc, oldName)
-			if err != nil {
-				fmt.Printf("Error updating description: %v\n", err)
-				return
-			}
-		}
 		
-		if cmd.Flags().Changed("parent") {
-			var p *string
-			if projParent != "" {
-				// Prevent circular? A -> B -> A
-				// Simple check: Parent cannot be self.
+		// 1. Fetch current project state
+		p, err := CurrentStore.GetProject(oldName)
+		if err != nil {
+			fmt.Printf("Error fetching project '%s': %v\n", oldName, err)
+			return
+		}
+
+		// 2. Check if flags are used
+		flagsChanged := false
+		cmd.Flags().Visit(func(f *pflag.Flag) {
+			flagsChanged = true
+		})
+
+		if flagsChanged {
+			// Apply flag overrides
+			if cmd.Flags().Changed("desc") {
+				p.Description = projDesc
+			}
+			if cmd.Flags().Changed("parent") {
 				if projParent == oldName {
 					fmt.Println("Cannot set parent to self.")
 					return
 				}
-				// Verify parent exists
-				var pExists int
-				err := tx.QueryRow("SELECT 1 FROM projects WHERE name = ?", projParent).Scan(&pExists)
+				// Verify parent exists if set
+				if projParent != "" {
+					_, err := CurrentStore.GetProject(projParent)
+					if err != nil {
+						fmt.Printf("Parent project '%s' not found.\n", projParent)
+						return
+					}
+				}
+				p.Parent = projParent
+			}
+			if cmd.Flags().Changed("due") {
+				if projDue == "" {
+					p.DueAt = nil
+				} else {
+					t, err := parse.Date(projDue)
+					if err != nil {
+						fmt.Printf("Invalid due date: %v\n", err)
+						return
+					}
+					p.DueAt = t
+				}
+			}
+			if cmd.Flags().Changed("status") {
+				p.Status = models.ProjectStatus(projStatus)
+			}
+			
+			// New Name handling
+			if cmd.Flags().Changed("name") && projNewName != "" {
+				p.Name = projNewName
+			}
+
+		} else {
+			// 3. Interactive Mode
+			type projectEditYAML struct {
+				Name        string `yaml:"name"`
+				ShortName   string `yaml:"short_name"`
+				Description string `yaml:"description"`
+				Parent      string `yaml:"parent,omitempty"`
+				Status      string `yaml:"status"` 
+				DueAt       string `yaml:"due_at,omitempty"`
+			}
+
+			// Map to YAML struct
+			y := projectEditYAML{
+				Name:        p.Name,
+				ShortName:   p.ShortName,
+				Description: p.Description,
+				Parent:      p.Parent,
+				Status:      string(p.Status),
+			}
+			if p.DueAt != nil {
+				y.DueAt = p.DueAt.Format("2006-01-02")
+			}
+
+			// Marshal
+			data, err := yaml.Marshal(y)
+			if err != nil {
+				fmt.Printf("Error preparing editor: %v\n", err)
+				return
+			}
+
+			// Create temp file
+			tmpfile, err := ioutil.TempFile("", "tasc-project-*.yaml")
+			if err != nil {
+				fmt.Printf("Error creating temp file: %v\n", err)
+				return
+			}
+			defer os.Remove(tmpfile.Name())
+
+			if _, err := tmpfile.Write(data); err != nil {
+				fmt.Printf("Error writing temp file: %v\n", err)
+				return
+			}
+			if err := tmpfile.Close(); err != nil {
+				fmt.Printf("Error closing temp file: %v\n", err)
+				return
+			}
+
+			// Open Editor
+			editor := os.Getenv("EDITOR")
+			if editor == "" {
+				editor = "vim"
+			}
+			
+			editCmd := exec.Command(editor, tmpfile.Name())
+			editCmd.Stdin = os.Stdin
+			editCmd.Stdout = os.Stdout
+			editCmd.Stderr = os.Stderr
+			
+			if err := editCmd.Run(); err != nil {
+				fmt.Printf("Error running editor: %v\n", err)
+				return
+			}
+
+			// Read back
+			newData, err := ioutil.ReadFile(tmpfile.Name())
+			if err != nil {
+				fmt.Printf("Error reading updated file: %v\n", err)
+				return
+			}
+
+			// Unmarshal
+			var newY projectEditYAML
+			if err := yaml.Unmarshal(newData, &newY); err != nil {
+				fmt.Printf("Error parsing YAML: %v\n", err)
+				return
+			}
+
+			// Apply back to p
+			p.Name = newY.Name
+			p.ShortName = newY.ShortName
+			p.Description = newY.Description
+			p.Parent = newY.Parent
+			p.Status = models.ProjectStatus(newY.Status)
+			
+			if newY.DueAt != "" {
+				t, err := parse.Date(newY.DueAt)
 				if err != nil {
-					fmt.Printf("Parent project '%s' not found.\n", projParent)
+					fmt.Printf("Invalid due date in YAML: %v\n", err)
 					return
 				}
-				p = &projParent
-			}
-			_, err = tx.Exec("UPDATE projects SET parent = ? WHERE name = ?", p, oldName)
-			if err != nil {
-				fmt.Printf("Error updating parent: %v\n", err)
-				return
+				p.DueAt = t
+			} else {
+				p.DueAt = nil
 			}
 		}
 
-		if cmd.Flags().Changed("due") {
-			var d *time.Time
-			if projDue != "" {
-				t, err := parse.Date(projDue)
-				if err != nil {
-					fmt.Printf("Invalid due date: %v\n", err)
-					return
-				}
-				d = t
-			}
-			_, err = tx.Exec("UPDATE projects SET due_at = ? WHERE name = ?", d, oldName)
-			if err != nil {
-				fmt.Printf("Error updating due date: %v\n", err)
-				return
-			}
-		}
-
-		if cmd.Flags().Changed("status") {
-			_, err = tx.Exec("UPDATE projects SET status = ? WHERE name = ?", projStatus, oldName)
-			if err != nil {
-				fmt.Printf("Error updating status: %v\n", err)
-				return
-			}
-		}
-
-		if cmd.Flags().Changed("name") && projNewName != "" {
-			_, err = tx.Exec("UPDATE projects SET name = ? WHERE name = ?", projNewName, oldName)
-			if err != nil {
-				fmt.Printf("Error renaming project: %v\n", err)
-				return
-			}
-			// Update tasks
-			_, err = tx.Exec("UPDATE tasks SET project = ? WHERE project = ?", projNewName, oldName)
-			if err != nil {
-				fmt.Printf("Error updating tasks: %v\n", err)
-				return
-			}
-			// Update child projects
-			_, err = tx.Exec("UPDATE projects SET parent = ? WHERE parent = ?", projNewName, oldName)
-			if err != nil {
-				fmt.Printf("Error updating child projects: %v\n", err)
-				return
-			}
-
-			fmt.Printf("Project renamed to '%s'.\n", projNewName)
-		}
-
-		if err := tx.Commit(); err != nil {
-			fmt.Printf("Error committing changes: %v\n", err)
+		// 4. Update
+		if err := CurrentStore.UpdateProject(oldName, p); err != nil {
+			fmt.Printf("Error updating project: %v\n", err)
 			return
 		}
-		fmt.Println("Project updated.")
+		
+		fmt.Printf("Project '%s' updated.\n", p.Name)
 	},
 }
 
