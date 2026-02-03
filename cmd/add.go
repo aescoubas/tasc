@@ -115,6 +115,21 @@ func init() {
 	addCmd.Flags().StringVarP(&recurrenceFlag, "recurrence", "r", "", "Recurrence rule (e.g. 'daily', 'every 2 weeks')")
 	addCmd.Flags().StringVarP(&block, "block", "b", "", "Time block (e.g. morning, afternoon)")
 
+	addCmd.RegisterFlagCompletionFunc("project", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if CurrentStore == nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		projects, err := CurrentStore.ListProjects()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		var names []string
+		for _, p := range projects {
+			names = append(names, p.Name)
+		}
+		return names, cobra.ShellCompDirectiveNoFileComp
+	})
+
 	addCmd.RegisterFlagCompletionFunc("block", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		cfg, err := config.LoadConfig()
 		if err != nil {

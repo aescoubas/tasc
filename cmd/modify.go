@@ -131,6 +131,21 @@ func init() {
 	modifyCmd.Flags().StringVarP(&recurrenceFlag, "recurrence", "r", "", "Recurrence rule")
 	modifyCmd.Flags().StringVarP(&block, "block", "b", "", "Time block")
 
+	modifyCmd.RegisterFlagCompletionFunc("project", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if CurrentStore == nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		projects, err := CurrentStore.ListProjects()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		var names []string
+		for _, p := range projects {
+			names = append(names, p.Name)
+		}
+		return names, cobra.ShellCompDirectiveNoFileComp
+	})
+
 	modifyCmd.RegisterFlagCompletionFunc("block", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		cfg, err := config.LoadConfig()
 		if err != nil {
