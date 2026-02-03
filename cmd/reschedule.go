@@ -15,6 +15,14 @@ var rescheduleCmd = &cobra.Command{
 	Aliases: []string{"rsch", "mv"},
 	Short:   "Reschedule a task to a new date/time",
 	Args:    cobra.MinimumNArgs(2),
+	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) == 0 {
+			// TODO: Add task ID completion if desired
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		// Completion for the date part
+		return dateCompletionFunc(cmd, args, toComplete)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, err := config.LoadConfig()
 		if err != nil {

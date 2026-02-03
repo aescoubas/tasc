@@ -106,5 +106,14 @@ func PreprocessDate(s string) string {
 		return "in " + s
 	}
 
+	// 4. "monday" -> "next monday"
+	// We want to force next occurrence for weekdays, avoiding "past" or "today" ambiguity
+	reWeekday := regexp.MustCompile(`^(on\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b`)
+	if reWeekday.MatchString(s) {
+		// Replace the matching part (optional "on " + weekday) with "next weekday"
+		// $2 refers to the weekday capture group
+		return reWeekday.ReplaceAllString(s, "next $2")
+	}
+
 	return s
 }

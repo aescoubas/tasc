@@ -28,8 +28,14 @@ func TestPreprocessDate(t *testing.T) {
 		
 		// Unaffected
 		{"in 2 days", "in 2 days"}, // Already has 'in'
-		{"monday", "monday"},
 		{"2023-01-01", "2023-01-01"},
+
+		// Weekdays forced to next
+		{"monday", "next monday"},
+		{"friday", "next friday"},
+		{"on tuesday", "next tuesday"},
+		{"monday 5pm", "next monday 5pm"},
+		{"next monday", "next monday"}, // Should not be double-nexted because regex anchors to ^(on )?(monday...)
 	}
 
 	for _, tt := range tests {

@@ -573,5 +573,10 @@ func init() {
 		return names, cobra.ShellCompDirectiveNoFileComp
 	})
 
+	listCmd.RegisterFlagCompletionFunc("due-before", dateCompletionFunc)
+	listCmd.RegisterFlagCompletionFunc("due-after", dateCompletionFunc)
+	listCmd.RegisterFlagCompletionFunc("scheduled-before", dateCompletionFunc)
+	listCmd.RegisterFlagCompletionFunc("scheduled-after", dateCompletionFunc)
+
 	rootCmd.AddCommand(listCmd)
 }

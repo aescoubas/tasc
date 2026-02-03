@@ -486,6 +486,7 @@ func init() {
 	projectCreateCmd.Flags().StringVarP(&projDesc, "desc", "d", "", "Project description")
 	projectCreateCmd.Flags().StringVarP(&projParent, "parent", "p", "", "Parent project")
 	projectCreateCmd.Flags().StringVarP(&projDue, "due", "t", "", "Due date")
+	projectCreateCmd.RegisterFlagCompletionFunc("due", dateCompletionFunc)
 
 	projectCmd.AddCommand(projectEditCmd)
 	projectEditCmd.Flags().StringVarP(&projNewName, "name", "n", "", "New project name")
@@ -493,6 +494,7 @@ func init() {
 	projectEditCmd.Flags().StringVarP(&projParent, "parent", "p", "", "New parent project")
 	projectEditCmd.Flags().StringVarP(&projDue, "due", "t", "", "New due date")
 	projectEditCmd.Flags().StringVarP(&projStatus, "status", "s", "", "New status (active/archived)")
+	projectEditCmd.RegisterFlagCompletionFunc("due", dateCompletionFunc)
 
 	projectCmd.AddCommand(projectArchiveCmd)
 

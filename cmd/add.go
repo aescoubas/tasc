@@ -146,5 +146,8 @@ func init() {
 		}
 		return names, cobra.ShellCompDirectiveNoFileComp
 	})
+
+	addCmd.RegisterFlagCompletionFunc("due", dateCompletionFunc)
+	addCmd.RegisterFlagCompletionFunc("scheduled", dateCompletionFunc)
 }
 
