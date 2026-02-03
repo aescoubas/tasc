@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aescoubas/tasc/internal/config"
 	"github.com/aescoubas/tasc/internal/parse"
 	"github.com/spf13/cobra"
 )
@@ -105,6 +106,10 @@ var modifyCmd = &cobra.Command{
 			}
 		}
 
+		if cmd.Flags().Changed("block") {
+			t.ScheduleBlock = block
+		}
+
 		// Save updates
 		err = CurrentStore.UpdateTask(t)
 		if err != nil {
@@ -124,4 +129,17 @@ func init() {
 	modifyCmd.Flags().StringVarP(&scheduled, "scheduled", "s", "", "Scheduled date (YYYY-MM-DD)")
 	modifyCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate")
 	modifyCmd.Flags().StringVarP(&recurrenceFlag, "recurrence", "r", "", "Recurrence rule")
+	modifyCmd.Flags().StringVarP(&block, "block", "b", "", "Time block")
+
+	modifyCmd.RegisterFlagCompletionFunc("block", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		var names []string
+		for name := range cfg.TimeBlocks {
+			names = append(names, name)
+		}
+		return names, cobra.ShellCompDirectiveNoFileComp
+	})
 }

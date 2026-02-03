@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aescoubas/tasc/internal/config"
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/parse"
 	"github.com/spf13/cobra"
@@ -17,6 +18,7 @@ var (
 	scheduled      string
 	estimate       string
 	recurrenceFlag string
+	block          string
 )
 
 var addCmd = &cobra.Command{
@@ -51,6 +53,14 @@ var addCmd = &cobra.Command{
 			dueAt = scheduledAt
 		}
 
+		// Handle Block Default logic
+		if block == "" && scheduledAt != nil {
+			// If scheduled is date-only (floating), default to morning
+			if scheduledAt.Hour() == 0 && scheduledAt.Minute() == 0 {
+				block = "morning"
+			}
+		}
+
 		// Check project deadline
 		if project != "" {
 			p, err := CurrentStore.GetProject(project)
@@ -75,13 +85,14 @@ var addCmd = &cobra.Command{
 		}
 
 		task := models.Task{
-			Title:       title,
-			Description: description,
-			Project:     project,
-			DueAt:       dueAt,
-			ScheduledAt: scheduledAt,
-			Estimate:    estimate,
-			Recurrence:  recurrenceFlag,
+			Title:         title,
+			Description:   description,
+			Project:       project,
+			DueAt:         dueAt,
+			ScheduledAt:   scheduledAt,
+			ScheduleBlock: block,
+			Estimate:      estimate,
+			Recurrence:    recurrenceFlag,
 		}
 
 		id, err := CurrentStore.CreateTask(task)
@@ -102,5 +113,18 @@ func init() {
 	addCmd.Flags().StringVarP(&scheduled, "scheduled", "s", "", "Scheduled date (YYYY-MM-DD)")
 	addCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate (e.g. 2h, 30m)")
 	addCmd.Flags().StringVarP(&recurrenceFlag, "recurrence", "r", "", "Recurrence rule (e.g. 'daily', 'every 2 weeks')")
+	addCmd.Flags().StringVarP(&block, "block", "b", "", "Time block (e.g. morning, afternoon)")
+
+	addCmd.RegisterFlagCompletionFunc("block", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		var names []string
+		for name := range cfg.TimeBlocks {
+			names = append(names, name)
+		}
+		return names, cobra.ShellCompDirectiveNoFileComp
+	})
 }
 

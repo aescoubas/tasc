@@ -88,7 +88,7 @@ var calendarCmd = &cobra.Command{
 		}
 
 		// Apply Smart Auto-Schedule (Virtual Times)
-		tasks = scheduling.ApplyAutoSchedule(tasks)
+		tasks = scheduling.ApplyAutoSchedule(tasks, cfg.TimeBlocks)
 
 		// Render
 		width, _, err := term.GetSize(int(os.Stdout.Fd()))
@@ -100,9 +100,13 @@ var calendarCmd = &cobra.Command{
 
 		switch view {
 		case "day":
-			renderDayView(tasks, start, width, cfg)
+			renderTimeGrid([]time.Time{start}, tasks, width, cfg, now)
 		case "week":
-			renderWeekView(tasks, start, width, cfg, now)
+			var days []time.Time
+			for i := 0; i < 7; i++ {
+				days = append(days, start.AddDate(0, 0, i))
+			}
+			renderTimeGrid(days, tasks, width, cfg, now)
 		case "month":
 			renderMonthView(tasks, start, width, cfg, now)
 		case "quarter":
@@ -155,65 +159,119 @@ func fetchTasksInRange(start, end time.Time) ([]models.Task, error) {
 	return tasks, nil
 }
 
-func renderDayView(tasks []models.Task, date time.Time, width int, cfg config.Config) {
-	if len(tasks) == 0 {
-		fmt.Println("No tasks scheduled.")
-		return
+func renderTimeGrid(days []time.Time, tasks []models.Task, width int, cfg config.Config, now time.Time) {
+	// 1. Setup Grid Dimensions
+	// Left column: Time (e.g. "06:00") -> Fixed width 6 chars
+	timeColWidth := 6
+	dayColWidth := (width - timeColWidth) / len(days)
+	if dayColWidth < 10 {
+		dayColWidth = 10
 	}
-	for _, t := range tasks {
-		renderTaskLine(t, width, cfg)
-	}
-}
 
-func renderWeekView(tasks []models.Task, startOfWeek time.Time, width int, cfg config.Config, now time.Time) {
-	// Bucket tasks
-	dayTasks := make([][]models.Task, 7)
+	// 2. Define Time Range (Dynamic or Fixed? Fixed for now 06:00 - 23:00)
+	startHour := 6
+	endHour := 23
+
+	// 3. Bucket tasks by Day and Hour
+	// Map[dayIndex][hour] -> []Task
+	buckets := make(map[int]map[int][]models.Task)
+	for dIdx := range days {
+		buckets[dIdx] = make(map[int][]models.Task)
+	}
+
 	for _, t := range tasks {
-		targetTime := getTaskDate(t)
-		daysDiff := int(targetTime.Sub(startOfWeek).Hours() / 24)
-		if daysDiff >= 0 && daysDiff < 7 {
-			dayTasks[daysDiff] = append(dayTasks[daysDiff], t)
+		d := getTaskDate(t)
+		
+		// Find Day Index
+		dayIdx := -1
+		for i, day := range days {
+			if isSameDay(d, day) {
+				dayIdx = i
+				break
+			}
 		}
+		if dayIdx == -1 { continue }
+
+		// Bucket by Hour
+		h := d.Hour()
+		if h < startHour { h = startHour } // Clamp to view? or ignore? Clamp for visibility
+		if h > endHour { h = endHour }
+		
+		buckets[dayIdx][h] = append(buckets[dayIdx][h], t)
 	}
 
-	colWidth := (width / 7) - 2
-	if colWidth < 10 {
-		colWidth = 10
-	}
-
-	var columns []string
-	
+	// 4. Render Header
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color(cfg.Colors.Default)).
 		Align(lipgloss.Center).
-		Width(colWidth).
+		Width(dayColWidth).
 		PaddingBottom(1).
 		Border(lipgloss.NormalBorder(), false, false, true, false).
 		BorderForeground(lipgloss.Color("240"))
 
-	for i := 0; i < 7; i++ {
-		dayDate := startOfWeek.AddDate(0, 0, i)
-		dayName := dayDate.Format("Mon 02")
-		
-		isToday := isSameDay(dayDate, now)
+	var headerCells []string
+	// Empty cell for time column
+	headerCells = append(headerCells, lipgloss.NewStyle().Width(timeColWidth).Render(""))
+
+	for _, day := range days {
+		dayName := day.Format("Mon 02")
 		hStyle := headerStyle.Copy()
-		if isToday {
+		if isSameDay(day, now) {
 			hStyle = hStyle.Foreground(lipgloss.Color(cfg.Colors.Today)).Bold(true)
 		}
-
-		var cells []string
-		cells = append(cells, hStyle.Render(dayName))
-
-		for _, t := range dayTasks[i] {
-			cells = append(cells, renderTaskBox(t, colWidth, cfg))
-		}
-		
-		colContent := lipgloss.JoinVertical(lipgloss.Left, cells...)
-		columns = append(columns, colContent)
+		headerCells = append(headerCells, hStyle.Render(dayName))
 	}
-	
-	fmt.Println(lipgloss.JoinHorizontal(lipgloss.Top, columns...))
+	fmt.Println(lipgloss.JoinHorizontal(lipgloss.Top, headerCells...))
+
+	// 5. Render Time Rows
+	timeStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240")).
+		Width(timeColWidth).
+		Align(lipgloss.Right).
+		PaddingRight(1)
+
+	for h := startHour; h <= endHour; h++ {
+		var rowCells []string
+		
+		// Time Label
+		rowCells = append(rowCells, timeStyle.Render(fmt.Sprintf("%02d:00", h)))
+
+		// Day Columns
+		for dIdx := range days {
+			ts := buckets[dIdx][h]
+			
+			var cellContent []string
+			if len(ts) > 0 {
+				for _, t := range ts {
+					cellContent = append(cellContent, renderCompactTaskBox(t, dayColWidth, cfg))
+				}
+			} else {
+				// Empty placeholder to maintain column width? 
+				// Lipgloss JoinVertical might collapse empty strings.
+				// We can add a spacer or rely on fixed width cells if using a grid layout, 
+				// but here we are joining boxes.
+				// Let's add an empty box of width? No, just empty string is fine if we use JoinHorizontal correctly.
+				// Actually, to ensure alignment, we might need to pad.
+				// But since we print line by line, alignment depends on content width.
+				// Lipgloss styles usually enforce width.
+				cellContent = append(cellContent, lipgloss.NewStyle().Width(dayColWidth).Render(""))
+			}
+			
+			// Join tasks vertically within the hour cell
+			col := lipgloss.JoinVertical(lipgloss.Left, cellContent...)
+			// Ensure cell has full width
+			col = lipgloss.NewStyle().Width(dayColWidth).Render(col)
+			
+			rowCells = append(rowCells, col)
+		}
+
+		// Join Row
+		fmt.Println(lipgloss.JoinHorizontal(lipgloss.Top, rowCells...))
+		
+		// Add a separator line? Optional, maybe too noisy.
+		// fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("236")).Render(strings.Repeat("-", width)))
+	}
 }
 
 func renderMonthView(tasks []models.Task, startOfMonth time.Time, width int, cfg config.Config, now time.Time) {
@@ -471,27 +529,18 @@ func renderYearView(tasks []models.Task, startOfYear time.Time, width int, cfg c
 	fmt.Println(lipgloss.JoinVertical(lipgloss.Left, rows...))
 }
 
-func renderTaskBox(t models.Task, width int, cfg config.Config) string {
-	projStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(cfg.Colors.Default))
+func renderCompactTaskBox(t models.Task, width int, cfg config.Config) string {
 	baseStyle := ui.GetTaskStyle(t, cfg)
 	
 	taskStyle := baseStyle.Copy().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("240")).
-		Padding(0, 1).
+		Padding(0, 0).
 		Width(width - 2)
 
-	line1 := fmt.Sprintf("%d %s", t.ID, t.Project)
-	if len(line1) > width-4 {
-		line1 = line1[:width-4]
-	}
-	
 	desc := strings.ReplaceAll(t.Title, "\n", " ")
-	if len(desc) > width-6 {
-		desc = desc[:width-6] + ".."
-	}
 	
-	statusChar := " "
+	statusChar := ""
 	if t.IsBlocked {
 		statusChar = "🚫"
 	} else if t.Status == "done" {
@@ -500,12 +549,13 @@ func renderTaskBox(t models.Task, width int, cfg config.Config) string {
 		statusChar = "▶"
 	}
 
-	line2 := fmt.Sprintf("%s %s", statusChar, desc)
-	return taskStyle.Render(fmt.Sprintf("%s\n%s", projStyle.Render(line1), line2))
-}
-
-func renderTaskLine(t models.Task, width int, cfg config.Config) {
-	fmt.Println(ui.FormatTask(t, cfg))
+	// Compact format: "ID Proj Status Desc"
+	content := fmt.Sprintf("%d %s %s %s", t.ID, t.Project, statusChar, desc)
+	if len(content) > width-4 {
+		content = content[:width-4] + ".."
+	}
+	
+	return taskStyle.Render(content)
 }
 
 func getTaskDate(t models.Task) time.Time {

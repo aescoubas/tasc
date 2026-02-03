@@ -54,14 +54,14 @@ func (s *SQLiteStore) CreateTask(t models.Task) (int64, error) {
 		return 0, err
 	}
 
-	query := `INSERT INTO tasks (title, description, project, due_at, scheduled_at, estimate, recurrence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+	query := `INSERT INTO tasks (title, description, project, due_at, scheduled_at, schedule_block, estimate, recurrence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
 	stmt, err := s.db.Prepare(query)
 	if err != nil {
 		return 0, err
 	}
 	defer stmt.Close()
 
-	res, err := stmt.Exec(t.Title, t.Description, t.Project, t.DueAt, t.ScheduledAt, t.Estimate, t.Recurrence)
+	res, err := stmt.Exec(t.Title, t.Description, t.Project, t.DueAt, t.ScheduledAt, t.ScheduleBlock, t.Estimate, t.Recurrence)
 	if err != nil {
 		return 0, err
 	}
@@ -75,6 +75,7 @@ func (s *SQLiteStore) GetTask(id int64) (models.Task, error) {
 	var description sql.NullString
 	var dueAt sql.NullTime
 	var scheduledAt sql.NullTime
+	var scheduleBlock sql.NullString
 	var estimate sql.NullString
 	var recurrence sql.NullString
 	var activeStart sql.NullTime
@@ -83,14 +84,14 @@ func (s *SQLiteStore) GetTask(id int64) (models.Task, error) {
 
 	query := `SELECT 
 		id, title, description, project, status, created_at, 
-		completed_at, due_at, scheduled_at, estimate, 
+		completed_at, due_at, scheduled_at, schedule_block, estimate, 
 		recurrence, active_start, time_spent, reschedule_count 
 	FROM tasks WHERE id = ?`
 
 	row := s.db.QueryRow(query, id)
 	err := row.Scan(
 		&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt,
-		&completedAt, &dueAt, &scheduledAt, &estimate,
+		&completedAt, &dueAt, &scheduledAt, &scheduleBlock, &estimate,
 		&recurrence, &activeStart, &timeSpent, &t.RescheduleCount,
 	)
 
@@ -100,6 +101,7 @@ func (s *SQLiteStore) GetTask(id int64) (models.Task, error) {
 
 	t.Description = description.String
 	t.Project = project.String
+	t.ScheduleBlock = scheduleBlock.String
 	t.Estimate = estimate.String
 	t.Recurrence = recurrence.String
 	if dueAt.Valid {
@@ -133,8 +135,8 @@ func (s *SQLiteStore) UpdateTask(t models.Task) error {
 		return err
 	}
 
-	query := `UPDATE tasks SET title = ?, description = ?, project = ?, status = ?, due_at = ?, scheduled_at = ?, estimate = ?, recurrence = ?, reschedule_count = ? WHERE id = ?`
-	_, err = s.db.Exec(query, t.Title, t.Description, t.Project, t.Status, t.DueAt, t.ScheduledAt, t.Estimate, t.Recurrence, t.RescheduleCount, t.ID)
+	query := `UPDATE tasks SET title = ?, description = ?, project = ?, status = ?, due_at = ?, scheduled_at = ?, schedule_block = ?, estimate = ?, recurrence = ?, reschedule_count = ? WHERE id = ?`
+	_, err = s.db.Exec(query, t.Title, t.Description, t.Project, t.Status, t.DueAt, t.ScheduledAt, t.ScheduleBlock, t.Estimate, t.Recurrence, t.RescheduleCount, t.ID)
 	if err != nil {
 		return err
 	}
@@ -199,7 +201,7 @@ func (s *SQLiteStore) BatchUpdateTasks(ids []int64, updates map[string]interface
 	for k, v := range updates {
 		// Whitelist fields
 		switch k {
-		case "project", "status", "estimate", "recurrence", "title", "description":
+		case "project", "status", "estimate", "recurrence", "title", "description", "schedule_block":
 			sets = append(sets, fmt.Sprintf("%s = ?", k))
 			args = append(args, v)
 		case "due_at", "scheduled_at", "completed_at":
@@ -248,7 +250,7 @@ func (s *SQLiteStore) DeleteTask(id int64) error {
 func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) {
 	baseQuery := `
 		SELECT 
-			id, title, description, project, status, created_at, due_at, scheduled_at, estimate, active_start, time_spent, reschedule_count,
+			id, title, description, project, status, created_at, due_at, scheduled_at, schedule_block, estimate, active_start, time_spent, reschedule_count,
 			EXISTS(SELECT 1 FROM task_dependencies WHERE blocked_id = tasks.id) as is_blocked
 		FROM tasks 
 		WHERE 1=1
@@ -314,17 +316,19 @@ func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) 
 		var description sql.NullString
 		var dueAt sql.NullTime
 		var scheduledAt sql.NullTime
+		var scheduleBlock sql.NullString
 		var estimate sql.NullString
 		var activeStart sql.NullTime
 		var timeSpent sql.NullInt64
 		var isBlocked bool
 
-		err := rows.Scan(&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt, &dueAt, &scheduledAt, &estimate, &activeStart, &timeSpent, &t.RescheduleCount, &isBlocked)
+		err := rows.Scan(&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt, &dueAt, &scheduledAt, &scheduleBlock, &estimate, &activeStart, &timeSpent, &t.RescheduleCount, &isBlocked)
 		if err != nil {
 			continue
 		}
 		t.Description = description.String
 		t.Project = project.String
+		t.ScheduleBlock = scheduleBlock.String
 		t.IsBlocked = isBlocked
 
 		if dueAt.Valid {
@@ -459,7 +463,7 @@ func (s *SQLiteStore) StopTask(id int64) error {
 func (s *SQLiteStore) GetActiveTask() (*models.Task, error) {
 	query := `SELECT 
 		id, title, description, project, status, created_at, 
-		completed_at, due_at, scheduled_at, estimate, 
+		completed_at, due_at, scheduled_at, schedule_block, estimate, 
 		recurrence, active_start, time_spent, reschedule_count 
 	FROM tasks WHERE active_start IS NOT NULL LIMIT 1`
 
@@ -468,6 +472,7 @@ func (s *SQLiteStore) GetActiveTask() (*models.Task, error) {
 	var description sql.NullString
 	var dueAt sql.NullTime
 	var scheduledAt sql.NullTime
+	var scheduleBlock sql.NullString
 	var estimate sql.NullString
 	var recurrence sql.NullString
 	var activeStart sql.NullTime
@@ -477,7 +482,7 @@ func (s *SQLiteStore) GetActiveTask() (*models.Task, error) {
 	row := s.db.QueryRow(query)
 	err := row.Scan(
 		&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt,
-		&completedAt, &dueAt, &scheduledAt, &estimate,
+		&completedAt, &dueAt, &scheduledAt, &scheduleBlock, &estimate,
 		&recurrence, &activeStart, &timeSpent, &t.RescheduleCount,
 	)
 
@@ -490,6 +495,7 @@ func (s *SQLiteStore) GetActiveTask() (*models.Task, error) {
 
 	t.Description = description.String
 	t.Project = project.String
+	t.ScheduleBlock = scheduleBlock.String
 	t.Estimate = estimate.String
 	t.Recurrence = recurrence.String
 	if dueAt.Valid { t.DueAt = &dueAt.Time }

@@ -22,31 +22,41 @@ type Colors struct {
 	DefaultBg  string `yaml:"default_bg"`
 }
 
+type TimeBlock struct {
+	Start string `yaml:"start"` // HH:MM
+	End   string `yaml:"end"`   // HH:MM
+}
+
 type Config struct {
-	Colors    Colors `yaml:"colors"`
-	BackupDir string `yaml:"backup_dir"`
-	RelativeDates bool `yaml:"relative_dates"`
+	Colors        Colors               `yaml:"colors"`
+	BackupDir     string               `yaml:"backup_dir"`
+	RelativeDates bool                 `yaml:"relative_dates"`
+	TimeBlocks    map[string]TimeBlock `yaml:"time_blocks"`
 }
 
 func DefaultConfig() Config {
 	home, _ := os.UserHomeDir()
 	return Config{
 		Colors: Colors{
-			Overdue:   "1",   // ANSI Red
-			OverdueBg: "233", // Darker Grey
-			Today:     "1",   // ANSI Red
-			TodayBg:   "",
-			Tomorrow:  "11",  // ANSI Bright Yellow
+			Overdue:    "1",   // ANSI Red
+			OverdueBg:  "233", // Darker Grey
+			Today:      "1",   // ANSI Red
+			TodayBg:    "",
+			Tomorrow:   "11", // ANSI Bright Yellow
 			TomorrowBg: "",
-			Week:      "11",  // ANSI Bright Yellow
-			WeekBg:    "",
-			Blocked:   "240", // ANSI Dark Grey
-			BlockedBg: "",
-			Default:   "7",   // ANSI White/Light Grey
-			DefaultBg: "",
+			Week:       "11", // ANSI Bright Yellow
+			WeekBg:     "",
+			Blocked:    "240", // ANSI Dark Grey
+			BlockedBg:  "",
+			Default:    "7", // ANSI White/Light Grey
+			DefaultBg:  "",
 		},
-		BackupDir: filepath.Join(home, ".config", "tasc", "backups"),
+		BackupDir:     filepath.Join(home, ".config", "tasc", "backups"),
 		RelativeDates: true,
+		TimeBlocks: map[string]TimeBlock{
+			"morning":   {Start: "06:00", End: "12:00"},
+			"afternoon": {Start: "13:00", End: "18:00"},
+		},
 	}
 }
 

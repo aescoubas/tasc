@@ -110,7 +110,7 @@ var listCmd = &cobra.Command{
 		}
 
 		// Apply Smart Auto-Schedule (Virtual Times)
-		fetchedTasks = scheduling.ApplyAutoSchedule(fetchedTasks)
+		fetchedTasks = scheduling.ApplyAutoSchedule(fetchedTasks, cfg.TimeBlocks)
 
 		var tasks []taskWithScore
 		calc := priority.NewCalculator()

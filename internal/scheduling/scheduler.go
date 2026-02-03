@@ -4,15 +4,17 @@ import (
 	"sort"
 	"time"
 
+	"github.com/aescoubas/tasc/internal/config"
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/priority"
 )
 
 // ApplyAutoSchedule processes a list of tasks and assigns virtual ScheduledAt times
-// for "Floating" tasks (ScheduledAt is 00:00:00).
+// for "Floating" tasks.
+// A task is Floating if ScheduledAt has time 00:00:00 (or if ScheduleBlock is set).
 // It respects "Fixed" tasks (ScheduledAt has time) and stacks floating tasks
-// starting at 07:00 based on priority.
-func ApplyAutoSchedule(tasks []models.Task) []models.Task {
+// starting at 07:00 (or block start time) based on priority.
+func ApplyAutoSchedule(tasks []models.Task, blocks map[string]config.TimeBlock) []models.Task {
 	// 1. Group by Day
 	tasksByDay := make(map[string][]int) // "YYYY-MM-DD" -> []indices
 	for i, t := range tasks {
@@ -32,7 +34,7 @@ func ApplyAutoSchedule(tasks []models.Task) []models.Task {
 
 		for _, idx := range indices {
 			t := tasks[idx]
-			if isFloating(*t.ScheduledAt) {
+			if isFloating(t) {
 				floating = append(floating, idx)
 			} else {
 				fixed = append(fixed, idx)
@@ -42,11 +44,6 @@ func ApplyAutoSchedule(tasks []models.Task) []models.Task {
 		if len(floating) == 0 {
 			continue
 		}
-
-		// Sort Floating by Priority
-		sort.Slice(floating, func(i, j int) bool {
-			return calc.Calculate(tasks[floating[i]]) > calc.Calculate(tasks[floating[j]])
-		})
 
 		// Sort Fixed by Time (for collision detection optimization)
 		sort.Slice(fixed, func(i, j int) bool {
@@ -67,50 +64,82 @@ func ApplyAutoSchedule(tasks []models.Task) []models.Task {
 			busy = append(busy, Interval{start, end})
 		}
 
-		// Assign times to Floating
-		// Start at 07:00 on that day
-		day := *tasks[floating[0]].ScheduledAt // They all share the day
-		cursor := time.Date(day.Year(), day.Month(), day.Day(), 7, 0, 0, 0, day.Location())
-
+		// Group Floating by Block
+		floatingByBlock := make(map[string][]int)
 		for _, idx := range floating {
-			dur := getDuration(tasks[idx])
-			
-			// Find a slot
-			for {
-				candidateStart := cursor
-				candidateEnd := cursor.Add(dur)
-				
-				// Check collision
-				collision := false
-				var nextAvailable time.Time
-				
-				for _, interval := range busy {
-					// Overlap logic: Start < IntervalEnd AND End > IntervalStart
-					if candidateStart.Before(interval.End) && candidateEnd.After(interval.Start) {
-						collision = true
-						nextAvailable = interval.End
-						break // Optimization: Pick first collision to jump over? Or closest? 
-						// Because 'busy' is sorted, we encounter them in order.
-					}
-				}
+			blockName := tasks[idx].ScheduleBlock
+			floatingByBlock[blockName] = append(floatingByBlock[blockName], idx)
+		}
 
-				if !collision {
-					// Found a slot!
-					// Assign virtual time
-					// We must create a new Time object to avoid referencing the shared 00:00 object
-					newTime := candidateStart
-					tasks[idx].ScheduledAt = &newTime
+		// Sort block keys to process in order (e.g. Morning before Afternoon)
+		// We use the start time of the block to sort.
+		blockNames := make([]string, 0, len(floatingByBlock))
+		for name := range floatingByBlock {
+			blockNames = append(blockNames, name)
+		}
+		
+		sort.Slice(blockNames, func(i, j int) bool {
+			nameI := blockNames[i]
+			nameJ := blockNames[j]
+			
+			// Generic/Empty block treatment:
+			// If empty, treat as 07:00 (legacy default)
+			startI := getBlockStart(nameI, blocks)
+			startJ := getBlockStart(nameJ, blocks)
+			
+			return startI < startJ
+		})
+
+		// Process each block group
+		day := *tasks[floating[0]].ScheduledAt // Shared day
+		
+		for _, blockName := range blockNames {
+			blockIndices := floatingByBlock[blockName]
+
+			// Sort by Priority within block
+			sort.Slice(blockIndices, func(i, j int) bool {
+				return calc.Calculate(tasks[blockIndices[i]]) > calc.Calculate(tasks[blockIndices[j]])
+			})
+
+			// Determine Start Time
+			startStr := getBlockStart(blockName, blocks)
+			// Parse HH:MM
+			startTime, _ := time.Parse("15:04", startStr)
+			
+			cursor := time.Date(day.Year(), day.Month(), day.Day(), startTime.Hour(), startTime.Minute(), 0, 0, day.Location())
+
+			for _, idx := range blockIndices {
+				dur := getDuration(tasks[idx])
+				
+				// Find a slot
+				for {
+					candidateStart := cursor
+					candidateEnd := cursor.Add(dur)
 					
-					// Add to busy (so next floating doesn't overlap this one)
-					busy = append(busy, Interval{candidateStart, candidateEnd})
-					// Resort busy? Or just append. Append is fine if we check all.
+					// Check collision
+					collision := false
+					var nextAvailable time.Time
 					
-					// Move cursor
-					cursor = candidateEnd
-					break
-				} else {
-					// Jump cursor
-					cursor = nextAvailable
+					for _, interval := range busy {
+						// Overlap logic: Start < IntervalEnd AND End > IntervalStart
+						if candidateStart.Before(interval.End) && candidateEnd.After(interval.Start) {
+							collision = true
+							nextAvailable = interval.End
+							break 
+						}
+					}
+
+					if !collision {
+						// Found a slot!
+						newTime := candidateStart
+						tasks[idx].ScheduledAt = &newTime
+						
+						busy = append(busy, Interval{candidateStart, candidateEnd})
+						cursor = candidateEnd
+						break
+					} else {
+						cursor = nextAvailable
+					}
 				}
 			}
 		}
@@ -119,8 +148,27 @@ func ApplyAutoSchedule(tasks []models.Task) []models.Task {
 	return tasks
 }
 
-func isFloating(t time.Time) bool {
-	return t.Hour() == 0 && t.Minute() == 0 && t.Second() == 0
+func isFloating(t models.Task) bool {
+	if t.ScheduledAt == nil {
+		return false
+	}
+	// If ScheduleBlock is explicit, it's floating (even if time is set, we might override? No, if time is set it's fixed usually)
+	// But requirement says "schedules it for tomorrow morning block".
+	// If the user adds --scheduled tomorrow --block morning, scheduledAt is 00:00.
+	// So checking for 00:00 is correct for date-only scheduling.
+	// What if user sets 06:00 AND block morning? Then it's Fixed at 06:00, but tagged as Morning.
+	// In that case, we should treat it as Fixed.
+	return t.ScheduledAt.Hour() == 0 && t.ScheduledAt.Minute() == 0 && t.ScheduledAt.Second() == 0
+}
+
+func getBlockStart(name string, blocks map[string]config.TimeBlock) string {
+	if name == "" {
+		return "07:00" // Default start for generic floating tasks
+	}
+	if b, ok := blocks[name]; ok {
+		return b.Start
+	}
+	return "07:00" // Fallback
 }
 
 func getDuration(t models.Task) time.Duration {

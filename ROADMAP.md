@@ -99,3 +99,11 @@
 - [x] **Rich Descriptions:** Add a new optional, multi-line `description` field for detailed notes.
 - [x] **View Updates:** Display `title` in `tasc list` and the full `description` only in `tasc show`.
 - [x] **Editor Integration:** Ensure `tasc edit` opens the multi-line description in the system's preferred text editor for easy modification.
+
+## Phase 18: Time Blocking & Scheduling Improvements
+- [x] **Configurable Time Blocks:** Support user-defined daily time blocks (e.g., "morning", "afternoon") with specific time ranges.
+- [x] **Default Configuration:** Set defaults to Morning (06:00-12:00) and Afternoon (13:00-18:00).
+- [x] **Block-Based Scheduling:** Update scheduling logic so tasks without specific times default to the "morning" block of the target day (e.g., `tasc add ...` defaults to tomorrow morning).
+- [x] **CLI Integration:** Add `--block` option to `add` and `modify` commands to explicitly assign tasks to blocks.
+- [x] **Autocomplete:** Ensure shell completion supports block names.
+- [x] **Calendar Grid View:** Update daily and weekly calendar views to show a time grid with hour labels and compact task visualization.

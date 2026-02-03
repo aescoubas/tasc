@@ -70,6 +70,16 @@ var migrations = []Migration{
 			return nil
 		},
 	},
+	{
+		Version:     3,
+		Description: "Add schedule_block column",
+		Up: func(db *sql.DB) error {
+			if _, err := db.Exec("ALTER TABLE tasks ADD COLUMN schedule_block TEXT"); err != nil {
+				return fmt.Errorf("failed to add schedule_block column: %w", err)
+			}
+			return nil
+		},
+	},
 }
 
 // RunMigrations executes pending migrations.

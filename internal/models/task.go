@@ -26,6 +26,7 @@ type Task struct {
 	CompletedAt *time.Time `json:"completed_at,omitempty" yaml:"completed_at,omitempty"`
 	DueAt       *time.Time `json:"due_at,omitempty" yaml:"due_at,omitempty"`
 	ScheduledAt *time.Time `json:"scheduled_at,omitempty" yaml:"scheduled_at,omitempty"`
+	ScheduleBlock string     `json:"schedule_block,omitempty" yaml:"schedule_block,omitempty"`
 	Estimate    string     `json:"estimate,omitempty" yaml:"estimate,omitempty"`
 	Recurrence  string     `json:"recurrence,omitempty" yaml:"recurrence,omitempty"`
 	ActiveStart *time.Time `json:"active_start,omitempty" yaml:"active_start,omitempty"`
