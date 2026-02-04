@@ -27,6 +27,43 @@ var deleteCmd = &cobra.Command{
 			return
 		}
 
+		// Validation Loop
+		var approvedIDs []int64
+		confirmAll := false
+
+		for _, id := range ids {
+			// If we already confirmed all, just add and continue
+			if confirmAll {
+				approvedIDs = append(approvedIDs, id)
+				continue
+			}
+
+			// Fetch task to show title
+			t, err := CurrentStore.GetTask(id)
+			if err != nil {
+				fmt.Printf("Task %d not found or error fetching: %v. Skipping.\n", id, err)
+				continue
+			}
+
+			res := AskConfirmation(fmt.Sprintf("Delete task %d '%s'?", t.ID, t.Title))
+			switch res {
+			case ConfirmYes:
+				approvedIDs = append(approvedIDs, id)
+			case ConfirmAll:
+				confirmAll = true
+				approvedIDs = append(approvedIDs, id)
+			case ConfirmNo:
+				// skip
+			}
+		}
+
+		ids = approvedIDs
+
+		if len(ids) == 0 {
+			fmt.Println("No tasks selected for deletion.")
+			return
+		}
+
 		// Handle recurrence prompt ONLY if single task is being deleted.
 		// For batch delete, we assume user knows what they are doing or we skip recurrence logic 
 		// (or implicitly stop it). Prompting for 10 tasks is bad UX.

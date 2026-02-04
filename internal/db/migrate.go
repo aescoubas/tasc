@@ -263,7 +263,6 @@ func baselineSchema(db *sql.DB) error {
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS projects (
 			name TEXT PRIMARY KEY,
-			short_name TEXT,
 			description TEXT,
 			parent TEXT,
 			status TEXT DEFAULT 'active',
@@ -281,7 +280,6 @@ func baselineSchema(db *sql.DB) error {
 		"ALTER TABLE projects ADD COLUMN parent TEXT",
 		"ALTER TABLE projects ADD COLUMN status TEXT DEFAULT 'active'",
 		"ALTER TABLE projects ADD COLUMN due_at DATETIME",
-		"ALTER TABLE projects ADD COLUMN short_name TEXT",
 	}
 	for _, col := range projCols {
 		_, _ = db.Exec(col)

@@ -111,6 +111,40 @@ var modifyCmd = &cobra.Command{
 			// Unless single task...
 		}
 
+		// Validation Loop
+		var approvedIDs []int64
+		confirmAll := false
+
+		for _, id := range ids {
+			if confirmAll {
+				approvedIDs = append(approvedIDs, id)
+				continue
+			}
+
+			t, err := CurrentStore.GetTask(id)
+			if err != nil {
+				fmt.Printf("Task %d not found or error fetching: %v. Skipping.\n", id, err)
+				continue
+			}
+
+			res := AskConfirmation(fmt.Sprintf("Modify task %d '%s'?", t.ID, t.Title))
+			switch res {
+			case ConfirmYes:
+				approvedIDs = append(approvedIDs, id)
+			case ConfirmAll:
+				confirmAll = true
+				approvedIDs = append(approvedIDs, id)
+			case ConfirmNo:
+				// skip
+			}
+		}
+
+		ids = approvedIDs
+		if len(ids) == 0 {
+			fmt.Println("No tasks selected for modification.")
+			return
+		}
+
 		// Recurrence Prompt Logic (Single Task Only)
 		if len(ids) == 1 {
 			t, err := CurrentStore.GetTask(ids[0])
