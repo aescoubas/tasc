@@ -12,6 +12,7 @@ var doneCmd = &cobra.Command{
 	Use:   "done [id...]",
 	Short: "Mark task(s) as completed",
 	Args:  cobra.MinimumNArgs(1),
+	ValidArgsFunction: pendingTaskIDCompletionFunc,
 	Run: func(cmd *cobra.Command, args []string) {
 		var ids []int64
 		for _, arg := range args {

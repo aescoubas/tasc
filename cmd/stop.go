@@ -18,6 +18,7 @@ var stopCmd = &cobra.Command{
 		}
 		return nil
 	},
+	ValidArgsFunction: activeTaskIDCompletionFunc,
 	Run: func(cmd *cobra.Command, args []string) {
 		var targetID int64 = -1
 		if len(args) > 0 {

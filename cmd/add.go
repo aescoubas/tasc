@@ -113,7 +113,7 @@ var addCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(addCmd)
 	addCmd.Flags().StringVarP(&project, "project", "p", "", "Project name")
-	addCmd.Flags().StringVarP(&description, "desc", "m", "", "Detailed description")
+	addCmd.Flags().StringVarP(&description, "description", "m", "", "Detailed description")
 	addCmd.Flags().StringVarP(&due, "due", "d", "", "Due date (YYYY-MM-DD)")
 	addCmd.Flags().StringVarP(&scheduled, "scheduled", "s", "", "Scheduled date (YYYY-MM-DD)")
 	addCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate (e.g. 2h, 30m)")
@@ -136,5 +136,6 @@ func init() {
 
 	addCmd.RegisterFlagCompletionFunc("due", dateCompletionFunc)
 	addCmd.RegisterFlagCompletionFunc("scheduled", dateCompletionFunc)
+	addCmd.RegisterFlagCompletionFunc("recurrence", recurrenceCompletionFunc)
 }
 

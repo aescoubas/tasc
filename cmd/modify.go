@@ -15,6 +15,7 @@ var modifyCmd = &cobra.Command{
 	Short: "Modify task(s)",
 	Long:  "Modify one or more tasks. If multiple IDs are provided, only flags (e.g. --due, --project) are applied. If a single ID is provided, you can also update the title.",
 	Args:  cobra.MinimumNArgs(1),
+	ValidArgsFunction: taskIDCompletionFunc,
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, err := config.LoadConfig()
 		if err != nil {
@@ -56,7 +57,7 @@ var modifyCmd = &cobra.Command{
 			updates["title"] = strings.Join(titleParts, " ")
 		}
 
-		if cmd.Flags().Changed("desc") {
+		if cmd.Flags().Changed("description") {
 			updates["description"] = description
 		}
 		if cmd.Flags().Changed("project") {
@@ -184,7 +185,7 @@ var modifyCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(modifyCmd)
 	modifyCmd.Flags().StringVarP(&project, "project", "p", "", "Project name")
-	modifyCmd.Flags().StringVarP(&description, "desc", "m", "", "Detailed description")
+	modifyCmd.Flags().StringVarP(&description, "description", "m", "", "Detailed description")
 	modifyCmd.Flags().StringVarP(&due, "due", "d", "", "Due date (YYYY-MM-DD)")
 	modifyCmd.Flags().StringVarP(&scheduled, "scheduled", "s", "", "Scheduled date (YYYY-MM-DD)")
 	modifyCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate")
@@ -220,4 +221,5 @@ func init() {
 
 	modifyCmd.RegisterFlagCompletionFunc("due", dateCompletionFunc)
 	modifyCmd.RegisterFlagCompletionFunc("scheduled", dateCompletionFunc)
+	modifyCmd.RegisterFlagCompletionFunc("recurrence", recurrenceCompletionFunc)
 }

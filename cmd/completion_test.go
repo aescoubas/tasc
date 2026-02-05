@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"testing"
+	"time"
 
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/store"
@@ -14,7 +15,16 @@ func (m *mockStore) CreateTask(t models.Task) (int64, error) { return 0, nil }
 func (m *mockStore) GetTask(id int64) (models.Task, error) { return models.Task{}, nil }
 func (m *mockStore) UpdateTask(t models.Task) error { return nil }
 func (m *mockStore) DeleteTask(id int64) error { return nil }
-func (m *mockStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) { return nil, nil }
+func (m *mockStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) {
+	tNow := time.Now()
+	return []models.Task{
+		{ID: 1, Title: "Task 1", Status: "ongoing"},
+		{ID: 2, Title: "Task 2", Status: "done"},
+		{ID: 3, Title: "Task 3", Status: "deleted"},
+		{ID: 4, Title: "Task 4", Status: "ongoing", ActiveStart: nil},
+		{ID: 5, Title: "Task 5", Status: "ongoing", ActiveStart: &tNow},
+	}, nil
+}
 func (m *mockStore) MarkDone(id int64) error { return nil }
 func (m *mockStore) StartTask(id int64) error { return nil }
 func (m *mockStore) StopTask(id int64) error { return nil }
@@ -136,5 +146,69 @@ func TestDateCompletionFunc(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRecurrenceCompletionFunc(t *testing.T) {
+	tests := []struct {
+		toComplete string
+		contains   []string
+	}{
+		{
+			toComplete: "wee",
+			contains:   []string{"weekly", "weekdays"},
+		},
+		{
+			toComplete: "da",
+			contains:   []string{"daily"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.toComplete, func(t *testing.T) {
+			got, _ := recurrenceCompletionFunc(&cobra.Command{}, nil, tt.toComplete)
+			for _, c := range tt.contains {
+				found := false
+				for _, g := range got {
+					if g == c {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected %q in results, got %v", c, got)
+				}
+			}
+		})
+	}
+}
+
+func TestTaskIDCompletionFunc(t *testing.T) {
+	originalStore := CurrentStore
+	CurrentStore = &mockStore{}
+	defer func() { CurrentStore = originalStore }()
+
+	// Test taskIDCompletionFunc (should exclude deleted)
+	got, _ := taskIDCompletionFunc(&cobra.Command{}, nil, "")
+	// IDs 1, 2, 4, 5 are visible. ID 3 is deleted.
+	// 4 tasks.
+	if len(got) != 4 {
+		t.Errorf("taskIDCompletionFunc: got %d tasks, want 4", len(got))
+	}
+	
+	// Test activeTaskIDCompletionFunc
+	gotActive, _ := activeTaskIDCompletionFunc(&cobra.Command{}, nil, "")
+	// Only task 5 has ActiveStart
+	if len(gotActive) != 1 {
+		t.Errorf("activeTaskIDCompletionFunc: got %d tasks, want 1", len(gotActive))
+	}
+
+	// Test pendingTaskIDCompletionFunc
+	gotPending, _ := pendingTaskIDCompletionFunc(&cobra.Command{}, nil, "")
+	// Excludes done (ID 2) and deleted (ID 3).
+	// Should have ID 1, 4, 5.
+	// 3 tasks.
+	if len(gotPending) != 3 {
+		t.Errorf("pendingTaskIDCompletionFunc: got %d tasks, want 3", len(gotPending))
 	}
 }

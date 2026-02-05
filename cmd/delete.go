@@ -12,6 +12,7 @@ var deleteCmd = &cobra.Command{
 	Use:   "delete [id...]",
 	Short: "Delete task(s)",
 	Args:  cobra.MinimumNArgs(1),
+	ValidArgsFunction: taskIDCompletionFunc,
 	Run: func(cmd *cobra.Command, args []string) {
 		var ids []int64
 		for _, arg := range args {
