@@ -37,3 +37,20 @@ func dateCompletionFunc(cmd *cobra.Command, args []string, toComplete string) ([
 
 	return filtered, cobra.ShellCompDirectiveNoFileComp
 }
+
+func projectCompletionFunc(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if CurrentStore == nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
+	projects, err := CurrentStore.ListProjects()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
+	var names []string
+	for _, p := range projects {
+		if strings.HasPrefix(p.Name, toComplete) {
+			names = append(names, p.Name)
+		}
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
+}

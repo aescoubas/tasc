@@ -558,20 +558,7 @@ func init() {
 	listCmd.Flags().Float64Var(&filterScoreMin, "score-min", 0, "Minimum priority score")
 	listCmd.Flags().Float64Var(&filterScoreMax, "score-max", 0, "Maximum priority score")
 
-	listCmd.RegisterFlagCompletionFunc("project", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		if CurrentStore == nil {
-			return nil, cobra.ShellCompDirectiveError
-		}
-		projects, err := CurrentStore.ListProjects()
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
-		}
-		var names []string
-		for _, p := range projects {
-			names = append(names, p.Name)
-		}
-		return names, cobra.ShellCompDirectiveNoFileComp
-	})
+	listCmd.RegisterFlagCompletionFunc("project", projectCompletionFunc)
 
 	listCmd.RegisterFlagCompletionFunc("due-before", dateCompletionFunc)
 	listCmd.RegisterFlagCompletionFunc("due-after", dateCompletionFunc)

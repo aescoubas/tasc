@@ -69,6 +69,7 @@ func init() {
 	logCmd.Flags().StringVarP(&scheduled, "scheduled", "s", "", "Scheduled date (YYYY-MM-DD)")
 	logCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate (e.g. 2h, 30m)")
 
+	logCmd.RegisterFlagCompletionFunc("project", projectCompletionFunc)
 	logCmd.RegisterFlagCompletionFunc("due", dateCompletionFunc)
 	logCmd.RegisterFlagCompletionFunc("scheduled", dateCompletionFunc)
 }
