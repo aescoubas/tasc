@@ -93,11 +93,34 @@ func PreprocessDate(s string) string {
 
 	// 1. Split number and unit if stuck together: "10days" -> "10 days"
 	re := regexp.MustCompile(`^(\d+)([a-zA-Z]+)$`)
-	s = re.ReplaceAllString(s, "$1 $2")
+	if matches := re.FindStringSubmatch(s); len(matches) == 3 {
+		num := matches[1]
+		unit := matches[2]
+		
+		if num != "1" {
+			// Normalize singular units to plural for consistency if > 1
+			switch strings.ToLower(unit) {
+			case "day":
+				unit = "days"
+			case "week":
+				unit = "weeks"
+			case "month":
+				unit = "months"
+			case "year":
+				unit = "years"
+			}
+		}
+		s = num + " " + unit
+	} else {
+		s = re.ReplaceAllString(s, "$1 $2")
+	}
 
-	// 2. "week" -> "next week"
+	// 2. "week" -> "next week", "month" -> "next month"
 	if s == "week" {
 		return "next week"
+	}
+	if s == "month" {
+		return "next month"
 	}
 
 	// 3. If it looks like a duration "10 days", "2 weeks", prepend "in " to force future
