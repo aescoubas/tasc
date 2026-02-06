@@ -53,8 +53,21 @@ var addCmd = &cobra.Command{
 			scheduledAt = t
 		}
 
-		// If scheduled is set but due is not, default due to scheduled
-		if dueAt == nil && scheduledAt != nil {
+		// Defaulting Logic:
+		// 1. If neither is set, default both to 1 week from today
+		if dueAt == nil && scheduledAt == nil {
+			t, err := parse.Date("in 1 week", cfg.EndOfDay)
+			if err == nil {
+				dueAt = t
+				scheduledAt = t
+			}
+		}
+
+		// 2. If one is set, sync the other
+		if dueAt != nil && scheduledAt == nil {
+			scheduledAt = dueAt
+		}
+		if scheduledAt != nil && dueAt == nil {
 			dueAt = scheduledAt
 		}
 

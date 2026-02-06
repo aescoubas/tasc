@@ -1,109 +1,370 @@
-# Roadmap
+# Draw Project Roadmap
+*Technomancer Standard v1.0*
 
-## Phase 1: Core Task & Project Management
+## 1. Context Profile
+*The Agent MUST read these files at the start of every session to understand the project state.*
+
+### Static Context
+*   `README.md`
+*   `GEMINI.md`
+*   `go.mod`
+*   `web/package.json`
+
+### Dynamic Context (Source Code)
+*   `cmd/` (CLI Commands)
+*   `internal/` (Core Logic)
+*   `web/src/` (Frontend Application)
+
+---
+
+## 2. Execution Phases
+
+### Phase 1: Core Task & Project Management
+**Status:** DONE
+**Token Budget:** Medium
+**Prerequisites:** None
+
+**Objective:**
+Establish the core data model and basic task lifecycle management capabilities.
+
+**Tasks:**
 - [x] **Core Data Model:** Implement SQLite schema for Tasks (Description, Status, Priority, Dates) and Projects.
 - [x] **Project Management:** Dedicated table and CLI commands (`tasc project`) for managing project metadata.
 - [x] **Task Lifecycle:** CRUD operations (`add`, `edit`, `done`, `delete`) with status tracking (`backlog`, `ongoing`, `done`).
 - [x] **Recurrence:** Support for recurring tasks to automate repetitive work.
 - [x] **Input Handling:** Robust parsing of dates and natural language inputs.
 
-## Phase 2: Visualization & Inspection
-- [x] **Advanced Calendar:** Implement `day`, `week` (columns), `month` (grid), `quarter` (grid), and `year` (grid) views.
+**Verification:**
+*   [x] `tasc add` successfully creates tasks in the database.
+*   [x] `tasc list` retrieves and displays tasks correctly.
+*   [x] Recurring tasks generate next instances upon completion.
+
+---
+
+### Phase 2: Visualization & Inspection
+**Status:** DONE
+**Token Budget:** High
+**Prerequisites:** Phase 1
+
+**Objective:**
+Implement advanced visualization modes for tasks, including calendar views and dependency graphs.
+
+**Tasks:**
+- [x] **Advanced Calendar:** Implement `day`, `week`, `month`, `quarter`, and `year` views.
 - [x] **Time Navigation:** Add flags (`--next`) to traverse calendar periods easily.
 - [x] **Deep Inspection:** Create `tasc show` for detailed task views and dependency chains.
 - [x] **Dependency Graph:** Visual tree rendering (`tasc graph`) for blocking relationships.
-- [x] **Adaptive UI:** Terminal-responsive layouts (truncation, wrapping) and ANSI color themes.
+- [x] **Adaptive UI:** Terminal-responsive layouts and ANSI color themes.
 
-## Phase 3: Advanced Logic & Prioritization
+**Verification:**
+*   [x] `tasc calendar` renders the correct grid for the current month.
+*   [x] `tasc graph` visually connects blocking tasks to blocked tasks.
+
+---
+
+### Phase 3: Advanced Logic & Prioritization
+**Status:** DONE
+**Token Budget:** Medium
+**Prerequisites:** Phase 1
+
+**Objective:**
+Implement smart scoring algorithms to automatically prioritize tasks based on deadlines, age, and dependencies.
+
+**Tasks:**
 - [x] **Smart Scoring:** Priority algorithms based on Due Date, Schedule Date, Age, and Task Estimates.
 - [x] **Dynamic Status:** Auto-calculated statuses and "Blocked" state handling.
 - [x] **Anti-Procrastination:** Priority boosting for older tasks (`AgeRule`) and "Quick Wins" (`EstimateRule`).
 - [x] **Reschedule Tracking:** Track and weight tasks based on how often they are rescheduled (`RescheduleRule`).
 
-## Phase 4: UI Consistency & Polish
-- [x] **Unified Color Model:** Centralize task coloring logic so `calendar`, `graph`, and `show` match the "official" colorscheme used in `tasc list`.
-- [x] **Visual Consistency:** Ensure task representations (IDs, Project names, Status indicators) are identical across all views.
-- [x] **Contextual Highlighting:** Ensure high-priority or blocked tasks retain their visual urgency in Calendar and Graph views.
+**Verification:**
+*   [x] Tasks with imminent deadlines appear at the top of the list.
+*   [x] Blocked tasks are visually distinct and prioritized correctly.
 
-## Phase 5: Project Management Deep Dive
-- [x] **Subprojects:** Implement hierarchical structures (Parent -> Child projects) for better organization.
-- [x] **Cascading Deadlines:** Logic where project deadlines automatically constrain or set defaults for contained tasks.
-- [x] **Dependency-Aware Priority:** Update scoring to propagate priority from high-value blocked tasks to their blockers.
-- [x] **Bulk Project Ops:** Commands to archive, move, or delete entire project trees safely.
+---
+
+### Phase 4: UI Consistency & Polish
+**Status:** DONE
+**Token Budget:** Low
+**Prerequisites:** Phase 2, Phase 3
+
+**Objective:**
+Ensure a unified visual language and consistent behavior across all CLI commands.
+
+**Tasks:**
+- [x] **Unified Color Model:** Centralize task coloring logic for `calendar`, `graph`, and `show`.
+- [x] **Visual Consistency:** Ensure task representations are identical across all views.
+- [x] **Contextual Highlighting:** Ensure high-priority or blocked tasks retain urgency in all views.
+
+**Verification:**
+*   [x] Task ID #123 has the same color in `list`, `graph`, and `calendar`.
+
+---
+
+### Phase 5: Project Management Deep Dive
+**Status:** DONE
+**Token Budget:** Medium
+**Prerequisites:** Phase 1
+
+**Objective:**
+Enhance project capabilities with hierarchies, cascading properties, and bulk operations.
+
+**Tasks:**
+- [x] **Subprojects:** Implement hierarchical structures (Parent -> Child projects).
+- [x] **Cascading Deadlines:** Logic where project deadlines constrain contained tasks.
+- [x] **Dependency-Aware Priority:** Propagate priority from high-value blocked tasks to blockers.
+- [x] **Bulk Project Ops:** Commands to archive, move, or delete entire project trees.
 - [x] **Progress Tracking:** Show completion percentage in project list.
 
-## Phase 6: Productivity & Insights
-- [x] **Stale Task Analysis:** Reports specifically identifying tasks that are "rotting" (old and untouched).
-- [x] **Friction Analysis:** Identify tasks with high reschedule counts to highlight roadblocks.
-- [x] **Estimation Accuracy:** Track "Actual" time vs "Estimated" to improve future planning.
-- [x] **Velocity Metrics:** Advanced stats for task closure rates and "Burn-down" charts.
+**Verification:**
+*   [x] Creating a subproject correctly links it to the parent.
+*   [x] Deleting a project prompts to delete or move its tasks.
 
-## Phase 7: Distributed Architecture
+---
+
+### Phase 6: Productivity & Insights
+**Status:** DONE
+**Token Budget:** Medium
+**Prerequisites:** Phase 1
+
+**Objective:**
+Provide analytics and insights into user productivity and task friction.
+
+**Tasks:**
+- [x] **Stale Task Analysis:** Reports identifying "rotting" tasks.
+- [x] **Friction Analysis:** Identify tasks with high reschedule counts.
+- [x] **Estimation Accuracy:** Track "Actual" time vs "Estimated".
+- [x] **Velocity Metrics:** Advanced stats for task closure rates.
+
+**Verification:**
+*   [x] `tasc stats` returns calculation of velocity and stale tasks.
+
+---
+
+### Phase 7: Distributed Architecture
+**Status:** DONE
+**Token Budget:** High
+**Prerequisites:** Phase 3
+
+**Objective:**
+Refactor the application into a client-server architecture to support remote access and multiple frontends.
+
+**Tasks:**
 - [x] **Client-Server Separation:** Refactor core logic into a headless server/daemon.
 - [x] **API Layer:** Expose functionality via REST or gRPC.
-- [x] **Remote CLI:** Enable the `tasc` binary to connect to a remote server instance.
-- [x] **Multi-Device Sync:** Enable centralized data management for access across machines.
+- [x] **Remote CLI:** Enable `tasc` binary to connect to remote server.
+- [x] **Multi-Device Sync:** Enable centralized data management.
 
-## Phase 8: Mobile Applications
-- [ ] **Unified Architecture:** Adopt a shared React-based framework to maximize code reuse between Web and Mobile interfaces.
-- [ ] **Hybrid Packaging:** Implement a build pipeline using Capacitor to package the React web application as a native Android app.
-- [ ] **Secure Connectivity:** Integrate with Cloudflare Tunnel (cloudflared) to securely expose the homelab server without open ports.
+**Verification:**
+*   [x] Server process starts and handles requests.
+*   [x] CLI can connect to `localhost` port to perform operations.
 
-## Phase 9: External Integrations
-- [ ] **Google OAuth2:** Implement secure authentication flow to connect `tasc` with Google Calendar API.
-- [ ] **Event Mapping:** Define logic to translate Tasc projects/priorities into GCal colors and task durations into event blocks.
-- [ ] **Bidirectional Sync:** Develop a sync engine to handle updates, deletions, and conflicts between Tasc and Google Calendar.
-- [ ] **Recurrence Translation:** accurately map `tasc` recurrence rules to GCal RRULEs.
+---
 
-## Phase 10: Web Dashboard
-- [x] **React Dashboard:** Build a responsive web interface for high-level planning and visualization.
-- [x] **Visual Planning:** Implement drag-and-drop Kanban and grid views sharing components with the mobile build.
+### Phase 8: Mobile Applications
+**Status:** PENDING
+**Token Budget:** High
+**Prerequisites:** Phase 7, Phase 10
 
-## Phase 11: Distribution & Packaging
-- [x] **Install Script:** Simple shell script (`install.sh`) for automated local build and install.
-- [x] **Linux Packages:** Generate `.deb` and `.rpm` packages for easy installation on Debian/Ubuntu and Fedora/RHEL.
-- [x] **Homebrew Tap:** Create a Homebrew formula for easy installation on macOS (`brew install aescoubas/tasc/tasc`).
-- [x] **Release Automation:** Local shell script (`release.sh`) to build and publish releases via GitHub CLI.
-- [x] **Systemd Service:** Create a systemd unit file to manage the backend server process and update `install.sh` to configure it.
+**Objective:**
+Develop mobile interfaces (Android/iOS) reusing the web frontend logic.
 
-## Phase 12: Technical Consolidation & Security
-- [x] **Unit Testing:** Implement comprehensive unit tests aiming for full code coverage.
-- [x] **Integration Testing:** Develop integration tests to verify system reliability and full coverage.
-- [x] **Codebase Consistency:** Audit and refactor code for consistency, style, and maintainability.
-- [x] **Upgrade Strategy:** Implement robust processes for upgrades, including automated schema migrations.
+**Tasks:**
+- [ ] **Unified Architecture:** Adopt a shared React-based framework for Web and Mobile.
+- [ ] **Hybrid Packaging:** Use Capacitor to package the React app as a native Android app.
+- [ ] **Secure Connectivity:** Integrate with Cloudflare Tunnel (cloudflared).
 
-## Phase 13: AI Integration (Gemini via MCP)
+**Verification:**
+- [ ] App builds and installs on Android emulator.
+- [ ] App connects to backend via secure tunnel.
 
-- [x] **MCP Server Implementation:** Implement the Model Context Protocol (MCP) server interface within `tasc` (e.g., `tasc mcp`).
-- [x] **Tool Exposure:** Expose core functionalities (`add`, `list`, `done`, `edit`, `projects`) as MCP tools for the LLM.
-- [x] **Resource Exposure:** Expose task lists and details as MCP resources for providing context to the LLM.
-- [x] **Gemini CLI Config:** Document how to configure Gemini CLI to connect to `tasc`'s MCP server.
-- [x] **Natural Language Interaction:** Verify that Gemini can "Add a task to buy milk", "List my high priority tasks", etc.
+---
 
-## Phase 14: Advanced MCP & Batch Operations
-- [x] **Complex Query Support:** Enable Gemini to perform batch modifications (e.g., "reschedule all my laserbiolabs tasks to next week").
-- [x] **Batch Update Tool:** Expose a dedicated MCP tool or enhance `update` to handle multiple IDs or filter-based updates to support efficient bulk changes.
+### Phase 9: External Integrations
+**Status:** PENDING
+**Token Budget:** Medium
+**Prerequisites:** Phase 1
 
-## Phase 15: Smart Scheduling & Time Management
-- [x] **Seamless Rescheduling:** Streamline the workflow for moving tasks to new dates or times.
-- [x] **Time Specificity:** Add support for specifying exact times (HH:MM) for task scheduling and deadlines.
-- [x] **Smart Auto-Schedule:** Implement logic to automatically arrange daily tasks starting at 07:00, 20m duration each, strictly following priority order.
-- [x] **Dynamic Reordering:** Ensure the daily schedule automatically adapts and reorders when task priorities shift.
-- [x] **Default Estimate:** Set the default time estimate to 20 minutes for new tasks.
+**Objective:**
+Integrate with external services, primarily Google Calendar, for bidirectional synchronization.
 
-## Phase 16: UI Refinements & Configuration
-- [x] **Relative Time Display:** Implement configurable relative time formatting (e.g., "3d", "10m", "-5h") for "Due" and "Scheduled" columns.
+**Tasks:**
+- [ ] **Google OAuth2:** Implement secure authentication flow.
+- [ ] **Event Mapping:** Logic to translate Tasc projects/priorities into GCal events.
+- [ ] **Bidirectional Sync:** Sync engine for updates, deletions, and conflicts.
+- [ ] **Recurrence Translation:** Map `tasc` recurrence rules to GCal RRULEs.
 
-## Phase 17: Data Model Evolution
-- [x] **Schema Refactor:** Rename the existing `description` field to `title`.
-- [x] **Rich Descriptions:** Add a new optional, multi-line `description` field for detailed notes.
-- [x] **View Updates:** Display `title` in `tasc list` and the full `description` only in `tasc show`.
-- [x] **Editor Integration:** Ensure `tasc edit` opens the multi-line description in the system's preferred text editor for easy modification.
+**Verification:**
+- [ ] Adding a task in `tasc` creates an event in Google Calendar.
+- [ ] Modifying an event in Calendar updates the task in `tasc`.
 
-## Phase 18: Time Blocking & Scheduling Improvements
-- [x] **Configurable Time Blocks:** Support user-defined daily time blocks (e.g., "morning", "afternoon") with specific time ranges.
-- [x] **Default Configuration:** Set defaults to Morning (06:00-12:00) and Afternoon (13:00-18:00).
-- [x] **Block-Based Scheduling:** Update scheduling logic so tasks without specific times default to the "morning" block of the target day (e.g., `tasc add ...` defaults to tomorrow morning).
-- [x] **CLI Integration:** Add `--block` option to `add` and `modify` commands to explicitly assign tasks to blocks.
-- [x] **Autocomplete:** Ensure shell completion supports block names.
-- [x] **Calendar Grid View:** Update daily and weekly calendar views to show a time grid with hour labels and compact task visualization.
+---
+
+### Phase 10: Web Dashboard
+**Status:** DONE
+**Token Budget:** High
+**Prerequisites:** Phase 7
+
+**Objective:**
+Build a responsive web interface for planning and visualization using React.
+
+**Tasks:**
+- [x] **React Dashboard:** Build a responsive web interface.
+- [x] **Visual Planning:** Implement drag-and-drop Kanban and grid views.
+
+**Verification:**
+*   [x] Web UI serves correctly on the server port.
+*   [x] Kanban board updates task status on drag-and-drop.
+
+---
+
+### Phase 11: Distribution & Packaging
+**Status:** DONE
+**Token Budget:** Medium
+**Prerequisites:** Phase 1
+
+**Objective:**
+Streamline installation and updates for various platforms.
+
+**Tasks:**
+- [x] **Install Script:** Shell script for automated local build/install.
+- [x] **Linux Packages:** Generate `.deb` and `.rpm` packages.
+- [x] **Homebrew Tap:** Create Homebrew formula for macOS.
+- [x] **Release Automation:** Script to build and publish releases via GitHub.
+- [x] **Systemd Service:** Unit file to manage backend server process.
+
+**Verification:**
+*   [x] `install.sh` completes without errors on a fresh environment.
+*   [x] Releases appear on GitHub with correct assets.
+
+---
+
+### Phase 12: Technical Consolidation & Security
+**Status:** DONE
+**Token Budget:** High
+**Prerequisites:** Phase 1
+
+**Objective:**
+Harden the codebase with tests, refactoring, and security best practices.
+
+**Tasks:**
+- [x] **Unit Testing:** Implement comprehensive unit tests.
+- [x] **Integration Testing:** Develop integration tests for reliability.
+- [x] **Codebase Consistency:** Audit and refactor code.
+- [x] **Upgrade Strategy:** Automated schema migrations.
+
+**Verification:**
+*   [x] Test suite passes with high coverage.
+*   [x] Database migrations run automatically on version upgrade.
+
+---
+
+### Phase 13: AI Integration (Gemini via MCP)
+**Status:** DONE
+**Token Budget:** Medium
+**Prerequisites:** Phase 7
+
+**Objective:**
+Implement the Model Context Protocol (MCP) to allow LLMs to interact with the task database.
+
+**Tasks:**
+- [x] **MCP Server Implementation:** Implement MCP server interface.
+- [x] **Tool Exposure:** Expose `add`, `list`, `done`, `edit`, `projects` as tools.
+- [x] **Resource Exposure:** Expose task lists as MCP resources.
+- [x] **Gemini CLI Config:** Document configuration.
+- [x] **Natural Language Interaction:** Enable conversational task management.
+
+**Verification:**
+*   [x] LLM can successfully call tools to add and query tasks.
+
+---
+
+### Phase 14: Advanced MCP & Batch Operations
+**Status:** DONE
+**Token Budget:** Medium
+**Prerequisites:** Phase 13
+
+**Objective:**
+Enhance MCP capabilities for complex queries and bulk updates.
+
+**Tasks:**
+- [x] **Complex Query Support:** Enable Gemini to perform batch modifications.
+- [x] **Batch Update Tool:** Expose tools for efficient bulk changes.
+
+**Verification:**
+*   [x] "Reschedule all Project X tasks to Monday" works via LLM.
+
+---
+
+### Phase 15: Smart Scheduling & Time Management
+**Status:** DONE
+**Token Budget:** Medium
+**Prerequisites:** Phase 3
+
+**Objective:**
+Improve scheduling precision and automation.
+
+**Tasks:**
+- [x] **Seamless Rescheduling:** Streamline workflow for moving tasks.
+- [x] **Time Specificity:** Support for exact times (HH:MM).
+- [x] **Smart Auto-Schedule:** Logic to automatically arrange daily tasks.
+- [x] **Dynamic Reordering:** Adapting schedule when priorities shift.
+- [x] **Default Estimate:** Set default time estimate for new tasks.
+
+**Verification:**
+*   [x] Tasks with specific times are sorted correctly in the daily view.
+
+---
+
+### Phase 16: UI Refinements & Configuration
+**Status:** DONE
+**Token Budget:** Low
+**Prerequisites:** Phase 4
+
+**Objective:**
+Polish the user interface with better formatting options.
+
+**Tasks:**
+- [x] **Relative Time Display:** Configurable relative time formatting for dates.
+
+**Verification:**
+*   [x] Dates show as "2d" or "5h" when configured.
+
+---
+
+### Phase 17: Data Model Evolution
+**Status:** DONE
+**Token Budget:** Medium
+**Prerequisites:** Phase 1
+
+**Objective:**
+Refine the data schema to support richer content.
+
+**Tasks:**
+- [x] **Schema Refactor:** Rename `description` to `title`.
+- [x] **Rich Descriptions:** Add multi-line `description` field.
+- [x] **View Updates:** Display title/description appropriately in views.
+- [x] **Editor Integration:** Open system editor for multi-line edits.
+
+**Verification:**
+*   [x] `tasc edit` opens `vim`/`nano` with the task description.
+
+---
+
+### Phase 18: Time Blocking & Scheduling Improvements
+**Status:** DONE
+**Token Budget:** Medium
+**Prerequisites:** Phase 15
+
+**Objective:**
+Implement time-blocking methodology for task scheduling.
+
+**Tasks:**
+- [x] **Configurable Time Blocks:** Support user-defined daily blocks (morning, afternoon).
+- [x] **Default Configuration:** Set defaults (06:00-12:00, 13:00-18:00).
+- [x] **Block-Based Scheduling:** Default new tasks to specific blocks.
+- [x] **CLI Integration:** Add `--block` option to commands.
+- [x] **Autocomplete:** Shell completion for blocks.
+- [x] **Calendar Grid View:** Grid view with hour labels.
+
+**Verification:**
+*   [x] `tasc add "Task" --block morning` schedules the task in the morning slot.
