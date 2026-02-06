@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 
+	"strings"
+
 	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/spf13/cobra"
@@ -44,6 +46,57 @@ var editCmd = &cobra.Command{
 		if err != nil {
 			fmt.Printf("Error marshaling task: %v\n", err)
 			return
+		}
+
+		// Post-process YAML to force multiline description
+		var node yaml.Node
+		if err := yaml.Unmarshal(data, &node); err != nil {
+			fmt.Printf("Error processing YAML: %v\n", err)
+			return
+		}
+
+		if len(node.Content) > 0 && node.Content[0].Kind == yaml.MappingNode {
+			mapping := node.Content[0]
+			found := false
+			for i := 0; i < len(mapping.Content); i += 2 {
+				if mapping.Content[i].Value == "description" {
+					mapping.Content[i+1].Style = yaml.LiteralStyle
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: "description"}
+				valNode := &yaml.Node{Kind: yaml.ScalarNode, Value: "", Style: yaml.LiteralStyle}
+
+				// Insert after title
+				inserted := false
+				for i := 0; i < len(mapping.Content); i += 2 {
+					if mapping.Content[i].Value == "title" {
+						// Insert at i+2
+						mapping.Content = append(mapping.Content[:i+2], append([]*yaml.Node{keyNode, valNode}, mapping.Content[i+2:]...)...)
+						inserted = true
+						break
+					}
+				}
+				if !inserted {
+					mapping.Content = append(mapping.Content, keyNode, valNode)
+				}
+			}
+		}
+
+		data, err = yaml.Marshal(&node)
+		if err != nil {
+			fmt.Printf("Error re-marshaling task: %v\n", err)
+			return
+		}
+
+		// Force |- for empty strings if yaml.v3 output ""
+		sData := string(data)
+		if strings.Contains(sData, "description: \"\"") {
+			sData = strings.Replace(sData, "description: \"\"", "description: |-", 1)
+			data = []byte(sData)
 		}
 
 		// 3. Write to temp file
