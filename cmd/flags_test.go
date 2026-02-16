@@ -25,3 +25,12 @@ func TestDueFlagStillPresent(t *testing.T) {
 		t.Fatalf("log command must expose --due")
 	}
 }
+
+func TestAutoApproveFlagsPresent(t *testing.T) {
+	if modifyCmd.Flags().Lookup("yes") == nil {
+		t.Fatalf("modify command must expose --yes")
+	}
+	if deleteCmd.Flags().Lookup("yes") == nil {
+		t.Fatalf("delete command must expose --yes")
+	}
+}

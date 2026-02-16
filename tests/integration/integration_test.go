@@ -164,3 +164,45 @@ func TestListOverdueFilter(t *testing.T) {
 		t.Errorf("Did not expect future task in overdue output. Output:\n%s", out)
 	}
 }
+
+func TestModifyAndDeleteAutoApprove(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "auto-approve.db")
+
+	out, err := runTasc(t, dbPath, "add", "Auto Approve Task")
+	if err != nil {
+		t.Fatalf("Add failed: %v\nOutput: %s", err, out)
+	}
+
+	out, err = runTasc(t, dbPath, "modify", "1", "Renamed Task", "--yes")
+	if err != nil {
+		t.Fatalf("Modify --yes failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Task 1 modified.") {
+		t.Errorf("Unexpected modify output: %s", out)
+	}
+
+	out, err = runTasc(t, dbPath, "list")
+	if err != nil {
+		t.Fatalf("List after modify failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Renamed Task") {
+		t.Errorf("Task title was not modified. Output:\n%s", out)
+	}
+
+	out, err = runTasc(t, dbPath, "delete", "1", "--yes")
+	if err != nil {
+		t.Fatalf("Delete --yes failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Task 1 deleted.") {
+		t.Errorf("Unexpected delete output: %s", out)
+	}
+
+	out, err = runTasc(t, dbPath, "list")
+	if err != nil {
+		t.Fatalf("List after delete failed: %v\nOutput: %s", err, out)
+	}
+	if strings.Contains(out, "Renamed Task") {
+		t.Errorf("Deleted task still appears in list. Output:\n%s", out)
+	}
+}

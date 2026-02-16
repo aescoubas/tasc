@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var modifyAutoApprove bool
+
 var modifyCmd = &cobra.Command{
 	Use:               "modify [id...] [title]",
 	Short:             "Modify task(s)",
@@ -113,6 +115,11 @@ var modifyCmd = &cobra.Command{
 				continue
 			}
 
+			if modifyAutoApprove {
+				approvedIDs = append(approvedIDs, id)
+				continue
+			}
+
 			res := AskConfirmation(fmt.Sprintf("Modify task %d '%s'?", t.ID, t.Title))
 			switch res {
 			case ConfirmYes:
@@ -132,7 +139,7 @@ var modifyCmd = &cobra.Command{
 		}
 
 		// Recurrence Prompt Logic (Single Task Only)
-		if len(ids) == 1 {
+		if len(ids) == 1 && !modifyAutoApprove {
 			t, err := CurrentStore.GetTask(ids[0])
 			if err == nil && t.Recurrence != "" {
 				// Only if we are modifying something that impacts the series?
@@ -175,6 +182,7 @@ func init() {
 	modifyCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate")
 	modifyCmd.Flags().StringVarP(&recurrenceFlag, "recurrence", "r", "", "Recurrence rule")
 	modifyCmd.Flags().StringVarP(&block, "block", "b", "", "Time block")
+	modifyCmd.Flags().BoolVarP(&modifyAutoApprove, "yes", "y", false, "Auto-approve modifications without confirmation prompts")
 
 	modifyCmd.RegisterFlagCompletionFunc("project", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if CurrentStore == nil {

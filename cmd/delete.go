@@ -8,10 +8,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var deleteAutoApprove bool
+
 var deleteCmd = &cobra.Command{
-	Use:   "delete [id...]",
-	Short: "Delete task(s)",
-	Args:  cobra.MinimumNArgs(1),
+	Use:               "delete [id...]",
+	Short:             "Delete task(s)",
+	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: taskIDCompletionFunc,
 	Run: func(cmd *cobra.Command, args []string) {
 		var ids []int64
@@ -46,6 +48,11 @@ var deleteCmd = &cobra.Command{
 				continue
 			}
 
+			if deleteAutoApprove {
+				approvedIDs = append(approvedIDs, id)
+				continue
+			}
+
 			res := AskConfirmation(fmt.Sprintf("Delete task %d '%s'?", t.ID, t.Title))
 			switch res {
 			case ConfirmYes:
@@ -66,10 +73,10 @@ var deleteCmd = &cobra.Command{
 		}
 
 		// Handle recurrence prompt ONLY if single task is being deleted.
-		// For batch delete, we assume user knows what they are doing or we skip recurrence logic 
+		// For batch delete, we assume user knows what they are doing or we skip recurrence logic
 		// (or implicitly stop it). Prompting for 10 tasks is bad UX.
 		// Let's adopt a policy: Batch delete = "Stop recurrence" (Delete all future).
-		if len(ids) == 1 {
+		if len(ids) == 1 && !deleteAutoApprove {
 			t, err := CurrentStore.GetTask(ids[0])
 			if err == nil && t.Recurrence != "" {
 				fmt.Printf("This is a recurring task ('%s').\n", t.Recurrence)
@@ -103,4 +110,5 @@ var deleteCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(deleteCmd)
+	deleteCmd.Flags().BoolVarP(&deleteAutoApprove, "yes", "y", false, "Auto-approve deletion without confirmation prompts")
 }
