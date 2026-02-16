@@ -33,17 +33,7 @@ var logCmd = &cobra.Command{
 			dueAt = t
 		}
 
-		var scheduledAt *time.Time
-		if scheduled != "" {
-			t, err := parse.Date(scheduled, cfg.EndOfDay)
-			if err != nil {
-				fmt.Printf("Invalid scheduled date format: %v\n", err)
-				return
-			}
-			scheduledAt = t
-		}
-
-		query := `INSERT INTO tasks (title, project, due_at, scheduled_at, estimate, status, created_at, completed_at) VALUES (?, ?, ?, ?, ?, 'done', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+		query := `INSERT INTO tasks (title, project, due_at, estimate, status, created_at, completed_at) VALUES (?, ?, ?, ?, 'done', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
 		stmt, err := db.DB.Prepare(query)
 		if err != nil {
 			fmt.Printf("Error preparing statement: %v\n", err)
@@ -51,7 +41,7 @@ var logCmd = &cobra.Command{
 		}
 		defer stmt.Close()
 
-		res, err := stmt.Exec(title, project, dueAt, scheduledAt, estimate)
+		res, err := stmt.Exec(title, project, dueAt, estimate)
 		if err != nil {
 			fmt.Printf("Error executing statement: %v\n", err)
 			return
@@ -66,10 +56,8 @@ func init() {
 	rootCmd.AddCommand(logCmd)
 	logCmd.Flags().StringVarP(&project, "project", "p", "", "Project name")
 	logCmd.Flags().StringVarP(&due, "due", "d", "", "Due date (YYYY-MM-DD)")
-	logCmd.Flags().StringVarP(&scheduled, "scheduled", "s", "", "Scheduled date (YYYY-MM-DD)")
 	logCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate (e.g. 2h, 30m)")
 
 	logCmd.RegisterFlagCompletionFunc("project", projectCompletionFunc)
 	logCmd.RegisterFlagCompletionFunc("due", dateCompletionFunc)
-	logCmd.RegisterFlagCompletionFunc("scheduled", dateCompletionFunc)
 }

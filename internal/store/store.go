@@ -7,14 +7,12 @@ import (
 )
 
 type TaskFilter struct {
-	Status          []models.TaskStatus
-	Projects        []string
-	IDs             []int64
-	IncludeDeleted  bool
-	DueBefore       *time.Time
-	DueAfter        *time.Time
-	ScheduledBefore *time.Time
-	ScheduledAfter  *time.Time
+	Status         []models.TaskStatus
+	Projects       []string
+	IDs            []int64
+	IncludeDeleted bool
+	DueBefore      *time.Time
+	DueAfter       *time.Time
 }
 
 type Store interface {
@@ -24,25 +22,25 @@ type Store interface {
 	UpdateTask(t models.Task) error
 	DeleteTask(id int64) error // Soft delete usually
 	ListTasks(filter TaskFilter) ([]models.Task, error)
-	
+
 	// Task Actions (Specific updates)
 	MarkDone(id int64) error
 	StartTask(id int64) error
 	StopTask(id int64) error
 	BatchUpdateTasks(ids []int64, updates map[string]interface{}) error
-    GetActiveTask() (*models.Task, error)
+	GetActiveTask() (*models.Task, error)
 
 	// Dependencies
 	AddDependency(blockerID, blockedID int64) error
 	GetDependencies() ([]models.TaskDependency, error)
-	
+
 	// Projects
 	ListProjects() ([]models.Project, error)
 	GetProject(name string) (models.Project, error)
 	CreateProject(p models.Project) error
 	UpdateProject(oldName string, p models.Project) error
 	DeleteProject(name string) error
-	
+
 	// Search
 	SearchTasks(query string) ([]models.Task, error)
 }

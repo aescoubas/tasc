@@ -9,13 +9,13 @@ import (
 
 func TestDueRule(t *testing.T) {
 	now := time.Now()
-	
+
 	tests := []struct {
-		name     string
-		dueDelta time.Duration // relative to now
+		name      string
+		dueDelta  time.Duration // relative to now
 		isOverdue bool
-		minScore float64
-		maxScore float64
+		minScore  float64
+		maxScore  float64
 	}{
 		{"Overdue by 1 hour", -1 * time.Hour, true, 40.0, 42.0},
 		{"Overdue by 5 days", -5 * 24 * time.Hour, true, 50.0, 50.0}, // 40 + 5*2
@@ -29,9 +29,9 @@ func TestDueRule(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			due := now.Add(tt.dueDelta)
 			task := models.Task{DueAt: &due}
-			
+
 			score := DueRule(task)
-			
+
 			if score < tt.minScore || score > tt.maxScore {
 				t.Errorf("DueRule() score = %v, want between %v and %v", score, tt.minScore, tt.maxScore)
 			}
@@ -46,33 +46,33 @@ func TestDueRule(t *testing.T) {
 	})
 }
 
-func TestScheduledRule(t *testing.T) {
+func TestDueStalenessRule(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name          string
-		scheduleDelta time.Duration // relative to now
-		want          float64
+		name     string
+		dueDelta time.Duration // relative to now
+		want     float64
 	}{
-		{"Scheduled Past", -1 * time.Hour, 35.0},  // 20 + 15
-		{"Scheduled Future", 1 * time.Hour, 20.0}, // 20
+		{"Due In Past", -1 * time.Hour, 35.0},  // 20 + 15
+		{"Due In Future", 1 * time.Hour, 20.0}, // 20
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scheduled := now.Add(tt.scheduleDelta)
-			task := models.Task{ScheduledAt: &scheduled}
+			due := now.Add(tt.dueDelta)
+			task := models.Task{DueAt: &due}
 
-			if got := ScheduledRule(task); got != tt.want {
-				t.Errorf("ScheduledRule() = %v, want %v", got, tt.want)
+			if got := DueStalenessRule(task); got != tt.want {
+				t.Errorf("DueStalenessRule() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 
-	t.Run("No Scheduled Date", func(t *testing.T) {
-		task := models.Task{ScheduledAt: nil}
-		if score := ScheduledRule(task); score != 0 {
-			t.Errorf("ScheduledRule() = %v, want 0", score)
+	t.Run("No Due Date", func(t *testing.T) {
+		task := models.Task{DueAt: nil}
+		if score := DueStalenessRule(task); score != 0 {
+			t.Errorf("DueStalenessRule() = %v, want 0", score)
 		}
 	})
 }

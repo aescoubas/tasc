@@ -31,7 +31,6 @@ var showCmd = &cobra.Command{
 		var project sql.NullString
 		var description sql.NullString
 		var dueAt sql.NullTime
-		var scheduledAt sql.NullTime
 		var estimate sql.NullString
 		var recurrence sql.NullString
 		var activeStart sql.NullTime
@@ -40,14 +39,14 @@ var showCmd = &cobra.Command{
 
 		query := `SELECT 
 			id, title, description, project, status, created_at, 
-			completed_at, due_at, scheduled_at, estimate, 
+			completed_at, due_at, estimate, 
 			recurrence, active_start, time_spent, reschedule_count 
 		FROM tasks WHERE id = ?`
 
 		row := db.DB.QueryRow(query, id)
 		err = row.Scan(
 			&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt,
-			&completedAt, &dueAt, &scheduledAt, &estimate,
+			&completedAt, &dueAt, &estimate,
 			&recurrence, &activeStart, &timeSpent, &t.RescheduleCount,
 		)
 
@@ -65,9 +64,6 @@ var showCmd = &cobra.Command{
 		t.Recurrence = recurrence.String
 		if dueAt.Valid {
 			t.DueAt = &dueAt.Time
-		}
-		if scheduledAt.Valid {
-			t.ScheduledAt = &scheduledAt.Time
 		}
 		if activeStart.Valid {
 			t.ActiveStart = &activeStart.Time
@@ -119,7 +115,7 @@ var showCmd = &cobra.Command{
 		// 3. Display
 		t.IsBlocked = len(blockedBy) > 0
 		style := ui.GetTaskStyle(t, cfg)
-		
+
 		fmt.Println(style.Render(fmt.Sprintf("Task %d: %s", t.ID, t.Title)))
 		if t.Description != "" {
 			fmt.Println("------------------------------------------------")
@@ -129,23 +125,17 @@ var showCmd = &cobra.Command{
 		fmt.Printf("Project:       %s\n", t.Project)
 		fmt.Printf("Status:        %s\n", t.Status)
 		fmt.Printf("Created:       %s\n", t.CreatedAt.Format("2006-01-02 15:04"))
-		
+
 		if t.CompletedAt != nil {
 			fmt.Printf("Completed:     %s\n", t.CompletedAt.Format("2006-01-02 15:04"))
 		}
-		
+
 		dueStr := "-"
 		if t.DueAt != nil {
 			dueStr = ui.FormatDate(*t.DueAt, cfg)
 		}
 		fmt.Printf("Due:           %s\n", dueStr)
 
-		schStr := "-"
-		if t.ScheduledAt != nil {
-			schStr = ui.FormatDate(*t.ScheduledAt, cfg)
-		}
-		fmt.Printf("Scheduled:     %s\n", schStr)
-		
 		if t.RescheduleCount > 0 {
 			fmt.Printf("Rescheduled:   %d times\n", t.RescheduleCount)
 		}

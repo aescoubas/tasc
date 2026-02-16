@@ -28,10 +28,10 @@ var editCmd = &cobra.Command{
 		var estimate sql.NullString
 		var recurrence sql.NullString
 
-		query := "SELECT id, title, description, project, status, created_at, due_at, scheduled_at, estimate, recurrence FROM tasks WHERE id = ?"
+		query := "SELECT id, title, description, project, status, created_at, due_at, estimate, recurrence FROM tasks WHERE id = ?"
 		row := db.DB.QueryRow(query, idStr)
 
-		err := row.Scan(&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt, &t.DueAt, &t.ScheduledAt, &estimate, &recurrence)
+		err := row.Scan(&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt, &t.DueAt, &estimate, &recurrence)
 		if err != nil {
 			fmt.Printf("Error fetching task: %v\n", err)
 			return
@@ -148,14 +148,14 @@ var editCmd = &cobra.Command{
 
 		// 7. Update DB
 		rescheduleIncrement := 0
-		if (t.ScheduledAt == nil && newT.ScheduledAt != nil) ||
-			(t.ScheduledAt != nil && newT.ScheduledAt == nil) ||
-			(t.ScheduledAt != nil && newT.ScheduledAt != nil && !t.ScheduledAt.Equal(*newT.ScheduledAt)) {
+		if (t.DueAt == nil && newT.DueAt != nil) ||
+			(t.DueAt != nil && newT.DueAt == nil) ||
+			(t.DueAt != nil && newT.DueAt != nil && !t.DueAt.Equal(*newT.DueAt)) {
 			rescheduleIncrement = 1
 		}
 
-		updateQuery := `UPDATE tasks SET title = ?, description = ?, project = ?, status = ?, due_at = ?, scheduled_at = ?, estimate = ?, recurrence = ?, reschedule_count = reschedule_count + ? WHERE id = ?`
-		_, err = db.DB.Exec(updateQuery, newT.Title, newT.Description, newT.Project, newT.Status, newT.DueAt, newT.ScheduledAt, newT.Estimate, newT.Recurrence, rescheduleIncrement, newT.ID)
+		updateQuery := `UPDATE tasks SET title = ?, description = ?, project = ?, status = ?, due_at = ?, estimate = ?, recurrence = ?, reschedule_count = reschedule_count + ? WHERE id = ?`
+		_, err = db.DB.Exec(updateQuery, newT.Title, newT.Description, newT.Project, newT.Status, newT.DueAt, newT.Estimate, newT.Recurrence, rescheduleIncrement, newT.ID)
 		if err != nil {
 			fmt.Printf("Error updating task: %v\n", err)
 			return

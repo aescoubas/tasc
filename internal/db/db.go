@@ -35,6 +35,10 @@ func InitDB() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// Reduce transient lock errors when another process briefly holds the DB.
+	if _, err := DB.Exec("PRAGMA busy_timeout = 10000"); err != nil {
+		log.Printf("warning: failed to set busy_timeout: %v", err)
+	}
 
 	if err := RunMigrations(DB); err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)

@@ -11,7 +11,7 @@ The core entity.
 - **`project`**: `TEXT`. Denormalized project name (for simplicity).
 - **`status`**: `TEXT`. State: `backlog`, `ongoing`, `done`, `blocked`, `deleted`, `undefined`.
 - **`created_at`, `completed_at`**: Timestamps.
-- **`due_at`, `scheduled_at`**: `DATETIME`.
+- **`due_at`**: `DATETIME`.
 - **`active_start`**: `DATETIME`. Used for tracking time (when a task is "started").
 - **`time_spent`**: `INTEGER`. Accumulated seconds spent on the task.
 - **`estimate`**: `TEXT`. User-provided duration string (e.g., "30m").

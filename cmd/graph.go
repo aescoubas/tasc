@@ -21,8 +21,8 @@ var graphCmd = &cobra.Command{
 		// Fetch all dependencies with details for coloring
 		rows, err := db.DB.Query(`
 			SELECT 
-				t1.id, t1.title, t1.project, t1.status, t1.due_at, t1.scheduled_at,
-				t2.id, t2.title, t2.project, t2.status, t2.due_at, t2.scheduled_at
+				t1.id, t1.title, t1.project, t1.status, t1.due_at,
+				t2.id, t2.title, t2.project, t2.status, t2.due_at
 			FROM task_dependencies td
 			JOIN tasks t1 ON td.blocker_id = t1.id
 			JOIN tasks t2 ON td.blocked_id = t2.id
@@ -42,19 +42,21 @@ var graphCmd = &cobra.Command{
 
 		for rows.Next() {
 			var t1, t2 models.Task
-			var due1, sch1, due2, sch2 sql.NullTime
+			var due1, due2 sql.NullTime
 
 			if err := rows.Scan(
-				&t1.ID, &t1.Title, &t1.Project, &t1.Status, &due1, &sch1,
-				&t2.ID, &t2.Title, &t2.Project, &t2.Status, &due2, &sch2,
+				&t1.ID, &t1.Title, &t1.Project, &t1.Status, &due1,
+				&t2.ID, &t2.Title, &t2.Project, &t2.Status, &due2,
 			); err != nil {
 				continue
 			}
 
-			if due1.Valid { t1.DueAt = &due1.Time }
-			if sch1.Valid { t1.ScheduledAt = &sch1.Time }
-			if due2.Valid { t2.DueAt = &due2.Time }
-			if sch2.Valid { t2.ScheduledAt = &sch2.Time }
+			if due1.Valid {
+				t1.DueAt = &due1.Time
+			}
+			if due2.Valid {
+				t2.DueAt = &due2.Time
+			}
 
 			adj[t1.ID] = append(adj[t1.ID], t2)
 			tasks[t1.ID] = t1

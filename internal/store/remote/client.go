@@ -153,12 +153,6 @@ func (c *Client) ListTasks(filter store.TaskFilter) ([]models.Task, error) {
 	if filter.DueAfter != nil {
 		q.Set("due_after", filter.DueAfter.Format(time.RFC3339))
 	}
-	if filter.ScheduledBefore != nil {
-		q.Set("scheduled_before", filter.ScheduledBefore.Format(time.RFC3339))
-	}
-	if filter.ScheduledAfter != nil {
-		q.Set("scheduled_after", filter.ScheduledAfter.Format(time.RFC3339))
-	}
 	// Status handling simplified for now
 	u.RawQuery = q.Encode()
 
@@ -260,7 +254,7 @@ func (c *Client) GetDependencies() ([]models.TaskDependency, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	var deps []models.TaskDependency
 	if err := json.NewDecoder(resp.Body).Decode(&deps); err != nil {
 		return nil, err
@@ -274,7 +268,7 @@ func (c *Client) ListProjects() ([]models.Project, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	var projects []models.Project
 	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
 		return nil, err

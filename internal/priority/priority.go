@@ -18,7 +18,7 @@ type Calculator struct {
 func NewCalculator() *Calculator {
 	return &Calculator{
 		Rules: []Rule{
-			ScheduledRule,
+			DueStalenessRule,
 			RescheduleRule,
 			AgeRule,
 			DueRule,
@@ -36,20 +36,19 @@ func (c *Calculator) Calculate(t models.Task) float64 {
 	return score
 }
 
-// ScheduledRule calculates priority based on the ScheduledAt field.
-// - If scheduled date is present: +20 (Base)
-// - If scheduled date is in the past (or today): +15 (Cumulative +35)
-// This ensures scheduled tasks are always prioritized over backlog tasks.
-func ScheduledRule(t models.Task) float64 {
-	if t.ScheduledAt == nil {
+// DueStalenessRule calculates staleness priority based on the DueAt field.
+// - If due date is present: +20 (Base)
+// - If due date is in the past (or today): +15 (Cumulative +35)
+func DueStalenessRule(t models.Task) float64 {
+	if t.DueAt == nil {
 		return 0
 	}
 
 	score := 20.0
 	now := time.Now()
 
-	// If scheduled time is before now (meaning we passed the start time), boost it.
-	if t.ScheduledAt.Before(now) {
+	// If due time is before now, boost it.
+	if t.DueAt.Before(now) {
 		score += 15.0
 	}
 

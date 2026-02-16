@@ -22,33 +22,31 @@ func TestApplyAutoSchedule(t *testing.T) {
 	// Tasks
 	// Fixed: 07:10 - 07:30 (assuming 20m estimate)
 	tFixed := models.Task{
-		ID:          1,
-		Title:       "Fixed Task",
-		ScheduledAt: fixedTime(7, 10),
-		Estimate:    "20m",
-		CreatedAt:   time.Now(),
+		ID:        1,
+		Title:     "Fixed Task",
+		DueAt:     fixedTime(7, 10),
+		Estimate:  "20m",
+		CreatedAt: time.Now(),
 	}
 
-	// Floating 1 (High Priority - due soon)
-	due := time.Now().Add(1 * time.Hour)
+	// Floating 1 (High Priority)
 	tFloatHigh := models.Task{
-		ID:          2,
-		Title:       "High Priority",
-		ScheduledAt: floatingTime(),
-		Estimate:    "20m",
-		DueAt:       &due,
-		CreatedAt:   time.Now(),
+		ID:              2,
+		Title:           "High Priority",
+		DueAt:           floatingTime(),
+		Estimate:        "20m",
+		RescheduleCount: 5,
+		CreatedAt:       time.Now(),
 	}
 
-	// Floating 2 (Low Priority - due later)
-	dueLater := time.Now().Add(100 * time.Hour)
+	// Floating 2 (Low Priority)
 	tFloatLow := models.Task{
-		ID:          3,
-		Title:       "Low Priority",
-		ScheduledAt: floatingTime(),
-		Estimate:    "20m",
-		DueAt:       &dueLater,
-		CreatedAt:   time.Now(),
+		ID:              3,
+		Title:           "Low Priority",
+		DueAt:           floatingTime(),
+		Estimate:        "20m",
+		RescheduleCount: 0,
+		CreatedAt:       time.Now(),
 	}
 
 	tasks := []models.Task{tFloatLow, tFixed, tFloatHigh} // Mixed order
@@ -67,8 +65,8 @@ func TestApplyAutoSchedule(t *testing.T) {
 	}
 
 	// Check Fixed (Should be unchanged)
-	if !res[1].ScheduledAt.Equal(*fixedTime(7, 10)) {
-		t.Errorf("Fixed task moved: %v", res[1].ScheduledAt)
+	if !res[1].DueAt.Equal(*fixedTime(7, 10)) {
+		t.Errorf("Fixed task moved: %v", res[1].DueAt)
 	}
 
 	// Check Floating High
@@ -80,13 +78,13 @@ func TestApplyAutoSchedule(t *testing.T) {
 	// Collision with Fixed (07:10-07:30).
 	// Next available: 07:30.
 	// So it should start at 07:30.
-	if !res[2].ScheduledAt.Equal(*fixedTime(7, 30)) {
-		t.Errorf("High priority task assigned %v, want 07:30", res[2].ScheduledAt.Format("15:04"))
+	if !res[2].DueAt.Equal(*fixedTime(7, 30)) {
+		t.Errorf("High priority task assigned %v, want 07:30", res[2].DueAt.Format("15:04"))
 	}
 
 	// Check Floating Low
 	// Start 07:50 (after High). Ends 08:10.
-	if !res[3].ScheduledAt.Equal(*fixedTime(7, 50)) {
-		t.Errorf("Low priority task assigned %v, want 07:50", res[3].ScheduledAt.Format("15:04"))
+	if !res[3].DueAt.Equal(*fixedTime(7, 50)) {
+		t.Errorf("Low priority task assigned %v, want 07:50", res[3].DueAt.Format("15:04"))
 	}
 }

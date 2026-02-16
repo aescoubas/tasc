@@ -120,21 +120,17 @@ var calendarCmd = &cobra.Command{
 func fetchTasksInRange(start, end time.Time) ([]models.Task, error) {
 	query := `
 		SELECT 
-			id, title, project, status, due_at, scheduled_at, estimate,
+			id, title, project, status, due_at, estimate,
 			EXISTS(SELECT 1 FROM task_dependencies WHERE blocked_id = tasks.id) as is_blocked
 		FROM tasks 
 		WHERE status NOT IN ('done', 'deleted', 'undefined') 
-		AND (
-			(scheduled_at >= ? AND scheduled_at < ?)
-			OR 
-			(scheduled_at IS NULL AND due_at >= ? AND due_at < ?)
-		)
-		ORDER BY scheduled_at, due_at
+		AND due_at >= ? AND due_at < ?
+		ORDER BY due_at
 	`
 	sDate := start.Format("2006-01-02")
 	eDate := end.Format("2006-01-02")
 
-	rows, err := db.DB.Query(query, sDate, eDate, sDate, eDate)
+	rows, err := db.DB.Query(query, sDate, eDate)
 	if err != nil {
 		return nil, err
 	}
@@ -143,15 +139,14 @@ func fetchTasksInRange(start, end time.Time) ([]models.Task, error) {
 	var tasks []models.Task
 	for rows.Next() {
 		var t models.Task
-		var dueAt, scheduledAt *time.Time
+		var dueAt *time.Time
 		var est string
 		var isBlocked bool
-		err := rows.Scan(&t.ID, &t.Title, &t.Project, &t.Status, &dueAt, &scheduledAt, &est, &isBlocked)
+		err := rows.Scan(&t.ID, &t.Title, &t.Project, &t.Status, &dueAt, &est, &isBlocked)
 		if err != nil {
 			continue
 		}
 		t.DueAt = dueAt
-		t.ScheduledAt = scheduledAt
 		t.Estimate = est
 		t.IsBlocked = isBlocked
 		tasks = append(tasks, t)
@@ -181,7 +176,7 @@ func renderTimeGrid(days []time.Time, tasks []models.Task, width int, cfg config
 
 	for _, t := range tasks {
 		d := getTaskDate(t)
-		
+
 		// Find Day Index
 		dayIdx := -1
 		for i, day := range days {
@@ -190,13 +185,19 @@ func renderTimeGrid(days []time.Time, tasks []models.Task, width int, cfg config
 				break
 			}
 		}
-		if dayIdx == -1 { continue }
+		if dayIdx == -1 {
+			continue
+		}
 
 		// Bucket by Hour
 		h := d.Hour()
-		if h < startHour { h = startHour } // Clamp to view? or ignore? Clamp for visibility
-		if h > endHour { h = endHour }
-		
+		if h < startHour {
+			h = startHour
+		} // Clamp to view? or ignore? Clamp for visibility
+		if h > endHour {
+			h = endHour
+		}
+
 		buckets[dayIdx][h] = append(buckets[dayIdx][h], t)
 	}
 
@@ -233,23 +234,23 @@ func renderTimeGrid(days []time.Time, tasks []models.Task, width int, cfg config
 
 	for h := startHour; h <= endHour; h++ {
 		var rowCells []string
-		
+
 		// Time Label
 		rowCells = append(rowCells, timeStyle.Render(fmt.Sprintf("%02d:00", h)))
 
 		// Day Columns
 		for dIdx := range days {
 			ts := buckets[dIdx][h]
-			
+
 			var cellContent []string
 			if len(ts) > 0 {
 				for _, t := range ts {
 					cellContent = append(cellContent, renderCompactTaskBox(t, dayColWidth, cfg))
 				}
 			} else {
-				// Empty placeholder to maintain column width? 
+				// Empty placeholder to maintain column width?
 				// Lipgloss JoinVertical might collapse empty strings.
-				// We can add a spacer or rely on fixed width cells if using a grid layout, 
+				// We can add a spacer or rely on fixed width cells if using a grid layout,
 				// but here we are joining boxes.
 				// Let's add an empty box of width? No, just empty string is fine if we use JoinHorizontal correctly.
 				// Actually, to ensure alignment, we might need to pad.
@@ -257,18 +258,18 @@ func renderTimeGrid(days []time.Time, tasks []models.Task, width int, cfg config
 				// Lipgloss styles usually enforce width.
 				cellContent = append(cellContent, lipgloss.NewStyle().Width(dayColWidth).Render(""))
 			}
-			
+
 			// Join tasks vertically within the hour cell
 			col := lipgloss.JoinVertical(lipgloss.Left, cellContent...)
 			// Ensure cell has full width
 			col = lipgloss.NewStyle().Width(dayColWidth).Render(col)
-			
+
 			rowCells = append(rowCells, col)
 		}
 
 		// Join Row
 		fmt.Println(lipgloss.JoinHorizontal(lipgloss.Top, rowCells...))
-		
+
 		// Add a separator line? Optional, maybe too noisy.
 		// fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("236")).Render(strings.Repeat("-", width)))
 	}
@@ -284,7 +285,9 @@ func renderMonthView(tasks []models.Task, startOfMonth time.Time, width int, cfg
 
 	// Calculate offset for first day
 	startWeekday := int(startOfMonth.Weekday()) // Sun=0
-	if startWeekday == 0 { startWeekday = 7 }
+	if startWeekday == 0 {
+		startWeekday = 7
+	}
 	offset := startWeekday - 1 // Mon=0
 
 	// Total days in month
@@ -303,12 +306,12 @@ func renderMonthView(tasks []models.Task, startOfMonth time.Time, width int, cfg
 	// Styles
 	cellStyle := lipgloss.NewStyle().
 		Width(colWidth).
-		Height(5). // Fixed height for grid uniformity? Or variable? 
-		           // Variable height rows in calendar grid is hard in terminal without advanced layout.
-				   // Let's try fixed height or just min height.
+		Height(5). // Fixed height for grid uniformity? Or variable?
+		// Variable height rows in calendar grid is hard in terminal without advanced layout.
+		// Let's try fixed height or just min height.
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("238"))
-	
+
 	headerStyle := lipgloss.NewStyle().Width(colWidth).Align(lipgloss.Center).Bold(true)
 
 	// Headers
@@ -332,8 +335,8 @@ func renderMonthView(tasks []models.Task, startOfMonth time.Time, width int, cfg
 
 			// Content
 			var content strings.Builder
-			dayDate := time.Date(startOfMonth.Year(), startOfMonth.Month(), currentDay, 0,0,0,0, startOfMonth.Location())
-			
+			dayDate := time.Date(startOfMonth.Year(), startOfMonth.Month(), currentDay, 0, 0, 0, 0, startOfMonth.Location())
+
 			dateStr := fmt.Sprintf("%d", currentDay)
 			if isSameDay(dayDate, now) {
 				dateStr = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.Colors.Today)).Bold(true).Render(dateStr)
@@ -352,7 +355,7 @@ func renderMonthView(tasks []models.Task, startOfMonth time.Time, width int, cfg
 				if len(desc) > colWidth-3 {
 					desc = desc[:colWidth-3]
 				}
-				
+
 				icon := "•"
 				if t.IsBlocked {
 					icon = "🚫"
@@ -380,11 +383,11 @@ func renderQuarterView(tasks []models.Task, startOfQuarter time.Time, width int,
 	if colWidth < 15 {
 		colWidth = 15
 	}
-	
+
 	// Bucket tasks by Week (relative to startOfQuarter)
 	// We'll just iterate 13-14 weeks
 	weekTasks := make(map[int][]models.Task)
-	
+
 	// Determine "Standard" Weeks starting Monday
 	// Align startOfQuarter to the preceding Monday
 	qStartMonday := startOfQuarter
@@ -397,7 +400,9 @@ func renderQuarterView(tasks []models.Task, startOfQuarter time.Time, width int,
 		// Find which week index this task belongs to
 		// Days since qStartMonday
 		diff := int(d.Sub(qStartMonday).Hours() / 24)
-		if diff < 0 { continue }
+		if diff < 0 {
+			continue
+		}
 		weekIdx := diff / 7
 		weekTasks[weekIdx] = append(weekTasks[weekIdx], t)
 	}
@@ -409,11 +414,11 @@ func renderQuarterView(tasks []models.Task, startOfQuarter time.Time, width int,
 		BorderForeground(lipgloss.Color("238"))
 
 	var rows []string
-	
+
 	// 4 columns per row
 	// Usually 13-14 weeks in a quarter
-	weeksInQuarter := 14 
-	
+	weeksInQuarter := 14
+
 	for i := 0; i < weeksInQuarter; i += 4 {
 		var rowCells []string
 		for j := 0; j < 4; j++ {
@@ -422,37 +427,39 @@ func renderQuarterView(tasks []models.Task, startOfQuarter time.Time, width int,
 				rowCells = append(rowCells, cellStyle.Render(""))
 				continue
 			}
-			
+
 			// Week Start Date
 			wStart := qStartMonday.AddDate(0, 0, weekIdx*7)
 			wEnd := wStart.AddDate(0, 0, 6)
-			
+
 			// Header
 			header := fmt.Sprintf("W%d: %s", weekIdx+1, wStart.Format("Jan 02"))
 			if wStart.Month() != wEnd.Month() {
 				header = fmt.Sprintf("W%d: %s-%s", weekIdx+1, wStart.Format("Jan 02"), wEnd.Format("02"))
 			}
-			
+
 			// Highlight if "Now" is in this week
-			if now.After(wStart) && now.Before(wEnd.AddDate(0,0,1)) {
+			if now.After(wStart) && now.Before(wEnd.AddDate(0, 0, 1)) {
 				header = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.Colors.Today)).Bold(true).Render(header)
 			}
-			
+
 			var content strings.Builder
 			content.WriteString(header + "\n")
 			content.WriteString(strings.Repeat("-", colWidth-2) + "\n")
-			
+
 			ts := weekTasks[weekIdx]
 			content.WriteString(fmt.Sprintf("Total: %d\n", len(ts)))
-			
+
 			// List top 3
 			for k, t := range ts {
-				if k >= 3 { break }
+				if k >= 3 {
+					break
+				}
 				desc := t.Title
 				if len(desc) > colWidth-5 {
 					desc = desc[:colWidth-5]
 				}
-				
+
 				icon := "•"
 				if t.IsBlocked {
 					icon = "🚫"
@@ -465,12 +472,12 @@ func renderQuarterView(tasks []models.Task, startOfQuarter time.Time, width int,
 				style := ui.GetTaskStyle(t, cfg)
 				content.WriteString(style.Render(fmt.Sprintf("%s %s", icon, desc)) + "\n")
 			}
-			
+
 			rowCells = append(rowCells, cellStyle.Render(content.String()))
 		}
 		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, rowCells...))
 	}
-	
+
 	fmt.Println(lipgloss.JoinVertical(lipgloss.Left, rows...))
 }
 
@@ -480,7 +487,7 @@ func renderYearView(tasks []models.Task, startOfYear time.Time, width int, cfg c
 	if colWidth < 15 {
 		colWidth = 15
 	}
-	
+
 	// Bucket by Month (1-12)
 	monthTasks := make(map[time.Month][]models.Task)
 	for _, t := range tasks {
@@ -495,33 +502,37 @@ func renderYearView(tasks []models.Task, startOfYear time.Time, width int, cfg c
 		BorderForeground(lipgloss.Color("238"))
 
 	var rows []string
-	
+
 	for i := 1; i <= 12; i += 4 {
 		var rowCells []string
 		for j := 0; j < 4; j++ {
 			monthIdx := i + j
-			if monthIdx > 12 { break }
-			
+			if monthIdx > 12 {
+				break
+			}
+
 			m := time.Month(monthIdx)
 			ts := monthTasks[m]
-			
+
 			header := m.String()
 			if now.Month() == m && now.Year() == startOfYear.Year() {
 				header = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.Colors.Today)).Bold(true).Render(header)
 			}
-			
+
 			var content strings.Builder
 			content.WriteString(header + "\n")
 			content.WriteString(strings.Repeat("-", colWidth-2) + "\n")
 			content.WriteString(fmt.Sprintf("Tasks: %d\n", len(ts)))
-			
+
 			// Maybe a mini bar chart? "||||"
 			bars := len(ts)
-			if bars > colWidth - 2 { bars = colWidth - 2 }
+			if bars > colWidth-2 {
+				bars = colWidth - 2
+			}
 			if bars > 0 {
 				content.WriteString(strings.Repeat("■", bars))
 			}
-			
+
 			rowCells = append(rowCells, cellStyle.Render(content.String()))
 		}
 		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, rowCells...))
@@ -531,7 +542,7 @@ func renderYearView(tasks []models.Task, startOfYear time.Time, width int, cfg c
 
 func renderCompactTaskBox(t models.Task, width int, cfg config.Config) string {
 	baseStyle := ui.GetTaskStyle(t, cfg)
-	
+
 	taskStyle := baseStyle.Copy().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("240")).
@@ -539,7 +550,7 @@ func renderCompactTaskBox(t models.Task, width int, cfg config.Config) string {
 		Width(width - 2)
 
 	desc := strings.ReplaceAll(t.Title, "\n", " ")
-	
+
 	statusChar := ""
 	if t.IsBlocked {
 		statusChar = "🚫"
@@ -554,14 +565,11 @@ func renderCompactTaskBox(t models.Task, width int, cfg config.Config) string {
 	if len(content) > width-4 {
 		content = content[:width-4] + ".."
 	}
-	
+
 	return taskStyle.Render(content)
 }
 
 func getTaskDate(t models.Task) time.Time {
-	if t.ScheduledAt != nil {
-		return *t.ScheduledAt
-	}
 	if t.DueAt != nil {
 		return *t.DueAt
 	}

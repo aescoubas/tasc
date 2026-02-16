@@ -15,7 +15,6 @@ var (
 	project        string
 	description    string
 	due            string
-	scheduled      string
 	estimate       string
 	recurrenceFlag string
 	block          string
@@ -43,38 +42,19 @@ var addCmd = &cobra.Command{
 			dueAt = t
 		}
 
-		var scheduledAt *time.Time
-		if scheduled != "" {
-			t, err := parse.Date(scheduled, cfg.EndOfDay)
-			if err != nil {
-				fmt.Printf("Invalid scheduled date format: %v\n", err)
-				return
-			}
-			scheduledAt = t
-		}
-
 		// Defaulting Logic:
-		// 1. If neither is set, default both to 1 week from today
-		if dueAt == nil && scheduledAt == nil {
+		// 1. If due is not set, default to 1 week from today.
+		if dueAt == nil {
 			t, err := parse.Date("in 1 week", cfg.EndOfDay)
 			if err == nil {
 				dueAt = t
-				scheduledAt = t
 			}
 		}
 
-		// 2. If one is set, sync the other
-		if dueAt != nil && scheduledAt == nil {
-			scheduledAt = dueAt
-		}
-		if scheduledAt != nil && dueAt == nil {
-			dueAt = scheduledAt
-		}
-
 		// Handle Block Default logic
-		if block == "" && scheduledAt != nil {
-			// If scheduled is date-only (floating), default to morning
-			if scheduledAt.Hour() == 0 && scheduledAt.Minute() == 0 {
+		if block == "" && dueAt != nil {
+			// If due is date-only (floating), default to morning.
+			if dueAt.Hour() == 0 && dueAt.Minute() == 0 {
 				block = "morning"
 			}
 		}
@@ -107,7 +87,6 @@ var addCmd = &cobra.Command{
 			Description:   description,
 			Project:       project,
 			DueAt:         dueAt,
-			ScheduledAt:   scheduledAt,
 			ScheduleBlock: block,
 			Estimate:      estimate,
 			Recurrence:    recurrenceFlag,
@@ -128,7 +107,6 @@ func init() {
 	addCmd.Flags().StringVarP(&project, "project", "p", "", "Project name")
 	addCmd.Flags().StringVarP(&description, "description", "m", "", "Detailed description")
 	addCmd.Flags().StringVarP(&due, "due", "d", "", "Due date (YYYY-MM-DD)")
-	addCmd.Flags().StringVarP(&scheduled, "scheduled", "s", "", "Scheduled date (YYYY-MM-DD)")
 	addCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate (e.g. 2h, 30m)")
 	addCmd.Flags().StringVarP(&recurrenceFlag, "recurrence", "r", "", "Recurrence rule (e.g. 'daily', 'every 2 weeks')")
 	addCmd.Flags().StringVarP(&block, "block", "b", "", "Time block (e.g. morning, afternoon)")
@@ -148,7 +126,5 @@ func init() {
 	})
 
 	addCmd.RegisterFlagCompletionFunc("due", dateCompletionFunc)
-	addCmd.RegisterFlagCompletionFunc("scheduled", dateCompletionFunc)
 	addCmd.RegisterFlagCompletionFunc("recurrence", recurrenceCompletionFunc)
 }
-

@@ -76,6 +76,9 @@ func TestTaskLifecycle(t *testing.T) {
 	if !strings.Contains(out, "30m") {
 		t.Errorf("List missing estimate. Output:\n%s", out)
 	}
+	if strings.Contains(out, "Scheduled") {
+		t.Errorf("List output still contains Scheduled column. Output:\n%s", out)
+	}
 
 	// 3. Mark Done
 	// Extract ID? Usually 1 for first task.
@@ -124,7 +127,7 @@ func TestProjectWorkflow(t *testing.T) {
 	if !strings.Contains(out, "Work") || !strings.Contains(out, "Deploy Prod") {
 		t.Errorf("List missing project context. Output:\n%s", out)
 	}
-	
+
 	// 4. Check Project List stats
 	out, err = runTasc(t, dbPath, "project", "list")
 	if err != nil {
@@ -133,5 +136,31 @@ func TestProjectWorkflow(t *testing.T) {
 	// Should see "Work" and "1" task total, "0%" progress
 	if !strings.Contains(out, "Work") {
 		t.Errorf("Project list missing Work. Output:\n%s", out)
+	}
+}
+
+func TestListOverdueFilter(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "overdue.db")
+
+	// Create one overdue and one future task.
+	out, err := runTasc(t, dbPath, "add", "Past Due Task", "--due", "2000-01-01")
+	if err != nil {
+		t.Fatalf("Add overdue task failed: %v\nOutput: %s", err, out)
+	}
+	out, err = runTasc(t, dbPath, "add", "Future Task", "--due", "2999-01-01")
+	if err != nil {
+		t.Fatalf("Add future task failed: %v\nOutput: %s", err, out)
+	}
+
+	out, err = runTasc(t, dbPath, "list", "--overdue")
+	if err != nil {
+		t.Fatalf("List --overdue failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Past Due Task") {
+		t.Errorf("Expected overdue task in output. Output:\n%s", out)
+	}
+	if strings.Contains(out, "Future Task") {
+		t.Errorf("Did not expect future task in overdue output. Output:\n%s", out)
 	}
 }

@@ -28,7 +28,7 @@ var seedCmd = &cobra.Command{
 		}
 
 		fmt.Println("Seeding database with 100 tasks over the next 60 days...")
-		
+
 		now := time.Now()
 
 		for i := 0; i < 100; i++ {
@@ -38,29 +38,19 @@ var seedCmd = &cobra.Command{
 			// Status: mostly backlog
 			status := "backlog"
 			var completedAt interface{} = nil // database/sql uses nil for NULL
-			
+
 			if rand.Intn(100) > 90 { // 10% done
 				status = "done"
 				completedAt = now.Format("2006-01-02 15:04:05")
 			}
 
-			// Schedule: mostly scheduled in the next 60 days
-			var scheduledAt interface{} = nil
-			if rand.Intn(10) > 1 { // 80% scheduled
-				// Random day offset 0-60
-				daysOffset := rand.Intn(60)
-				// Random hour 9-17
-				hour := 9 + rand.Intn(9)
-				schTime := now.AddDate(0, 0, daysOffset)
-				schTime = time.Date(schTime.Year(), schTime.Month(), schTime.Day(), hour, 0, 0, 0, schTime.Location())
-				scheduledAt = schTime.Format("2006-01-02 15:04:05")
-			}
-
-			// Due Date: sometime after schedule or random
+			// Due Date: mostly in the next 60 days
 			var dueAt interface{} = nil
-			if rand.Intn(10) > 5 { // 50% have due date
-				daysOffset := rand.Intn(90) // up to 90 days
+			if rand.Intn(10) > 1 { // 80% have due date
+				daysOffset := rand.Intn(60)
+				hour := 9 + rand.Intn(9)
 				dueTime := now.AddDate(0, 0, daysOffset)
+				dueTime = time.Date(dueTime.Year(), dueTime.Month(), dueTime.Day(), hour, 0, 0, 0, dueTime.Location())
 				dueAt = dueTime.Format("2006-01-02 15:04:05")
 			}
 
@@ -78,19 +68,19 @@ var seedCmd = &cobra.Command{
 				if strings.HasSuffix(estStr, "d") {
 					d = 24 * time.Hour // Simple fallback for "1d" since ParseDuration might fail on "d" depending on version/logic, but let's stick to simple
 				}
-				
+
 				baseSeconds := d.Seconds()
-				
+
 				// Variance: +/- 50%
 				variance := (rand.Float64() - 0.5) // -0.5 to 0.5
 				actualSeconds := baseSeconds * (1.0 + variance)
 				timeSpent = int64(actualSeconds)
 			}
 
-			query := `INSERT INTO tasks (title, project, status, completed_at, created_at, due_at, scheduled_at, estimate, time_spent) 
-				VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)`
+			query := `INSERT INTO tasks (title, project, status, completed_at, created_at, due_at, estimate, time_spent) 
+				VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)`
 
-			_, err := tx.Exec(query, desc, proj, status, completedAt, dueAt, scheduledAt, estimate, timeSpent)
+			_, err := tx.Exec(query, desc, proj, status, completedAt, dueAt, estimate, timeSpent)
 			if err != nil {
 				tx.Rollback()
 				fmt.Printf("Error inserting task: %v\n", err)
@@ -106,8 +96,8 @@ var seedCmd = &cobra.Command{
 		}
 
 		// Add random dependencies
-	
-rows, _ := tx.Query("SELECT id FROM tasks ORDER BY id DESC LIMIT 100") // Get recent ones
+
+		rows, _ := tx.Query("SELECT id FROM tasks ORDER BY id DESC LIMIT 100") // Get recent ones
 		var ids []int64
 		for rows.Next() {
 			var id int64

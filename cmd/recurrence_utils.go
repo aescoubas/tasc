@@ -15,14 +15,10 @@ func spawnNextTask(t models.Task) {
 	}
 
 	// Determine base date
-	// Priority: Scheduled -> Due -> Now
+	// Priority: Due -> Now
 	var base time.Time
-	var isScheduledBased bool
 
-	if t.ScheduledAt != nil {
-		base = *t.ScheduledAt
-		isScheduledBased = true
-	} else if t.DueAt != nil {
+	if t.DueAt != nil {
 		base = *t.DueAt
 	} else {
 		base = time.Now()
@@ -34,21 +30,7 @@ func spawnNextTask(t models.Task) {
 		return
 	}
 
-	// Calculate new fields
-	var newScheduled *time.Time
-	var newDue *time.Time
-
-	if isScheduledBased {
-		newScheduled = &nextDate
-		// Shift due date if exists
-		if t.DueAt != nil {
-			diff := nextDate.Sub(base)
-			nd := t.DueAt.Add(diff)
-			newDue = &nd
-		}
-	} else {
-		newScheduled = &nextDate
-	}
+	newDue := &nextDate
 
 	// Insert new task
 	newTask := models.Task{
@@ -57,7 +39,6 @@ func spawnNextTask(t models.Task) {
 		Project:     t.Project,
 		Recurrence:  t.Recurrence,
 		DueAt:       newDue,
-		ScheduledAt: newScheduled,
 		Estimate:    t.Estimate,
 	}
 
@@ -66,5 +47,5 @@ func spawnNextTask(t models.Task) {
 		fmt.Printf("Error creating next recurring task: %v\n", err)
 		return
 	}
-	fmt.Printf("Created next recurring task %d (Scheduled: %s).\n", id, nextDate.Format("2006-01-02"))
+	fmt.Printf("Created next recurring task %d (Due: %s).\n", id, nextDate.Format("2006-01-02"))
 }

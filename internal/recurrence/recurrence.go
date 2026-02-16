@@ -56,7 +56,7 @@ func Next(last time.Time, rule string) (time.Time, error) {
 		weekdayStr := complexMatches[2]
 
 		targetWeekday := parseWeekday(weekdayStr)
-		
+
 		// Start looking from the next month of the 'last' date
 		// Or should we verify if the 'last' date matches the rule?
 		// The requirement usually implies: give me the NEXT one after 'last'.
@@ -69,30 +69,30 @@ func Next(last time.Time, rule string) (time.Time, error) {
 			// But careful: if 'last' is strictly before the occurrence in the SAME month, we should return that.
 			// However, usually 'last' IS the previous occurrence. So we want the occurrence in the NEXT month?
 			// Let's iterate months starting from 'last' month.
-			
+
 			// Actually, easiest is:
 			// Calculate occurrence for Current Month of 'last'.
 			// If it is > last, return it.
 			// Else, Calculate occurrence for Next Month.
-			
+
 			// We need a loop because "First Monday" might have already passed in the current month.
-			
+
 			// Let's start checking from the month of 'last'
 			candidate := getNthWeekdayOfMonth(next.Year(), next.Month(), ordinal, targetWeekday)
-			
+
 			// If candidate is strictly after last, we found it.
 			// Note: We use strictly after because 'last' is presumably the previous execution.
-			// Unless 'last' is just "now" when setting it up? 
+			// Unless 'last' is just "now" when setting it up?
 			// But for "Next()", we assume 'last' is the reference point.
 			if candidate.After(last) {
-				// Preserve time? Usually recurrence sets date. 
-				// Spec says: "Should set the 'scheduled' field to that exact date."
+				// Preserve time? Usually recurrence sets date.
+				// Set the next due date to that exact calendar date.
 				// 'last' might have a time component (e.g. 9:00 AM).
 				// We should probably preserve the time of day from 'last'.
-				return time.Date(candidate.Year(), candidate.Month(), candidate.Day(), 
+				return time.Date(candidate.Year(), candidate.Month(), candidate.Day(),
 					last.Hour(), last.Minute(), last.Second(), last.Nanosecond(), last.Location()), nil
 			}
-			
+
 			// Move to next month
 			// Safest way: Set day to 1, THEN add 1 month to avoid normalization issues (e.g. Jan 31 + 1mo -> Mar 3)
 			next = time.Date(next.Year(), next.Month(), 1, 0, 0, 0, 0, next.Location()).AddDate(0, 1, 0)
@@ -104,25 +104,32 @@ func Next(last time.Time, rule string) (time.Time, error) {
 
 func parseWeekday(s string) time.Weekday {
 	switch strings.ToLower(s) {
-	case "sunday": return time.Sunday
-	case "monday": return time.Monday
-	case "tuesday": return time.Tuesday
-	case "wednesday": return time.Wednesday
-	case "thursday": return time.Thursday
-	case "friday": return time.Friday
-	case "saturday": return time.Saturday
+	case "sunday":
+		return time.Sunday
+	case "monday":
+		return time.Monday
+	case "tuesday":
+		return time.Tuesday
+	case "wednesday":
+		return time.Wednesday
+	case "thursday":
+		return time.Thursday
+	case "friday":
+		return time.Friday
+	case "saturday":
+		return time.Saturday
 	}
 	return time.Sunday
 }
 
 func getNthWeekdayOfMonth(year int, month time.Month, ordinal string, target time.Weekday) time.Time {
 	firstDay := time.Date(year, month, 1, 0, 0, 0, 0, time.Local)
-	
+
 	if ordinal == "last" {
 		// Start from next month's first day and go back
 		nextMonth := firstDay.AddDate(0, 1, 0)
 		lastDay := nextMonth.AddDate(0, 0, -1)
-		
+
 		// Rewind until we hit target weekday
 		for lastDay.Weekday() != target {
 			lastDay = lastDay.AddDate(0, 0, -1)
@@ -138,10 +145,14 @@ func getNthWeekdayOfMonth(year int, month time.Month, ordinal string, target tim
 
 	n := 1
 	switch ordinal {
-	case "first": n = 1
-	case "second": n = 2
-	case "third": n = 3
-	case "fourth": n = 4
+	case "first":
+		n = 1
+	case "second":
+		n = 2
+	case "third":
+		n = 3
+	case "fourth":
+		n = 4
 	}
 
 	return firstOccurrence.AddDate(0, 0, (n-1)*7)

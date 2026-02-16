@@ -19,7 +19,7 @@ const (
 	TierDefault
 )
 
-// GetUrgencyTier determines the urgency level of a task based on its DueAt and ScheduledAt times.
+// GetUrgencyTier determines the urgency level of a task based on its due date.
 func GetUrgencyTier(t models.Task) UrgencyTier {
 	if t.IsBlocked || t.Status == models.StatusBlocked {
 		return TierBlocked
@@ -51,14 +51,7 @@ func GetUrgencyTier(t models.Task) UrgencyTier {
 		return TierDefault
 	}
 
-	tierDue := checkTier(t.DueAt)
-	tierSch := checkTier(t.ScheduledAt)
-
-	// Lower enum value = higher urgency
-	if tierDue < tierSch {
-		return tierDue
-	}
-	return tierSch
+	return checkTier(t.DueAt)
 }
 
 // GetTaskStyle returns the lipgloss Style for a task based on its urgency and the user config.

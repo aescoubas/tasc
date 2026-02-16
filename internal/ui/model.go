@@ -43,7 +43,7 @@ func InitialModel() Model {
 }
 
 func loadTasks() []models.Task {
-	query := "SELECT id, title, project, status, created_at, due_at, scheduled_at, estimate, active_start, time_spent, reschedule_count FROM tasks WHERE status != 'done' AND status != 'deleted' ORDER BY created_at DESC"
+	query := "SELECT id, title, project, status, created_at, due_at, estimate, active_start, time_spent, reschedule_count FROM tasks WHERE status != 'done' AND status != 'deleted' ORDER BY created_at DESC"
 	rows, err := db.DB.Query(query)
 	if err != nil {
 		log.Fatal(err)
@@ -55,20 +55,16 @@ func loadTasks() []models.Task {
 		var t models.Task
 		var project sql.NullString
 		var dueAt sql.NullTime
-		var scheduledAt sql.NullTime
 		var estimate sql.NullString
 		var activeStart sql.NullTime
 		var timeSpent sql.NullInt64
 
-		if err := rows.Scan(&t.ID, &t.Title, &project, &t.Status, &t.CreatedAt, &dueAt, &scheduledAt, &estimate, &activeStart, &timeSpent, &t.RescheduleCount); err != nil {
+		if err := rows.Scan(&t.ID, &t.Title, &project, &t.Status, &t.CreatedAt, &dueAt, &estimate, &activeStart, &timeSpent, &t.RescheduleCount); err != nil {
 			continue
 		}
 		t.Project = project.String
 		if dueAt.Valid {
 			t.DueAt = &dueAt.Time
-		}
-		if scheduledAt.Valid {
-			t.ScheduledAt = &scheduledAt.Time
 		}
 		if estimate.Valid {
 			t.Estimate = estimate.String

@@ -23,7 +23,7 @@ type MCPServer struct {
 
 func NewServer(s store.Store) *MCPServer {
 	mcpServer := server.NewMCPServer("tasc", "0.1.0")
-	
+
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		cfg = config.DefaultConfig()
@@ -53,7 +53,6 @@ func (ms *MCPServer) registerTools() {
 		mcp.WithString("description", mcp.Description("Optional detailed description")),
 		mcp.WithString("project", mcp.Description("The project name (optional)")),
 		mcp.WithString("due", mcp.Description("Due date (YYYY-MM-DD or natural language like 'tomorrow')")),
-		mcp.WithString("scheduled", mcp.Description("Scheduled date (YYYY-MM-DD)")),
 		mcp.WithString("estimate", mcp.Description("Time estimate (e.g. 30m, 2h)")),
 		mcp.WithString("recurrence", mcp.Description("Recurrence rule (e.g. 'daily', 'every 2 weeks')")),
 	), ms.handleAdd)
@@ -80,7 +79,6 @@ func (ms *MCPServer) registerTools() {
 		mcp.WithString("description", mcp.Description("New detailed description")),
 		mcp.WithString("project", mcp.Description("New project")),
 		mcp.WithString("due", mcp.Description("New due date")),
-		mcp.WithString("scheduled", mcp.Description("New scheduled date")),
 		mcp.WithString("estimate", mcp.Description("New time estimate")),
 		mcp.WithString("recurrence", mcp.Description("New recurrence rule")),
 	), ms.handleUpdate)
@@ -97,9 +95,7 @@ func (ms *MCPServer) registerTools() {
 		mcp.WithString("project", mcp.Description("New project")),
 		mcp.WithString("status", mcp.Description("New status")),
 		mcp.WithString("due", mcp.Description("New due date")),
-		mcp.WithString("scheduled", mcp.Description("New scheduled date")),
 		mcp.WithBoolean("clear_due", mcp.Description("Clear due date")),
-		mcp.WithBoolean("clear_scheduled", mcp.Description("Clear scheduled date")),
 	), ms.handleBatchUpdate)
 
 	// 7. Delete Task
@@ -174,11 +170,10 @@ func (ms *MCPServer) handleAdd(ctx context.Context, request mcp.CallToolRequest)
 	desc := request.GetString("description", "")
 	proj := request.GetString("project", "")
 	dueStr := request.GetString("due", "")
-	schStr := request.GetString("scheduled", "")
 	est := request.GetString("estimate", "")
 	rec := request.GetString("recurrence", "")
 
-	var dueAt, scheduledAt *time.Time
+	var dueAt *time.Time
 
 	if dueStr != "" {
 		t, err := parse.Date(dueStr, ms.config.EndOfDay)
@@ -188,24 +183,11 @@ func (ms *MCPServer) handleAdd(ctx context.Context, request mcp.CallToolRequest)
 		dueAt = t
 	}
 
-	if schStr != "" {
-		t, err := parse.Date(schStr, ms.config.EndOfDay)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Invalid scheduled date: %v", err)), nil
-		}
-		scheduledAt = t
-	}
-
-	if dueAt == nil && scheduledAt != nil {
-		dueAt = scheduledAt
-	}
-
 	task := models.Task{
 		Title:       title,
 		Description: desc,
 		Project:     proj,
 		DueAt:       dueAt,
-		ScheduledAt: scheduledAt,
 		Estimate:    est,
 		Recurrence:  rec,
 	}
@@ -253,7 +235,7 @@ func (ms *MCPServer) handleList(ctx context.Context, request mcp.CallToolRequest
 		if t.IsBlocked {
 			status = "blocked"
 		}
-		
+
 		due := ""
 		if t.DueAt != nil {
 			due = fmt.Sprintf(" Due: %s", t.DueAt.Format("2006-01-02"))
@@ -302,7 +284,7 @@ func (ms *MCPServer) handleUpdate(ctx context.Context, request mcp.CallToolReque
 	if p := request.GetString("project", ""); p != "" {
 		task.Project = p
 	}
-// ... (rest is same but I need to include context to match block)
+	// ... (rest is same but I need to include context to match block)
 	if _, ok := args["estimate"]; ok {
 		task.Estimate = request.GetString("estimate", "")
 	}
@@ -320,19 +302,6 @@ func (ms *MCPServer) handleUpdate(ctx context.Context, request mcp.CallToolReque
 				return mcp.NewToolResultError(fmt.Sprintf("Invalid due date: %v", err)), nil
 			}
 			task.DueAt = t
-		}
-	}
-
-	if _, ok := args["scheduled"]; ok {
-		schStr := request.GetString("scheduled", "")
-		if schStr == "" {
-			task.ScheduledAt = nil
-		} else {
-			t, err := parse.Date(schStr, ms.config.EndOfDay)
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Invalid scheduled date: %v", err)), nil
-			}
-			task.ScheduledAt = t
 		}
 	}
 
@@ -421,16 +390,6 @@ func (ms *MCPServer) handleBatchUpdate(ctx context.Context, request mcp.CallTool
 		updates["due_at"] = t
 	}
 
-	if request.GetBool("clear_scheduled", false) {
-		updates["scheduled_at"] = nil
-	} else if s := request.GetString("scheduled", ""); s != "" {
-		t, err := parse.Date(s, ms.config.EndOfDay)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Invalid scheduled date: %v", err)), nil
-		}
-		updates["scheduled_at"] = t
-	}
-
 	err := ms.store.BatchUpdateTasks(ids, updates)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error batch updating tasks: %v", err)), nil
@@ -485,7 +444,7 @@ func (ms *MCPServer) handleStop(ctx context.Context, request mcp.CallToolRequest
 func (ms *MCPServer) handleAddDependency(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	blockerID := int64(request.GetInt("blocker_id", 0))
 	blockedID := int64(request.GetInt("blocked_id", 0))
-	
+
 	if blockerID == 0 || blockedID == 0 {
 		return mcp.NewToolResultError("Both blocker_id and blocked_id are required"), nil
 	}
@@ -506,7 +465,7 @@ func (ms *MCPServer) handleAddProject(ctx context.Context, request mcp.CallToolR
 	desc := request.GetString("description", "")
 	parent := request.GetString("parent", "")
 	dueStr := request.GetString("due", "")
-	
+
 	var dueAt *time.Time
 	if dueStr != "" {
 		t, err := parse.Date(dueStr, ms.config.EndOfDay)
@@ -528,7 +487,7 @@ func (ms *MCPServer) handleAddProject(ctx context.Context, request mcp.CallToolR
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error creating project: %v", err)), nil
 	}
-	
+
 	return mcp.NewToolResultText(fmt.Sprintf("Project '%s' created.", name)), nil
 }
 
@@ -542,7 +501,7 @@ func (ms *MCPServer) handleUpdateProject(ctx context.Context, request mcp.CallTo
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Project not found: %v", err)), nil
 	}
-	
+
 	args := request.GetArguments()
 
 	if newName := request.GetString("new_name", ""); newName != "" {
@@ -563,7 +522,9 @@ func (ms *MCPServer) handleUpdateProject(ctx context.Context, request mcp.CallTo
 			p.DueAt = nil
 		} else {
 			t, err := parse.Date(d, ms.config.EndOfDay)
-			if err != nil { return mcp.NewToolResultError(fmt.Sprintf("Invalid due date: %v", err)), nil }
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Invalid due date: %v", err)), nil
+			}
 			p.DueAt = t
 		}
 	}
@@ -585,9 +546,10 @@ func (ms *MCPServer) handleDeleteProject(ctx context.Context, request mcp.CallTo
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error deleting project: %v", err)), nil
 	}
-	
+
 	return mcp.NewToolResultText(fmt.Sprintf("Project '%s' deleted.", name)), nil
 }
+
 // ... (handleSearch)
 func (ms *MCPServer) handleSearch(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	query := request.GetString("query", "")
@@ -599,7 +561,7 @@ func (ms *MCPServer) handleSearch(ctx context.Context, request mcp.CallToolReque
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error searching tasks: %v", err)), nil
 	}
-	
+
 	if len(tasks) == 0 {
 		return mcp.NewToolResultText("No matches found."), nil
 	}

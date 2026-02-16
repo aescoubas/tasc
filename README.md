@@ -9,7 +9,7 @@
 *   **Interactive TUI:** A beautiful, keyboard-driven UI powered by Bubble Tea for managing tasks.
 *   **Dependency Management:** Create and visualize task dependencies (graphs).
 *   **AI Integration:** Built-in integration with Google Gemini for natural language queries and advice.
-*   **Smart Scheduling:** Track Due Dates, Scheduled Dates, and Estimates.
+*   **Smart Scheduling:** Track Due Dates and Estimates.
 *   **Priority System:** Dynamic priority scoring to highlight what matters most.
 *   **Time Tracking:** Built-in timer to track how long tasks take.
 *   **Calendar View:** Visualize your schedule in the terminal.

@@ -11,10 +11,10 @@ import (
 )
 
 var modifyCmd = &cobra.Command{
-	Use:   "modify [id...] [title]",
-	Short: "Modify task(s)",
-	Long:  "Modify one or more tasks. If multiple IDs are provided, only flags (e.g. --due, --project) are applied. If a single ID is provided, you can also update the title.",
-	Args:  cobra.MinimumNArgs(1),
+	Use:               "modify [id...] [title]",
+	Short:             "Modify task(s)",
+	Long:              "Modify one or more tasks. If multiple IDs are provided, only flags (e.g. --due, --project) are applied. If a single ID is provided, you can also update the title.",
+	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: taskIDCompletionFunc,
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, err := config.LoadConfig()
@@ -24,7 +24,7 @@ var modifyCmd = &cobra.Command{
 
 		var ids []int64
 		var titleParts []string
-		
+
 		// Parse Args: Try to consume as many IDs as possible from the start
 		parsingIDs := true
 		for _, arg := range args {
@@ -73,21 +73,6 @@ var modifyCmd = &cobra.Command{
 					return
 				}
 				updates["due_at"] = parsed
-			}
-		}
-		if cmd.Flags().Changed("scheduled") {
-			if scheduled == "" {
-				updates["scheduled_at"] = nil
-				// Resetting scheduled usually increments reschedule count if it was set? 
-				// Logic in original was complex. Batch logic implies setting value directly.
-				// We can handle reschedule logic if needed, but let's keep it simple for batch.
-			} else {
-				parsed, err := parse.Date(scheduled, cfg.EndOfDay)
-				if err != nil {
-					fmt.Printf("Invalid scheduled date: %v\n", err)
-					return
-				}
-				updates["scheduled_at"] = parsed
 			}
 		}
 		if cmd.Flags().Changed("estimate") {
@@ -157,7 +142,7 @@ var modifyCmd = &cobra.Command{
 				var resp string
 				fmt.Scanln(&resp)
 				resp = strings.ToLower(resp)
-				
+
 				if resp == "o" || resp == "only" {
 					// Detach: Spawn next task with OLD values
 					spawnNextTask(t)
@@ -187,7 +172,6 @@ func init() {
 	modifyCmd.Flags().StringVarP(&project, "project", "p", "", "Project name")
 	modifyCmd.Flags().StringVarP(&description, "description", "m", "", "Detailed description")
 	modifyCmd.Flags().StringVarP(&due, "due", "d", "", "Due date (YYYY-MM-DD)")
-	modifyCmd.Flags().StringVarP(&scheduled, "scheduled", "s", "", "Scheduled date (YYYY-MM-DD)")
 	modifyCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate")
 	modifyCmd.Flags().StringVarP(&recurrenceFlag, "recurrence", "r", "", "Recurrence rule")
 	modifyCmd.Flags().StringVarP(&block, "block", "b", "", "Time block")
@@ -220,6 +204,5 @@ func init() {
 	})
 
 	modifyCmd.RegisterFlagCompletionFunc("due", dateCompletionFunc)
-	modifyCmd.RegisterFlagCompletionFunc("scheduled", dateCompletionFunc)
 	modifyCmd.RegisterFlagCompletionFunc("recurrence", recurrenceCompletionFunc)
 }

@@ -39,7 +39,6 @@ func RenderTaskTable(tasks []models.Task, scores map[int64]float64, cfg config.C
 		created  string
 		age      string
 		due      string
-		sch      string
 		rsch     string
 		est      string
 		score    string
@@ -48,8 +47,8 @@ func RenderTaskTable(tasks []models.Task, scores map[int64]float64, cfg config.C
 	}
 
 	var rowsData []displayRow
-	widths := make([]int, 12)
-	headers := []string{"ID", "Project", "Status", "Title", "Created", "Age", "Due", "Scheduled", "Rsch", "Est", "Score", "Duration"}
+	widths := make([]int, 11)
+	headers := []string{"ID", "Project", "Status", "Title", "Created", "Age", "Due", "Rsch", "Est", "Score", "Duration"}
 
 	for i, h := range headers {
 		widths[i] = len(h)
@@ -64,15 +63,6 @@ func RenderTaskTable(tasks []models.Task, scores map[int64]float64, cfg config.C
 				dueStr = FormatRelative(*t.DueAt)
 			} else {
 				dueStr = FormatDate(*t.DueAt, cfg)
-			}
-		}
-
-		schStr := "-"
-		if t.ScheduledAt != nil {
-			if cfg.RelativeDates {
-				schStr = FormatRelative(*t.ScheduledAt)
-			} else {
-				schStr = FormatDate(*t.ScheduledAt, cfg)
 			}
 		}
 
@@ -131,7 +121,7 @@ func RenderTaskTable(tasks []models.Task, scores map[int64]float64, cfg config.C
 		}
 
 		statusStr := string(t.Status)
-		
+
 		scoreVal := 0.0
 		if scores != nil {
 			scoreVal = scores[t.ID]
@@ -145,7 +135,6 @@ func RenderTaskTable(tasks []models.Task, scores map[int64]float64, cfg config.C
 			created:  FormatDate(t.CreatedAt, cfg),
 			age:      t.AgeString(),
 			due:      dueStr,
-			sch:      schStr,
 			rsch:     rschStr,
 			est:      estStr,
 			score:    fmt.Sprintf("%.1f", scoreVal),
@@ -176,20 +165,17 @@ func RenderTaskTable(tasks []models.Task, scores map[int64]float64, cfg config.C
 		if len(row.due) > widths[6] {
 			widths[6] = len(row.due)
 		}
-		if len(row.sch) > widths[7] {
-			widths[7] = len(row.sch)
+		if len(row.rsch) > widths[7] {
+			widths[7] = len(row.rsch)
 		}
-		if len(row.rsch) > widths[8] {
-			widths[8] = len(row.rsch)
+		if len(row.est) > widths[8] {
+			widths[8] = len(row.est)
 		}
-		if len(row.est) > widths[9] {
-			widths[9] = len(row.est)
+		if len(row.score) > widths[9] {
+			widths[9] = len(row.score)
 		}
-		if len(row.score) > widths[10] {
-			widths[10] = len(row.score)
-		}
-		if len(row.duration) > widths[11] {
-			widths[11] = len(row.duration)
+		if len(row.duration) > widths[10] {
+			widths[10] = len(row.duration)
 		}
 	}
 
@@ -287,11 +273,10 @@ func RenderTaskTable(tasks []models.Task, scores map[int64]float64, cfg config.C
 		printCol(row.created, widths[4], false)
 		printCol(row.age, widths[5], false)
 		printCol(row.due, widths[6], false)
-		printCol(row.sch, widths[7], false)
-		printCol(row.rsch, widths[8], false)
-		printCol(row.est, widths[9], false)
-		printCol(row.score, widths[10], false)
-		printCol(row.duration, widths[11], true)
+		printCol(row.rsch, widths[7], false)
+		printCol(row.est, widths[8], false)
+		printCol(row.score, widths[9], false)
+		printCol(row.duration, widths[10], true)
 		fmt.Println()
 	}
 }

@@ -50,7 +50,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /tasks/{id}", s.handleGetTask)
 	s.mux.HandleFunc("PUT /tasks/{id}", s.handleUpdateTask)
 	s.mux.HandleFunc("DELETE /tasks/{id}", s.handleDeleteTask)
-	
+
 	s.mux.HandleFunc("POST /tasks/{id}/done", s.handleTaskDone)
 	s.mux.HandleFunc("POST /tasks/{id}/start", s.handleTaskStart)
 	s.mux.HandleFunc("POST /tasks/stop", s.handleTaskStop)
@@ -117,8 +117,6 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 
 	filter.DueBefore = parseDate("due_before")
 	filter.DueAfter = parseDate("due_after")
-	filter.ScheduledBefore = parseDate("scheduled_before")
-	filter.ScheduledAfter = parseDate("scheduled_after")
 
 	tasks, err := s.store.ListTasks(filter)
 	if err != nil {
@@ -133,10 +131,6 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
-	}
-
-	if t.DueAt == nil && t.ScheduledAt != nil {
-		t.DueAt = t.ScheduledAt
 	}
 
 	id, err := s.store.CreateTask(t)
@@ -237,7 +231,7 @@ func (s *Server) handleTaskStop(w http.ResponseWriter, r *http.Request) {
 	// The store method accepts ID or -1 for "active".
 	// Let's assume URL query or body if we want specific.
 	// For simplicity, stop whatever is active.
-	
+
 	if err := s.store.StopTask(-1); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -269,7 +263,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Query parameter 'q' is required", http.StatusBadRequest)
 		return
 	}
-	
+
 	tasks, err := s.store.SearchTasks(query)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -287,7 +281,7 @@ func (s *Server) handleAddDependency(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	
+
 	if err := s.store.AddDependency(req.BlockerID, req.BlockedID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -325,7 +319,7 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	
+
 	if err := s.store.UpdateProject(oldName, p); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

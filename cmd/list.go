@@ -23,11 +23,11 @@ type taskWithScore struct {
 }
 
 var (
-	sortBy   string
-	sortDesc bool
-	showAll  bool
+	sortBy        string
+	sortDesc      bool
+	showAll       bool
 	forceRelative bool
-	showAbsolute bool
+	showAbsolute  bool
 
 	// Filters
 	filterProjects  []string
@@ -35,8 +35,7 @@ var (
 	filterStatus    []string
 	filterDueBefore string
 	filterDueAfter  string
-	filterSchBefore string
-	filterSchAfter  string
+	filterOverdue   bool
 	filterScoreMin  float64
 	filterScoreMax  float64
 )
@@ -61,7 +60,7 @@ var listCmd = &cobra.Command{
 
 		// Parse Filters
 		filter := store.TaskFilter{}
-		
+
 		// Fetch all projects to handle hierarchy
 		projectParent := make(map[string]string)
 		projectShortName := make(map[string]string)
@@ -85,18 +84,20 @@ var listCmd = &cobra.Command{
 			expanded := make(map[string]bool)
 			var queue []string
 			queue = append(queue, filterProjects...)
-			
+
 			for len(queue) > 0 {
 				curr := queue[0]
 				queue = queue[1:]
-				if expanded[curr] { continue }
+				if expanded[curr] {
+					continue
+				}
 				expanded[curr] = true
-				
+
 				if children, ok := projectChildren[curr]; ok {
 					queue = append(queue, children...)
 				}
 			}
-			
+
 			filter.Projects = nil
 			for p := range expanded {
 				filter.Projects = append(filter.Projects, p)
@@ -128,19 +129,12 @@ var listCmd = &cobra.Command{
 				filter.DueAfter = t
 			}
 		}
-		if filterSchBefore != "" {
-			t, err := parse.Date(filterSchBefore, "")
-			if err == nil {
-				filter.ScheduledBefore = t
+		if filterOverdue {
+			now := time.Now()
+			if filter.DueBefore == nil || filter.DueBefore.After(now) {
+				filter.DueBefore = &now
 			}
 		}
-		if filterSchAfter != "" {
-			t, err := parse.Date(filterSchAfter, "")
-			if err == nil {
-				filter.ScheduledAfter = t
-			}
-		}
-
 		// 1. Fetch tasks via Store
 		fetchedTasks, err := CurrentStore.ListTasks(filter)
 		if err != nil {
@@ -194,11 +188,13 @@ var listCmd = &cobra.Command{
 
 				for _, dep := range deps {
 					blockedBase, ok := baseScores[dep.BlockedID]
-					if !ok { continue } 
-					
+					if !ok {
+						continue
+					}
+
 					blockedTotal := blockedBase + boosts[dep.BlockedID]
 					inherited := blockedTotal * 0.5
-					
+
 					if inherited > newBoosts[dep.BlockerID] {
 						newBoosts[dep.BlockerID] = inherited
 					}
@@ -264,16 +260,6 @@ var listCmd = &cobra.Command{
 				} else {
 					less = t1.DueAt.Before(*t2.DueAt)
 				}
-			case "scheduled", "scheduled_at", "sch":
-				if t1.ScheduledAt == nil && t2.ScheduledAt == nil {
-					less = false
-				} else if t1.ScheduledAt == nil {
-					less = false
-				} else if t2.ScheduledAt == nil {
-					less = true
-				} else {
-					less = t1.ScheduledAt.Before(*t2.ScheduledAt)
-				}
 			case "estimate", "est":
 				less = t1.Estimate < t2.Estimate
 			case "score":
@@ -314,9 +300,8 @@ var listCmd = &cobra.Command{
 	},
 }
 
-
 func init() {
-	listCmd.Flags().StringVarP(&sortBy, "sort", "s", "", "Sort by field (id, project, description, created, age, due, scheduled, estimate, score, duration)")
+	listCmd.Flags().StringVarP(&sortBy, "sort", "s", "", "Sort by field (id, project, description, created, age, due, estimate, score, duration)")
 	listCmd.Flags().BoolVarP(&sortDesc, "desc", "d", false, "Sort in descending order")
 	listCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all tasks (do not truncate to screen height)")
 	listCmd.Flags().BoolVarP(&forceRelative, "relative", "R", false, "Force relative dates")
@@ -328,8 +313,7 @@ func init() {
 
 	listCmd.Flags().StringVar(&filterDueBefore, "due-before", "", "Filter tasks due before date")
 	listCmd.Flags().StringVar(&filterDueAfter, "due-after", "", "Filter tasks due after date")
-	listCmd.Flags().StringVar(&filterSchBefore, "scheduled-before", "", "Filter tasks scheduled before date")
-	listCmd.Flags().StringVar(&filterSchAfter, "scheduled-after", "", "Filter tasks scheduled after date")
+	listCmd.Flags().BoolVar(&filterOverdue, "overdue", false, "Show only overdue tasks (due date in the past)")
 
 	listCmd.Flags().Float64Var(&filterScoreMin, "score-min", 0, "Minimum priority score")
 	listCmd.Flags().Float64Var(&filterScoreMax, "score-max", 0, "Maximum priority score")
@@ -338,8 +322,6 @@ func init() {
 
 	listCmd.RegisterFlagCompletionFunc("due-before", dateCompletionFunc)
 	listCmd.RegisterFlagCompletionFunc("due-after", dateCompletionFunc)
-	listCmd.RegisterFlagCompletionFunc("scheduled-before", dateCompletionFunc)
-	listCmd.RegisterFlagCompletionFunc("scheduled-after", dateCompletionFunc)
 
 	rootCmd.AddCommand(listCmd)
 }

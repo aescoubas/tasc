@@ -5,7 +5,6 @@ export interface Task {
   status: 'backlog' | 'ongoing' | 'done' | 'blocked' | 'deleted' | 'undefined';
   created_at: string;
   due_at?: string;
-  scheduled_at?: string;
   estimate?: string;
   is_blocked?: boolean;
 }

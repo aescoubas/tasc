@@ -49,11 +49,11 @@ var rescheduleCmd = &cobra.Command{
 			return
 		}
 
-		// Update ScheduledAt
+		// Update DueAt
 		// Logic: If moving to a DIFFERENT date, increment reschedule count
 		isDifferent := true
-		if t.ScheduledAt != nil {
-			if t.ScheduledAt.Equal(*newDate) {
+		if t.DueAt != nil {
+			if t.DueAt.Equal(*newDate) {
 				isDifferent = false
 			}
 		}
@@ -61,13 +61,13 @@ var rescheduleCmd = &cobra.Command{
 		if isDifferent {
 			t.RescheduleCount++
 		}
-		
-		oldDate := "unscheduled"
-		if t.ScheduledAt != nil {
-			oldDate = t.ScheduledAt.Format("2006-01-02 15:04")
+
+		oldDate := "no due date"
+		if t.DueAt != nil {
+			oldDate = t.DueAt.Format("2006-01-02 15:04")
 		}
 
-		t.ScheduledAt = newDate
+		t.DueAt = newDate
 
 		err = CurrentStore.UpdateTask(t)
 		if err != nil {
