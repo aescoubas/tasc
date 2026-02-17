@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -38,12 +39,19 @@ var (
 	filterOverdue   bool
 	filterScoreMin  float64
 	filterScoreMax  float64
+	listOutput      string
 )
 
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List pending tasks",
 	Run: func(cmd *cobra.Command, args []string) {
+		outputFormat, err := validateOutputFormat(listOutput)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
+
 		cfg, err := config.LoadConfig()
 		if err != nil {
 			cfg = config.DefaultConfig()
@@ -292,6 +300,28 @@ var listCmd = &cobra.Command{
 			displayScores[item.task.ID] = item.score
 		}
 
+		if outputFormat == OutputJSON {
+			type taskJSON struct {
+				Task  models.Task `json:"task"`
+				Score float64     `json:"score"`
+			}
+			payload := make([]taskJSON, 0, len(tasks))
+			for _, item := range tasks {
+				payload = append(payload, taskJSON{
+					Task:  item.task,
+					Score: item.score,
+				})
+			}
+
+			data, err := json.MarshalIndent(payload, "", "  ")
+			if err != nil {
+				fmt.Printf("Error encoding JSON output: %v\n", err)
+				return
+			}
+			fmt.Println(string(data))
+			return
+		}
+
 		opts := ui.TableOptions{
 			ShowAll: showAll,
 		}
@@ -317,8 +347,10 @@ func init() {
 
 	listCmd.Flags().Float64Var(&filterScoreMin, "score-min", 0, "Minimum priority score")
 	listCmd.Flags().Float64Var(&filterScoreMax, "score-max", 0, "Maximum priority score")
+	listCmd.Flags().StringVar(&listOutput, "output", OutputTable, "Output format (table, json)")
 
 	listCmd.RegisterFlagCompletionFunc("project", projectCompletionFunc)
+	listCmd.RegisterFlagCompletionFunc("output", outputFormatCompletionFunc)
 
 	listCmd.RegisterFlagCompletionFunc("due-before", dateCompletionFunc)
 	listCmd.RegisterFlagCompletionFunc("due-after", dateCompletionFunc)

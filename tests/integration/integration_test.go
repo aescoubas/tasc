@@ -2,12 +2,17 @@ package integration
 
 import (
 	"bytes"
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var binaryPath string
@@ -204,5 +209,101 @@ func TestModifyAndDeleteAutoApprove(t *testing.T) {
 	}
 	if strings.Contains(out, "Renamed Task") {
 		t.Errorf("Deleted task still appears in list. Output:\n%s", out)
+	}
+}
+
+func TestDateOnlyDueUsesEightPmDefault(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "due-default.db")
+
+	out, err := runTasc(t, dbPath, "add", "Date-only due task", "--due", "2030-01-15")
+	if err != nil {
+		t.Fatalf("Add with date-only due failed: %v\nOutput: %s", err, out)
+	}
+
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("Open db failed: %v", err)
+	}
+	defer db.Close()
+
+	var dueAt time.Time
+	if err := db.QueryRow(`SELECT due_at FROM tasks WHERE title = ?`, "Date-only due task").Scan(&dueAt); err != nil {
+		t.Fatalf("Query due_at failed: %v", err)
+	}
+
+	if dueAt.Hour() != 20 || dueAt.Minute() != 0 {
+		t.Fatalf("date-only due stored as %02d:%02d, want 20:00", dueAt.Hour(), dueAt.Minute())
+	}
+}
+
+func TestListOutputJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "list-json.db")
+
+	out, err := runTasc(t, dbPath, "add", "List JSON Task")
+	if err != nil {
+		t.Fatalf("Add failed: %v\nOutput: %s", err, out)
+	}
+
+	out, err = runTasc(t, dbPath, "list", "--output", "json")
+	if err != nil {
+		t.Fatalf("List --output json failed: %v\nOutput: %s", err, out)
+	}
+
+	var payload []struct {
+		Task struct {
+			ID    int64  `json:"id"`
+			Title string `json:"title"`
+		} `json:"task"`
+		Score float64 `json:"score"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("List --output json returned invalid JSON: %v\nOutput: %s", err, out)
+	}
+	if len(payload) != 1 {
+		t.Fatalf("Expected 1 task in list JSON output, got %d", len(payload))
+	}
+	if payload[0].Task.Title != "List JSON Task" {
+		t.Fatalf("Unexpected title in JSON output: %q", payload[0].Task.Title)
+	}
+}
+
+func TestShowOutputJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "show-json.db")
+
+	out, err := runTasc(t, dbPath, "add", "Show JSON Task")
+	if err != nil {
+		t.Fatalf("Add failed: %v\nOutput: %s", err, out)
+	}
+
+	out, err = runTasc(t, dbPath, "show", "1", "--output", "json")
+	if err != nil {
+		t.Fatalf("Show --output json failed: %v\nOutput: %s", err, out)
+	}
+
+	var payload struct {
+		Task struct {
+			ID    int64  `json:"id"`
+			Title string `json:"title"`
+		} `json:"task"`
+		BlockedBy []struct {
+			ID    int64  `json:"id"`
+			Title string `json:"title"`
+		} `json:"blocked_by"`
+		Blocking []struct {
+			ID    int64  `json:"id"`
+			Title string `json:"title"`
+		} `json:"blocking"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("Show --output json returned invalid JSON: %v\nOutput: %s", err, out)
+	}
+	if payload.Task.ID != 1 {
+		t.Fatalf("Expected task ID 1, got %d", payload.Task.ID)
+	}
+	if payload.Task.Title != "Show JSON Task" {
+		t.Fatalf("Unexpected title in JSON output: %q", payload.Task.Title)
 	}
 }

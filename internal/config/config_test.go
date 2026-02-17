@@ -13,4 +13,7 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.BackupDir == "" {
 		t.Errorf("BackupDir should not be empty")
 	}
+	if cfg.EndOfDay != "20:00" {
+		t.Errorf("EndOfDay = %q, want %q", cfg.EndOfDay, "20:00")
+	}
 }

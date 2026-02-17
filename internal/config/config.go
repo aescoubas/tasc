@@ -56,7 +56,7 @@ func DefaultConfig() Config {
 		BackupDir:     filepath.Join(home, ".config", "tasc", "backups"),
 		RelativeDates: true,
 		DateFormat:    "02-01-2006", // Default to DD-MM-YYYY
-		EndOfDay:      "18:00",
+		EndOfDay:      "20:00",
 		TimeBlocks: map[string]TimeBlock{
 			"morning":   {Start: "06:00", End: "12:00"},
 			"afternoon": {Start: "13:00", End: "18:00"},

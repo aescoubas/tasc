@@ -34,3 +34,21 @@ func TestAutoApproveFlagsPresent(t *testing.T) {
 		t.Fatalf("delete command must expose --yes")
 	}
 }
+
+func TestOutputFlagsPresent(t *testing.T) {
+	listOutput := listCmd.Flags().Lookup("output")
+	if listOutput == nil {
+		t.Fatalf("list command must expose --output")
+	}
+	if listOutput.DefValue != "table" {
+		t.Fatalf("list --output default must be table, got %q", listOutput.DefValue)
+	}
+
+	showOutput := showCmd.Flags().Lookup("output")
+	if showOutput == nil {
+		t.Fatalf("show command must expose --output")
+	}
+	if showOutput.DefValue != "table" {
+		t.Fatalf("show --output default must be table, got %q", showOutput.DefValue)
+	}
+}

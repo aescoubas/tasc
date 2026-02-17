@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -13,11 +14,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var showOutput string
+
 var showCmd = &cobra.Command{
 	Use:   "show [id]",
 	Short: "Show detailed information for a task",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		outputFormat, err := validateOutputFormat(showOutput)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
+
 		cfg, _ := config.LoadConfig()
 
 		id, err := strconv.Atoi(args[0])
@@ -75,6 +84,11 @@ var showCmd = &cobra.Command{
 			t.CompletedAt = &completedAt.Time
 		}
 
+		type taskRef struct {
+			ID    int64  `json:"id"`
+			Title string `json:"title"`
+		}
+
 		// 2. Fetch Dependencies
 		// Blocked By
 		blockedByRows, err := db.DB.Query(`
@@ -82,14 +96,14 @@ var showCmd = &cobra.Command{
 			FROM task_dependencies td 
 			JOIN tasks t ON td.blocker_id = t.id 
 			WHERE td.blocked_id = ?`, id)
-		var blockedBy []string
+		var blockedBy []taskRef
 		if err == nil {
 			defer blockedByRows.Close()
 			for blockedByRows.Next() {
 				var bID int64
 				var bTitle string
 				if err := blockedByRows.Scan(&bID, &bTitle); err == nil {
-					blockedBy = append(blockedBy, fmt.Sprintf("%d (%s)", bID, bTitle))
+					blockedBy = append(blockedBy, taskRef{ID: bID, Title: bTitle})
 				}
 			}
 		}
@@ -100,16 +114,43 @@ var showCmd = &cobra.Command{
 			FROM task_dependencies td 
 			JOIN tasks t ON td.blocked_id = t.id 
 			WHERE td.blocker_id = ?`, id)
-		var blocking []string
+		var blocking []taskRef
 		if err == nil {
 			defer blockingRows.Close()
 			for blockingRows.Next() {
 				var bID int64
 				var bTitle string
 				if err := blockingRows.Scan(&bID, &bTitle); err == nil {
-					blocking = append(blocking, fmt.Sprintf("%d (%s)", bID, bTitle))
+					blocking = append(blocking, taskRef{ID: bID, Title: bTitle})
 				}
 			}
+		}
+
+		totalDuration := t.TimeSpent
+		if t.ActiveStart != nil {
+			totalDuration += int64(time.Since(*t.ActiveStart).Seconds())
+		}
+
+		if outputFormat == OutputJSON {
+			payload := struct {
+				Task             models.Task `json:"task"`
+				BlockedBy        []taskRef   `json:"blocked_by"`
+				Blocking         []taskRef   `json:"blocking"`
+				TimeSpentSeconds int64       `json:"time_spent_seconds"`
+			}{
+				Task:             t,
+				BlockedBy:        blockedBy,
+				Blocking:         blocking,
+				TimeSpentSeconds: totalDuration,
+			}
+
+			data, err := json.MarshalIndent(payload, "", "  ")
+			if err != nil {
+				fmt.Printf("Error encoding JSON output: %v\n", err)
+				return
+			}
+			fmt.Println(string(data))
+			return
 		}
 
 		// 3. Display
@@ -149,10 +190,8 @@ var showCmd = &cobra.Command{
 		}
 
 		// Duration calculation
-		totalDuration := t.TimeSpent
 		if t.ActiveStart != nil {
 			fmt.Printf("Active since:  %s\n", t.ActiveStart.Format("15:04:05"))
-			totalDuration += int64(time.Since(*t.ActiveStart).Seconds())
 		}
 		if totalDuration > 0 {
 			dur := time.Duration(totalDuration) * time.Second
@@ -164,7 +203,7 @@ var showCmd = &cobra.Command{
 			fmt.Println()
 			fmt.Println("Blocked By:")
 			for _, b := range blockedBy {
-				fmt.Printf("  - %s\n", b)
+				fmt.Printf("  - %d (%s)\n", b.ID, b.Title)
 			}
 		}
 
@@ -172,7 +211,7 @@ var showCmd = &cobra.Command{
 			fmt.Println()
 			fmt.Println("Blocking:")
 			for _, b := range blocking {
-				fmt.Printf("  - %s\n", b)
+				fmt.Printf("  - %d (%s)\n", b.ID, b.Title)
 			}
 		}
 		fmt.Println()
@@ -180,5 +219,7 @@ var showCmd = &cobra.Command{
 }
 
 func init() {
+	showCmd.Flags().StringVar(&showOutput, "output", OutputTable, "Output format (table, json)")
+	showCmd.RegisterFlagCompletionFunc("output", outputFormatCompletionFunc)
 	rootCmd.AddCommand(showCmd)
 }
