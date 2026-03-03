@@ -21,6 +21,12 @@ var rootCmd = &cobra.Command{
 	Use:   "tasc",
 	Short: "A modern, snappy task manager",
 	Long:  `Tasc is a fast and efficient CLI task manager for your terminal.`,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		beginUndoTracking(cmd)
+	},
+	PersistentPostRun: func(cmd *cobra.Command, args []string) {
+		endUndoTracking()
+	},
 }
 
 func Execute() {
