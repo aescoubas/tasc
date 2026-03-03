@@ -33,14 +33,14 @@ func TestSQLiteStore_TaskCRUD(t *testing.T) {
 
 	// 1. Create
 	now := time.Now().Truncate(time.Second) // Truncate because SQLite stores second precision by default usually or we want to match simple formatting
-	// Actually sqlite3 datetime is strict string or int. models uses time.Time. 
+	// Actually sqlite3 datetime is strict string or int. models uses time.Time.
 	// Let's rely on driver handling.
-	
+
 	task := models.Task{
-		Title:       "Test Task",
-		Project:     "TestProject",
-		Estimate:    "30m",
-		DueAt:       &now,
+		Title:    "Test Task",
+		Project:  "TestProject",
+		Estimate: "30m",
+		DueAt:    &now,
 	}
 
 	id, err := s.CreateTask(task)
@@ -117,7 +117,7 @@ func TestSQLiteStore_TaskCRUD(t *testing.T) {
 	if deleted.Status != models.StatusDeleted {
 		t.Errorf("Task status is %q, want deleted", deleted.Status)
 	}
-	
+
 	tasksAfterDelete, err := s.ListTasks(store.TaskFilter{})
 	if err != nil {
 		t.Fatalf("ListTasks failed: %v", err)
@@ -133,7 +133,7 @@ func TestSQLiteStore_Projects(t *testing.T) {
 	s := NewSQLiteStore(db)
 
 	p := models.Project{
-		Name: "Alpha",
+		Name:        "Alpha",
 		Description: "Top level",
 	}
 	err := s.CreateProject(p)
@@ -194,5 +194,95 @@ func TestSQLiteStore_BatchUpdateTasks(t *testing.T) {
 	t3, _ := s.GetTask(ids[2])
 	if t3.Project != "OldProject" {
 		t.Errorf("Task 3 should not be updated: %+v", t3)
+	}
+}
+
+func TestSQLiteStore_RenumberTasks(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	s := NewSQLiteStore(db)
+
+	id1, err := s.CreateTask(models.Task{Title: "First Task"})
+	if err != nil {
+		t.Fatalf("CreateTask(first) failed: %v", err)
+	}
+	id2, err := s.CreateTask(models.Task{Title: "Second Task"})
+	if err != nil {
+		t.Fatalf("CreateTask(second) failed: %v", err)
+	}
+	id3, err := s.CreateTask(models.Task{Title: "Third Task"})
+	if err != nil {
+		t.Fatalf("CreateTask(third) failed: %v", err)
+	}
+
+	if err := s.AddDependency(id1, id3); err != nil {
+		t.Fatalf("AddDependency(first->third) failed: %v", err)
+	}
+	if err := s.AddDependency(id2, id3); err != nil {
+		t.Fatalf("AddDependency(second->third) failed: %v", err)
+	}
+
+	if err := s.BatchUpdateTasks([]int64{id1}, map[string]interface{}{"status": "done"}); err != nil {
+		t.Fatalf("BatchUpdateTasks(done) failed: %v", err)
+	}
+
+	count, err := s.RenumberTasks(0)
+	if err != nil {
+		t.Fatalf("RenumberTasks failed: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("RenumberTasks affected %d open tasks, want 2", count)
+	}
+
+	tasks, err := s.ListTasks(store.TaskFilter{IncludeDeleted: true})
+	if err != nil {
+		t.Fatalf("ListTasks(all) failed: %v", err)
+	}
+	if len(tasks) != 3 {
+		t.Fatalf("ListTasks(all) returned %d tasks, want 3", len(tasks))
+	}
+
+	idsByTitle := make(map[string]int64, len(tasks))
+	for _, task := range tasks {
+		idsByTitle[task.Title] = task.ID
+	}
+
+	if got := idsByTitle["First Task"]; got >= 0 {
+		t.Fatalf("First Task (done) ID = %d, want a negative ID", got)
+	}
+	if got := idsByTitle["Second Task"]; got != 0 {
+		t.Fatalf("Second Task ID = %d, want 0", got)
+	}
+	if got := idsByTitle["Third Task"]; got != 1 {
+		t.Fatalf("Third Task ID = %d, want 1", got)
+	}
+
+	deps, err := s.GetDependencies()
+	if err != nil {
+		t.Fatalf("GetDependencies failed: %v", err)
+	}
+	if len(deps) != 2 {
+		t.Fatalf("GetDependencies returned %d dependencies, want 2", len(deps))
+	}
+
+	depMap := map[[2]int64]bool{}
+	for _, dep := range deps {
+		depMap[[2]int64{dep.BlockerID, dep.BlockedID}] = true
+	}
+
+	firstID := idsByTitle["First Task"]
+	if !depMap[[2]int64{firstID, 1}] {
+		t.Fatalf("Expected dependency %d -> 1 after renumber, got %+v", firstID, deps)
+	}
+	if !depMap[[2]int64{0, 1}] {
+		t.Fatalf("Expected dependency 0 -> 1 after renumber, got %+v", deps)
+	}
+
+	id4, err := s.CreateTask(models.Task{Title: "Fourth Task"})
+	if err != nil {
+		t.Fatalf("CreateTask(fourth) failed: %v", err)
+	}
+	if id4 != 2 {
+		t.Fatalf("Fourth task ID = %d, want 2", id4)
 	}
 }

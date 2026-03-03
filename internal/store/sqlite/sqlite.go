@@ -3,6 +3,7 @@ package sqlite
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -482,7 +483,7 @@ func (s *SQLiteStore) StopTask(id int64) error {
 
 	for rows.Next() {
 		rows.Scan(&activeID, &activeStart)
-		if id != -1 && id != 0 && activeID != id {
+		if id != -1 && activeID != id {
 			continue
 		}
 		found = true
@@ -503,6 +504,170 @@ func (s *SQLiteStore) StopTask(id int64) error {
 	}
 
 	return tx.Commit()
+}
+
+func (s *SQLiteStore) RenumberTasks(start int64) (int64, error) {
+	if start < 0 {
+		return 0, fmt.Errorf("start must be >= 0")
+	}
+
+	rows, err := s.db.Query("SELECT id, status FROM tasks ORDER BY id")
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	type taskID struct {
+		id     int64
+		status models.TaskStatus
+	}
+
+	var all []taskID
+	for rows.Next() {
+		var t taskID
+		if err := rows.Scan(&t.id, &t.status); err != nil {
+			return 0, err
+		}
+		all = append(all, t)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	if len(all) == 0 {
+		return 0, nil
+	}
+
+	type idMap struct {
+		oldID int64
+		temp  int64
+		newID int64
+	}
+
+	var openIDs []int64
+	var closedIDs []int64
+
+	for _, task := range all {
+		switch task.status {
+		case models.StatusDone, models.StatusDeleted:
+			closedIDs = append(closedIDs, task.id)
+		default:
+			openIDs = append(openIDs, task.id)
+		}
+	}
+
+	openCount := int64(len(openIDs))
+
+	if len(all) > math.MaxInt64-1 {
+		return 0, fmt.Errorf("too many tasks to renumber safely")
+	}
+	var maxOldID int64 = all[0].id
+	for _, task := range all[1:] {
+		if task.id > maxOldID {
+			maxOldID = task.id
+		}
+	}
+	if maxOldID > math.MaxInt64-int64(len(all))-1 {
+		return 0, fmt.Errorf("task IDs are too large to renumber safely")
+	}
+
+	tempBase := maxOldID + int64(len(all)) + 1
+
+	mappings := make([]idMap, 0, len(all))
+	tempIdx := int64(0)
+
+	for i, oldID := range openIDs {
+		mappings = append(mappings, idMap{
+			oldID: oldID,
+			temp:  tempBase + tempIdx,
+			newID: start + int64(i),
+		})
+		tempIdx++
+	}
+
+	closedCount := int64(len(closedIDs))
+	for i, oldID := range closedIDs {
+		// Keep closed/deleted tasks in a separate negative ID space.
+		// Using -closedCount..-1 preserves their current order if sorted by ID.
+		mappings = append(mappings, idMap{
+			oldID: oldID,
+			temp:  tempBase + tempIdx,
+			newID: -closedCount + int64(i),
+		})
+		tempIdx++
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("PRAGMA foreign_keys=OFF"); err != nil {
+		return 0, err
+	}
+
+	for _, m := range mappings {
+		if _, err := tx.Exec("UPDATE tasks SET id = ? WHERE id = ?", m.temp, m.oldID); err != nil {
+			return 0, err
+		}
+		if _, err := tx.Exec("UPDATE task_dependencies SET blocker_id = ? WHERE blocker_id = ?", m.temp, m.oldID); err != nil {
+			return 0, err
+		}
+		if _, err := tx.Exec("UPDATE task_dependencies SET blocked_id = ? WHERE blocked_id = ?", m.temp, m.oldID); err != nil {
+			return 0, err
+		}
+	}
+
+	for _, m := range mappings {
+		if _, err := tx.Exec("UPDATE tasks SET id = ? WHERE id = ?", m.newID, m.temp); err != nil {
+			return 0, err
+		}
+		if _, err := tx.Exec("UPDATE task_dependencies SET blocker_id = ? WHERE blocker_id = ?", m.newID, m.temp); err != nil {
+			return 0, err
+		}
+		if _, err := tx.Exec("UPDATE task_dependencies SET blocked_id = ? WHERE blocked_id = ?", m.newID, m.temp); err != nil {
+			return 0, err
+		}
+	}
+
+	if _, err := tx.Exec("DELETE FROM sqlite_sequence WHERE name = 'tasks'"); err != nil {
+		return 0, err
+	}
+
+	seq := int64(-1)
+	if openCount > 0 {
+		seq = start + openCount - 1
+	}
+	if _, err := tx.Exec("INSERT INTO sqlite_sequence(name, seq) VALUES('tasks', ?)", seq); err != nil {
+		return 0, err
+	}
+
+	if _, err := tx.Exec("PRAGMA foreign_keys=ON"); err != nil {
+		return 0, err
+	}
+
+	checkRows, err := tx.Query("PRAGMA foreign_key_check")
+	if err != nil {
+		return 0, err
+	}
+	defer checkRows.Close()
+
+	if checkRows.Next() {
+		var table string
+		var rowid int64
+		var parent string
+		var fkIndex int64
+		if scanErr := checkRows.Scan(&table, &rowid, &parent, &fkIndex); scanErr != nil {
+			return 0, scanErr
+		}
+		return 0, fmt.Errorf("foreign key check failed: table=%s rowid=%d parent=%s fk=%d", table, rowid, parent, fkIndex)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return openCount, nil
 }
 
 // ... GetActiveTask needs update ...

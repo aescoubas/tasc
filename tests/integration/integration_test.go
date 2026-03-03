@@ -307,3 +307,178 @@ func TestShowOutputJSON(t *testing.T) {
 		t.Fatalf("Unexpected title in JSON output: %q", payload.Task.Title)
 	}
 }
+
+func TestRenumberCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "renumber.db")
+
+	out, err := runTasc(t, dbPath, "add", "First")
+	if err != nil {
+		t.Fatalf("Add first failed: %v\nOutput: %s", err, out)
+	}
+	out, err = runTasc(t, dbPath, "add", "Second")
+	if err != nil {
+		t.Fatalf("Add second failed: %v\nOutput: %s", err, out)
+	}
+	out, err = runTasc(t, dbPath, "add", "Third")
+	if err != nil {
+		t.Fatalf("Add third failed: %v\nOutput: %s", err, out)
+	}
+
+	out, err = runTasc(t, dbPath, "dep", "1", "3")
+	if err != nil {
+		t.Fatalf("dep 1 3 failed: %v\nOutput: %s", err, out)
+	}
+
+	out, err = runTasc(t, dbPath, "renumber", "--yes")
+	if err != nil {
+		t.Fatalf("renumber --yes failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Renumbered 3 open tasks") {
+		t.Fatalf("Unexpected renumber output: %s", out)
+	}
+
+	out, err = runTasc(t, dbPath, "show", "0", "--output", "json")
+	if err != nil {
+		t.Fatalf("show 0 failed after renumber: %v\nOutput: %s", err, out)
+	}
+	var firstPayload struct {
+		Task struct {
+			ID    int64  `json:"id"`
+			Title string `json:"title"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal([]byte(out), &firstPayload); err != nil {
+		t.Fatalf("show 0 returned invalid JSON: %v\nOutput: %s", err, out)
+	}
+	if firstPayload.Task.ID != 0 || firstPayload.Task.Title != "First" {
+		t.Fatalf("Unexpected task 0 payload: %+v", firstPayload.Task)
+	}
+
+	out, err = runTasc(t, dbPath, "show", "2", "--output", "json")
+	if err != nil {
+		t.Fatalf("show 2 failed after renumber: %v\nOutput: %s", err, out)
+	}
+	var thirdPayload struct {
+		Task struct {
+			ID    int64  `json:"id"`
+			Title string `json:"title"`
+		} `json:"task"`
+		BlockedBy []struct {
+			ID int64 `json:"id"`
+		} `json:"blocked_by"`
+	}
+	if err := json.Unmarshal([]byte(out), &thirdPayload); err != nil {
+		t.Fatalf("show 2 returned invalid JSON: %v\nOutput: %s", err, out)
+	}
+	if thirdPayload.Task.ID != 2 || thirdPayload.Task.Title != "Third" {
+		t.Fatalf("Unexpected task 2 payload: %+v", thirdPayload.Task)
+	}
+	if len(thirdPayload.BlockedBy) != 1 || thirdPayload.BlockedBy[0].ID != 0 {
+		t.Fatalf("Dependency was not remapped to 0 -> 2: %+v", thirdPayload.BlockedBy)
+	}
+
+	out, err = runTasc(t, dbPath, "add", "After Renumber")
+	if err != nil {
+		t.Fatalf("Add after renumber failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Created task 3.") {
+		t.Fatalf("Expected next task ID to be 3, output: %s", out)
+	}
+}
+
+func TestRenumberCommandSkipsDoneAndDeleted(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "renumber-open-only.db")
+
+	out, err := runTasc(t, dbPath, "add", "Done Task")
+	if err != nil {
+		t.Fatalf("Add done task seed failed: %v\nOutput: %s", err, out)
+	}
+	out, err = runTasc(t, dbPath, "add", "Open One")
+	if err != nil {
+		t.Fatalf("Add open one failed: %v\nOutput: %s", err, out)
+	}
+	out, err = runTasc(t, dbPath, "add", "Open Two")
+	if err != nil {
+		t.Fatalf("Add open two failed: %v\nOutput: %s", err, out)
+	}
+
+	out, err = runTasc(t, dbPath, "done", "1")
+	if err != nil {
+		t.Fatalf("Done 1 failed: %v\nOutput: %s", err, out)
+	}
+
+	out, err = runTasc(t, dbPath, "renumber", "--yes")
+	if err != nil {
+		t.Fatalf("renumber --yes failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Renumbered 2 open tasks") {
+		t.Fatalf("Unexpected renumber output: %s", out)
+	}
+
+	out, err = runTasc(t, dbPath, "show", "0", "--output", "json")
+	if err != nil {
+		t.Fatalf("show 0 failed after renumber: %v\nOutput: %s", err, out)
+	}
+	var openZeroPayload struct {
+		Task struct {
+			ID    int64  `json:"id"`
+			Title string `json:"title"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal([]byte(out), &openZeroPayload); err != nil {
+		t.Fatalf("show 0 returned invalid JSON: %v\nOutput: %s", err, out)
+	}
+	if openZeroPayload.Task.Title != "Open One" {
+		t.Fatalf("Task 0 should be Open One, got %q", openZeroPayload.Task.Title)
+	}
+
+	out, err = runTasc(t, dbPath, "show", "1", "--output", "json")
+	if err != nil {
+		t.Fatalf("show 1 failed after renumber: %v\nOutput: %s", err, out)
+	}
+	var openOnePayload struct {
+		Task struct {
+			ID    int64  `json:"id"`
+			Title string `json:"title"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal([]byte(out), &openOnePayload); err != nil {
+		t.Fatalf("show 1 returned invalid JSON: %v\nOutput: %s", err, out)
+	}
+	if openOnePayload.Task.Title != "Open Two" {
+		t.Fatalf("Task 1 should be Open Two, got %q", openOnePayload.Task.Title)
+	}
+
+	out, err = runTasc(t, dbPath, "list", "--status", "done", "--output", "json")
+	if err != nil {
+		t.Fatalf("list done json failed: %v\nOutput: %s", err, out)
+	}
+	var donePayload []struct {
+		Task struct {
+			ID    int64  `json:"id"`
+			Title string `json:"title"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal([]byte(out), &donePayload); err != nil {
+		t.Fatalf("done list JSON invalid: %v\nOutput: %s", err, out)
+	}
+	if len(donePayload) != 1 {
+		t.Fatalf("Expected 1 done task, got %d", len(donePayload))
+	}
+	if donePayload[0].Task.Title != "Done Task" {
+		t.Fatalf("Expected done task title Done Task, got %q", donePayload[0].Task.Title)
+	}
+	if donePayload[0].Task.ID >= 0 {
+		t.Fatalf("Expected done task to have negative ID, got %d", donePayload[0].Task.ID)
+	}
+
+	out, err = runTasc(t, dbPath, "add", "Open Three")
+	if err != nil {
+		t.Fatalf("Add after renumber failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Created task 2.") {
+		t.Fatalf("Expected next open task ID to be 2, output: %s", out)
+	}
+}

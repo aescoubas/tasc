@@ -248,8 +248,13 @@ func (ms *MCPServer) handleList(ctx context.Context, request mcp.CallToolRequest
 }
 
 func (ms *MCPServer) handleComplete(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := request.GetArguments()
+	if _, ok := args["id"]; !ok {
+		return mcp.NewToolResultError("Invalid ID"), nil
+	}
+
 	id := int64(request.GetInt("id", 0))
-	if id == 0 {
+	if id < 0 {
 		return mcp.NewToolResultError("Invalid ID"), nil
 	}
 
@@ -262,8 +267,13 @@ func (ms *MCPServer) handleComplete(ctx context.Context, request mcp.CallToolReq
 }
 
 func (ms *MCPServer) handleUpdate(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := request.GetArguments()
+	if _, ok := args["id"]; !ok {
+		return mcp.NewToolResultError("Invalid ID"), nil
+	}
+
 	id := int64(request.GetInt("id", 0))
-	if id == 0 {
+	if id < 0 {
 		return mcp.NewToolResultError("Invalid ID"), nil
 	}
 
@@ -272,8 +282,6 @@ func (ms *MCPServer) handleUpdate(ctx context.Context, request mcp.CallToolReque
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Task not found: %v", err)), nil
 	}
-
-	args := request.GetArguments()
 
 	if t := request.GetString("title", ""); t != "" {
 		task.Title = t
@@ -399,8 +407,13 @@ func (ms *MCPServer) handleBatchUpdate(ctx context.Context, request mcp.CallTool
 }
 
 func (ms *MCPServer) handleDelete(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := request.GetArguments()
+	if _, ok := args["id"]; !ok {
+		return mcp.NewToolResultError("Invalid ID"), nil
+	}
+
 	id := int64(request.GetInt("id", 0))
-	if id == 0 {
+	if id < 0 {
 		return mcp.NewToolResultError("Invalid ID"), nil
 	}
 
@@ -413,8 +426,13 @@ func (ms *MCPServer) handleDelete(ctx context.Context, request mcp.CallToolReque
 }
 
 func (ms *MCPServer) handleStart(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := request.GetArguments()
+	if _, ok := args["id"]; !ok {
+		return mcp.NewToolResultError("Invalid ID"), nil
+	}
+
 	id := int64(request.GetInt("id", 0))
-	if id == 0 {
+	if id < 0 {
 		return mcp.NewToolResultError("Invalid ID"), nil
 	}
 
@@ -431,6 +449,9 @@ func (ms *MCPServer) handleStop(ctx context.Context, request mcp.CallToolRequest
 	targetID := int64(-1)
 	if _, ok := args["id"]; ok {
 		targetID = int64(request.GetInt("id", 0))
+		if targetID < 0 {
+			return mcp.NewToolResultError("Invalid ID"), nil
+		}
 	}
 
 	err := ms.store.StopTask(targetID)
@@ -442,10 +463,18 @@ func (ms *MCPServer) handleStop(ctx context.Context, request mcp.CallToolRequest
 }
 
 func (ms *MCPServer) handleAddDependency(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := request.GetArguments()
+	if _, ok := args["blocker_id"]; !ok {
+		return mcp.NewToolResultError("Both blocker_id and blocked_id are required"), nil
+	}
+	if _, ok := args["blocked_id"]; !ok {
+		return mcp.NewToolResultError("Both blocker_id and blocked_id are required"), nil
+	}
+
 	blockerID := int64(request.GetInt("blocker_id", 0))
 	blockedID := int64(request.GetInt("blocked_id", 0))
 
-	if blockerID == 0 || blockedID == 0 {
+	if blockerID < 0 || blockedID < 0 {
 		return mcp.NewToolResultError("Both blocker_id and blocked_id are required"), nil
 	}
 

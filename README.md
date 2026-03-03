@@ -104,6 +104,14 @@ sudo mv tasc /usr/local/bin/
     tasc delete <task_id>
     ```
 
+*   **Renumber tasks:**
+    Renumber open task IDs from `0` while preserving current order.
+    Done/deleted tasks are moved to negative IDs so they are clearly distinct:
+    ```bash
+    tasc renumber
+    tasc renumber --yes
+    ```
+
 ### Advanced Features
 
 *   **Interactive UI:**
