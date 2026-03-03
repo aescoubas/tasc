@@ -877,19 +877,46 @@ func (s *SQLiteStore) DeleteProject(name string) error {
 }
 
 func (s *SQLiteStore) SearchTasks(queryStr string) ([]models.Task, error) {
-	query := `
+	ftsQuery := `
 		SELECT id, title, description, project, status, created_at 
 		FROM tasks 
 		WHERE id IN (
 			SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ? ORDER BY rank
 		)
 	`
-	rows, err := s.db.Query(query, queryStr)
+	rows, err := s.db.Query(ftsQuery, queryStr)
+	if err != nil {
+		if !isTaskSearchFTSError(err) {
+			return nil, err
+		}
+		return s.searchTasksLike(queryStr)
+	}
+	defer rows.Close()
+
+	return scanSearchTaskRows(rows), nil
+}
+
+func (s *SQLiteStore) searchTasksLike(queryStr string) ([]models.Task, error) {
+	pattern := "%" + strings.ToLower(strings.TrimSpace(queryStr)) + "%"
+	query := `
+		SELECT id, title, description, project, status, created_at
+		FROM tasks
+		WHERE lower(COALESCE(title, '')) LIKE ?
+		   OR lower(COALESCE(description, '')) LIKE ?
+		   OR lower(COALESCE(project, '')) LIKE ?
+		ORDER BY id
+	`
+
+	rows, err := s.db.Query(query, pattern, pattern, pattern)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
+	return scanSearchTaskRows(rows), nil
+}
+
+func scanSearchTaskRows(rows *sql.Rows) []models.Task {
 	var tasks []models.Task
 	for rows.Next() {
 		var t models.Task
@@ -903,5 +930,15 @@ func (s *SQLiteStore) SearchTasks(queryStr string) ([]models.Task, error) {
 		t.Project = project.String
 		tasks = append(tasks, t)
 	}
-	return tasks, nil
+	return tasks
+}
+
+func isTaskSearchFTSError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no such module: fts5") ||
+		strings.Contains(msg, "no such table: tasks_fts") ||
+		strings.Contains(msg, "unable to use function match")
 }

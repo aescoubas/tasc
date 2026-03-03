@@ -91,12 +91,9 @@ var modifyCmd = &cobra.Command{
 			updates["schedule_block"] = block
 		}
 
-		if len(updates) == 0 && len(titleParts) == 0 {
-			// No changes requested?
-			// Maybe just Recurrence prompt logic was triggered in original?
-			// Original logic: Fetch task -> Check Recurrence prompt -> Save.
-			// Batch logic: If no flags, nothing happens?
-			// Unless single task...
+		if len(updates) == 0 {
+			fmt.Println("No changes specified. Use flags like --due, --project, --estimate, or provide a new title.")
+			return
 		}
 
 		// Validation Loop

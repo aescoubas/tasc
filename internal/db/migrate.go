@@ -14,6 +14,11 @@ type Migration struct {
 	Up          func(*sql.DB) error
 }
 
+type sqlExecQuerier interface {
+	Exec(query string, args ...interface{}) (sql.Result, error)
+	QueryRow(query string, args ...interface{}) *sql.Row
+}
+
 var migrations = []Migration{
 	{
 		Version:     1,
@@ -33,40 +38,9 @@ var migrations = []Migration{
 				return fmt.Errorf("failed to add description column: %w", err)
 			}
 
-			// 3. Rebuild FTS
-			if _, err := db.Exec("DROP TABLE IF EXISTS tasks_fts"); err != nil {
-				return fmt.Errorf("failed to drop tasks_fts: %w", err)
-			}
-			if _, err := db.Exec("CREATE VIRTUAL TABLE tasks_fts USING fts5(title, description, project, content='tasks', content_rowid='id')"); err != nil {
-				return fmt.Errorf("failed to create tasks_fts: %w", err)
-			}
-
-			// 4. Update Triggers
-			db.Exec("DROP TRIGGER IF EXISTS tasks_ai")
-			db.Exec("DROP TRIGGER IF EXISTS tasks_ad")
-			db.Exec("DROP TRIGGER IF EXISTS tasks_au")
-
-			triggers := `
-			CREATE TRIGGER tasks_ai AFTER INSERT ON tasks BEGIN
-			  INSERT INTO tasks_fts(rowid, title, description, project) VALUES (new.id, new.title, new.description, new.project);
-			END;
-
-			CREATE TRIGGER tasks_ad AFTER DELETE ON tasks BEGIN
-			  INSERT INTO tasks_fts(tasks_fts, rowid, title, description, project) VALUES('delete', old.id, old.title, old.description, old.project);
-			END;
-
-			CREATE TRIGGER tasks_au AFTER UPDATE ON tasks BEGIN
-			  INSERT INTO tasks_fts(tasks_fts, rowid, title, description, project) VALUES('delete', old.id, old.title, old.description, old.project);
-			  INSERT INTO tasks_fts(rowid, title, description, project) VALUES (new.id, new.title, new.description, new.project);
-			END;
-			`
-			if _, err := db.Exec(triggers); err != nil {
-				return fmt.Errorf("failed to create triggers: %w", err)
-			}
-
-			// 5. Re-populate FTS
-			if _, err := db.Exec("INSERT INTO tasks_fts(tasks_fts) VALUES('rebuild')"); err != nil {
-				return fmt.Errorf("failed to rebuild fts: %w", err)
+			// 3. Rebuild search index (FTS5 when available, fallback otherwise).
+			if err := rebuildTaskSearchIndex(db, true); err != nil {
+				return fmt.Errorf("failed to setup search index: %w", err)
 			}
 
 			return nil
@@ -261,41 +235,21 @@ var migrations = []Migration{
 				return fmt.Errorf("failed to rename tasks_new: %w", err)
 			}
 
-			if _, err := tx.Exec("DROP TABLE IF EXISTS tasks_fts"); err != nil {
-				return fmt.Errorf("failed to drop tasks_fts: %w", err)
-			}
-			if _, err := tx.Exec("CREATE VIRTUAL TABLE tasks_fts USING fts5(title, description, project, content='tasks', content_rowid='id')"); err != nil {
-				return fmt.Errorf("failed to create tasks_fts: %w", err)
-			}
-
-			tx.Exec("DROP TRIGGER IF EXISTS tasks_ai")
-			tx.Exec("DROP TRIGGER IF EXISTS tasks_ad")
-			tx.Exec("DROP TRIGGER IF EXISTS tasks_au")
-			triggers := `
-			CREATE TRIGGER tasks_ai AFTER INSERT ON tasks BEGIN
-			  INSERT INTO tasks_fts(rowid, title, description, project) VALUES (new.id, new.title, new.description, new.project);
-			END;
-
-			CREATE TRIGGER tasks_ad AFTER DELETE ON tasks BEGIN
-			  INSERT INTO tasks_fts(tasks_fts, rowid, title, description, project) VALUES('delete', old.id, old.title, old.description, old.project);
-			END;
-
-			CREATE TRIGGER tasks_au AFTER UPDATE ON tasks BEGIN
-			  INSERT INTO tasks_fts(tasks_fts, rowid, title, description, project) VALUES('delete', old.id, old.title, old.description, old.project);
-			  INSERT INTO tasks_fts(rowid, title, description, project) VALUES (new.id, new.title, new.description, new.project);
-			END;
-			`
-			if _, err := tx.Exec(triggers); err != nil {
-				return fmt.Errorf("failed to create triggers: %w", err)
-			}
-			if _, err := tx.Exec("INSERT INTO tasks_fts(tasks_fts) VALUES('rebuild')"); err != nil {
-				return fmt.Errorf("failed to rebuild tasks_fts: %w", err)
+			if err := rebuildTaskSearchIndex(tx, true); err != nil {
+				return fmt.Errorf("failed to setup search index: %w", err)
 			}
 
 			if _, err := tx.Exec("PRAGMA foreign_keys=ON"); err != nil {
 				return fmt.Errorf("failed to enable foreign keys: %w", err)
 			}
 			return tx.Commit()
+		},
+	},
+	{
+		Version:     6,
+		Description: "Add undo infrastructure and audit triggers",
+		Up: func(db *sql.DB) error {
+			return setupUndoInfrastructure(db)
 		},
 	},
 }
@@ -347,6 +301,275 @@ func RunMigrations(db *sql.DB) error {
 				return fmt.Errorf("failed to record migration %d: %w", m.Version, err)
 			}
 		}
+	}
+
+	return nil
+}
+
+func setupUndoInfrastructure(db *sql.DB) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS undo_actions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			command TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			undone INTEGER NOT NULL DEFAULT 0,
+			undone_at DATETIME
+		);`,
+		`CREATE TABLE IF NOT EXISTS undo_entries (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			action_id INTEGER NOT NULL,
+			inverse_sql TEXT NOT NULL,
+			FOREIGN KEY(action_id) REFERENCES undo_actions(id) ON DELETE CASCADE
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_undo_entries_action_id ON undo_entries(action_id);`,
+		`CREATE TABLE IF NOT EXISTS undo_context (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			action_id INTEGER,
+			FOREIGN KEY(action_id) REFERENCES undo_actions(id) ON DELETE SET NULL
+		);`,
+		`INSERT OR IGNORE INTO undo_context(id, action_id) VALUES(1, NULL);`,
+		`UPDATE undo_context SET action_id = NULL WHERE id = 1;`,
+	}
+
+	for _, stmt := range statements {
+		if _, err := db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+
+	dropTriggers := []string{
+		"DROP TRIGGER IF EXISTS tasks_undo_ai",
+		"DROP TRIGGER IF EXISTS tasks_undo_ad",
+		"DROP TRIGGER IF EXISTS tasks_undo_au",
+		"DROP TRIGGER IF EXISTS deps_undo_ai",
+		"DROP TRIGGER IF EXISTS deps_undo_ad",
+		"DROP TRIGGER IF EXISTS deps_undo_au",
+		"DROP TRIGGER IF EXISTS projects_undo_ai",
+		"DROP TRIGGER IF EXISTS projects_undo_ad",
+		"DROP TRIGGER IF EXISTS projects_undo_au",
+	}
+	for _, stmt := range dropTriggers {
+		if _, err := db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+
+	undoTriggers := `
+	CREATE TRIGGER tasks_undo_ai AFTER INSERT ON tasks
+	WHEN (SELECT action_id FROM undo_context WHERE id = 1) IS NOT NULL
+	BEGIN
+		INSERT INTO undo_entries(action_id, inverse_sql)
+		VALUES (
+			(SELECT action_id FROM undo_context WHERE id = 1),
+			printf('DELETE FROM tasks WHERE id = %d;', NEW.id)
+		);
+	END;
+
+	CREATE TRIGGER tasks_undo_ad AFTER DELETE ON tasks
+	WHEN (SELECT action_id FROM undo_context WHERE id = 1) IS NOT NULL
+	BEGIN
+		INSERT INTO undo_entries(action_id, inverse_sql)
+		VALUES (
+			(SELECT action_id FROM undo_context WHERE id = 1),
+			printf(
+				'INSERT INTO tasks (id, title, description, project, status, created_at, completed_at, due_at, schedule_block, estimate, recurrence, active_start, time_spent, reschedule_count) VALUES (%d, %Q, %Q, %Q, %Q, %Q, %Q, %Q, %Q, %Q, %Q, %Q, %d, %d);',
+				OLD.id, OLD.title, OLD.description, OLD.project, OLD.status, OLD.created_at, OLD.completed_at, OLD.due_at, OLD.schedule_block, OLD.estimate, OLD.recurrence, OLD.active_start, COALESCE(OLD.time_spent, 0), COALESCE(OLD.reschedule_count, 0)
+			)
+		);
+	END;
+
+	CREATE TRIGGER tasks_undo_au AFTER UPDATE ON tasks
+	WHEN (SELECT action_id FROM undo_context WHERE id = 1) IS NOT NULL
+	BEGIN
+		INSERT INTO undo_entries(action_id, inverse_sql)
+		VALUES (
+			(SELECT action_id FROM undo_context WHERE id = 1),
+			printf(
+				'UPDATE tasks SET id = %d, title = %Q, description = %Q, project = %Q, status = %Q, created_at = %Q, completed_at = %Q, due_at = %Q, schedule_block = %Q, estimate = %Q, recurrence = %Q, active_start = %Q, time_spent = %d, reschedule_count = %d WHERE id = %d;',
+				OLD.id, OLD.title, OLD.description, OLD.project, OLD.status, OLD.created_at, OLD.completed_at, OLD.due_at, OLD.schedule_block, OLD.estimate, OLD.recurrence, OLD.active_start, COALESCE(OLD.time_spent, 0), COALESCE(OLD.reschedule_count, 0), NEW.id
+			)
+		);
+	END;
+
+	CREATE TRIGGER deps_undo_ai AFTER INSERT ON task_dependencies
+	WHEN (SELECT action_id FROM undo_context WHERE id = 1) IS NOT NULL
+	BEGIN
+		INSERT INTO undo_entries(action_id, inverse_sql)
+		VALUES (
+			(SELECT action_id FROM undo_context WHERE id = 1),
+			printf('DELETE FROM task_dependencies WHERE blocker_id = %d AND blocked_id = %d;', NEW.blocker_id, NEW.blocked_id)
+		);
+	END;
+
+	CREATE TRIGGER deps_undo_ad AFTER DELETE ON task_dependencies
+	WHEN (SELECT action_id FROM undo_context WHERE id = 1) IS NOT NULL
+	BEGIN
+		INSERT INTO undo_entries(action_id, inverse_sql)
+		VALUES (
+			(SELECT action_id FROM undo_context WHERE id = 1),
+			printf('INSERT INTO task_dependencies (blocker_id, blocked_id) VALUES (%d, %d);', OLD.blocker_id, OLD.blocked_id)
+		);
+	END;
+
+	CREATE TRIGGER deps_undo_au AFTER UPDATE ON task_dependencies
+	WHEN (SELECT action_id FROM undo_context WHERE id = 1) IS NOT NULL
+	BEGIN
+		INSERT INTO undo_entries(action_id, inverse_sql)
+		VALUES (
+			(SELECT action_id FROM undo_context WHERE id = 1),
+			printf(
+				'UPDATE task_dependencies SET blocker_id = %d, blocked_id = %d WHERE blocker_id = %d AND blocked_id = %d;',
+				OLD.blocker_id, OLD.blocked_id, NEW.blocker_id, NEW.blocked_id
+			)
+		);
+	END;
+
+	CREATE TRIGGER projects_undo_ai AFTER INSERT ON projects
+	WHEN (SELECT action_id FROM undo_context WHERE id = 1) IS NOT NULL
+	BEGIN
+		INSERT INTO undo_entries(action_id, inverse_sql)
+		VALUES (
+			(SELECT action_id FROM undo_context WHERE id = 1),
+			printf('DELETE FROM projects WHERE name = %Q;', NEW.name)
+		);
+	END;
+
+	CREATE TRIGGER projects_undo_ad AFTER DELETE ON projects
+	WHEN (SELECT action_id FROM undo_context WHERE id = 1) IS NOT NULL
+	BEGIN
+		INSERT INTO undo_entries(action_id, inverse_sql)
+		VALUES (
+			(SELECT action_id FROM undo_context WHERE id = 1),
+			printf(
+				'INSERT INTO projects (name, short_name, description, parent, status, due_at, created_at) VALUES (%Q, %Q, %Q, %Q, %Q, %Q, %Q);',
+				OLD.name, OLD.short_name, OLD.description, OLD.parent, OLD.status, OLD.due_at, OLD.created_at
+			)
+		);
+	END;
+
+	CREATE TRIGGER projects_undo_au AFTER UPDATE ON projects
+	WHEN (SELECT action_id FROM undo_context WHERE id = 1) IS NOT NULL
+	BEGIN
+		INSERT INTO undo_entries(action_id, inverse_sql)
+		VALUES (
+			(SELECT action_id FROM undo_context WHERE id = 1),
+			printf(
+				'UPDATE projects SET name = %Q, short_name = %Q, description = %Q, parent = %Q, status = %Q, due_at = %Q, created_at = %Q WHERE name = %Q;',
+				OLD.name, OLD.short_name, OLD.description, OLD.parent, OLD.status, OLD.due_at, OLD.created_at, NEW.name
+			)
+		);
+	END;
+	`
+
+	if _, err := db.Exec(undoTriggers); err != nil {
+		return err
+	}
+	return nil
+}
+
+func isFTS5UnavailableErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "no such module: fts5")
+}
+
+func sqliteHasFTS5(q sqlExecQuerier) bool {
+	_, _ = q.Exec("DROP TABLE IF EXISTS temp.tasc_fts5_probe")
+	_, err := q.Exec("CREATE VIRTUAL TABLE temp.tasc_fts5_probe USING fts5(content)")
+	if err != nil {
+		return false
+	}
+	_, _ = q.Exec("DROP TABLE IF EXISTS temp.tasc_fts5_probe")
+	return true
+}
+
+func createTaskSearchFallbackIndexes(q sqlExecQuerier, hasTitle bool) error {
+	statements := []string{
+		"CREATE INDEX IF NOT EXISTS idx_tasks_description_search ON tasks(description)",
+		"CREATE INDEX IF NOT EXISTS idx_tasks_project_search ON tasks(project)",
+	}
+	if hasTitle {
+		statements = append(statements, "CREATE INDEX IF NOT EXISTS idx_tasks_title_search ON tasks(title)")
+	}
+
+	for _, stmt := range statements {
+		if _, err := q.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func rebuildTaskSearchIndex(q sqlExecQuerier, hasTitle bool) error {
+	if _, err := q.Exec("DROP TRIGGER IF EXISTS tasks_ai"); err != nil {
+		return err
+	}
+	if _, err := q.Exec("DROP TRIGGER IF EXISTS tasks_ad"); err != nil {
+		return err
+	}
+	if _, err := q.Exec("DROP TRIGGER IF EXISTS tasks_au"); err != nil {
+		return err
+	}
+
+	if !sqliteHasFTS5(q) {
+		if _, err := q.Exec("DROP TABLE IF EXISTS tasks_fts"); err != nil && !isFTS5UnavailableErr(err) {
+			return err
+		}
+		log.Printf("SQLite FTS5 module unavailable; using LIKE-based search fallback.")
+		return createTaskSearchFallbackIndexes(q, hasTitle)
+	}
+
+	if _, err := q.Exec("DROP TABLE IF EXISTS tasks_fts"); err != nil {
+		return err
+	}
+
+	createFTS := "CREATE VIRTUAL TABLE tasks_fts USING fts5(description, project, content='tasks', content_rowid='id')"
+	triggers := `
+	CREATE TRIGGER tasks_ai AFTER INSERT ON tasks BEGIN
+	  INSERT INTO tasks_fts(rowid, description, project) VALUES (new.id, new.description, new.project);
+	END;
+
+	CREATE TRIGGER tasks_ad AFTER DELETE ON tasks BEGIN
+	  INSERT INTO tasks_fts(tasks_fts, rowid, description, project) VALUES('delete', old.id, old.description, old.project);
+	END;
+
+	CREATE TRIGGER tasks_au AFTER UPDATE ON tasks BEGIN
+	  INSERT INTO tasks_fts(tasks_fts, rowid, description, project) VALUES('delete', old.id, old.description, old.project);
+	  INSERT INTO tasks_fts(rowid, description, project) VALUES (new.id, new.description, new.project);
+	END;
+	`
+	if hasTitle {
+		createFTS = "CREATE VIRTUAL TABLE tasks_fts USING fts5(title, description, project, content='tasks', content_rowid='id')"
+		triggers = `
+		CREATE TRIGGER tasks_ai AFTER INSERT ON tasks BEGIN
+		  INSERT INTO tasks_fts(rowid, title, description, project) VALUES (new.id, new.title, new.description, new.project);
+		END;
+
+		CREATE TRIGGER tasks_ad AFTER DELETE ON tasks BEGIN
+		  INSERT INTO tasks_fts(tasks_fts, rowid, title, description, project) VALUES('delete', old.id, old.title, old.description, old.project);
+		END;
+
+		CREATE TRIGGER tasks_au AFTER UPDATE ON tasks BEGIN
+		  INSERT INTO tasks_fts(tasks_fts, rowid, title, description, project) VALUES('delete', old.id, old.title, old.description, old.project);
+		  INSERT INTO tasks_fts(rowid, title, description, project) VALUES (new.id, new.title, new.description, new.project);
+		END;
+		`
+	}
+
+	if _, err := q.Exec(createFTS); err != nil {
+		if isFTS5UnavailableErr(err) {
+			log.Printf("SQLite FTS5 module unavailable; using LIKE-based search fallback.")
+			return createTaskSearchFallbackIndexes(q, hasTitle)
+		}
+		return err
+	}
+
+	if _, err := q.Exec(triggers); err != nil {
+		return err
+	}
+	if _, err := q.Exec("INSERT INTO tasks_fts(tasks_fts) VALUES('rebuild')"); err != nil {
+		return err
 	}
 
 	return nil
@@ -427,33 +650,8 @@ func baselineSchema(db *sql.DB) error {
 		_, _ = db.Exec(q)
 	}
 
-	// 5. FTS
-	_, err = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS tasks_fts USING fts5(description, project, content='tasks', content_rowid='id');`)
-	if err != nil {
-		return err
-	}
-
-	// Triggers (Drop and Recreate to be safe)
-	db.Exec("DROP TRIGGER IF EXISTS tasks_ai")
-	db.Exec("DROP TRIGGER IF EXISTS tasks_ad")
-	db.Exec("DROP TRIGGER IF EXISTS tasks_au")
-
-	triggers := `
-	CREATE TRIGGER tasks_ai AFTER INSERT ON tasks BEGIN
-	  INSERT INTO tasks_fts(rowid, description, project) VALUES (new.id, new.description, new.project);
-	END;
-
-	CREATE TRIGGER tasks_ad AFTER DELETE ON tasks BEGIN
-	  INSERT INTO tasks_fts(tasks_fts, rowid, description, project) VALUES('delete', old.id, old.description, old.project);
-	END;
-
-	CREATE TRIGGER tasks_au AFTER UPDATE ON tasks BEGIN
-	  INSERT INTO tasks_fts(tasks_fts, rowid, description, project) VALUES('delete', old.id, old.description, old.project);
-	  INSERT INTO tasks_fts(rowid, description, project) VALUES (new.id, new.description, new.project);
-	END;
-	`
-	_, err = db.Exec(triggers)
-	if err != nil {
+	// 5. Search index (FTS5 when available, fallback otherwise).
+	if err := rebuildTaskSearchIndex(db, false); err != nil {
 		return err
 	}
 

@@ -212,6 +212,70 @@ func TestModifyAndDeleteAutoApprove(t *testing.T) {
 	}
 }
 
+func TestRestoreFromBackupRestoresPreviousState(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "restore.db")
+	backupPath := filepath.Join(tmpDir, "restore-backup.db")
+
+	out, err := runTasc(t, dbPath, "add", "Task Before Backup")
+	if err != nil {
+		t.Fatalf("Add before backup failed: %v\nOutput: %s", err, out)
+	}
+
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("Open db for backup failed: %v", err)
+	}
+	if _, err := db.Exec("VACUUM INTO ?", backupPath); err != nil {
+		db.Close()
+		t.Fatalf("VACUUM INTO backup failed: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("Close db after backup failed: %v", err)
+	}
+
+	out, err = runTasc(t, dbPath, "add", "Task After Backup")
+	if err != nil {
+		t.Fatalf("Add after backup failed: %v\nOutput: %s", err, out)
+	}
+
+	out, err = runTasc(t, dbPath, "restore", backupPath)
+	if err != nil {
+		t.Fatalf("Restore failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Successfully restored database") {
+		t.Fatalf("Unexpected restore output: %s", out)
+	}
+
+	reopened, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("Reopen db failed: %v", err)
+	}
+	defer reopened.Close()
+
+	rows, err := reopened.Query("SELECT title FROM tasks ORDER BY id")
+	if err != nil {
+		t.Fatalf("Query restored tasks failed: %v", err)
+	}
+	defer rows.Close()
+
+	var titles []string
+	for rows.Next() {
+		var title string
+		if err := rows.Scan(&title); err != nil {
+			t.Fatalf("Scan restored title failed: %v", err)
+		}
+		titles = append(titles, title)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("Iterating restored titles failed: %v", err)
+	}
+
+	if len(titles) != 1 || titles[0] != "Task Before Backup" {
+		t.Fatalf("Unexpected restored tasks: %#v", titles)
+	}
+}
+
 func TestDateOnlyDueUsesEightPmDefault(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "due-default.db")
@@ -480,5 +544,83 @@ func TestRenumberCommandSkipsDoneAndDeleted(t *testing.T) {
 	}
 	if !strings.Contains(out, "Created task 2.") {
 		t.Fatalf("Expected next open task ID to be 2, output: %s", out)
+	}
+}
+
+func TestUndoNoActions(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "undo-empty.db")
+
+	out, err := runTasc(t, dbPath, "undo", "--yes")
+	if err != nil {
+		t.Fatalf("undo --yes on empty history failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Nothing to undo.") {
+		t.Fatalf("Unexpected output for empty undo history: %s", out)
+	}
+}
+
+func TestUndoAddRemovesTask(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "undo-add.db")
+
+	out, err := runTasc(t, dbPath, "add", "Undo Add Task")
+	if err != nil {
+		t.Fatalf("add failed: %v\nOutput: %s", err, out)
+	}
+
+	out, err = runTasc(t, dbPath, "undo", "--yes")
+	if err != nil {
+		t.Fatalf("undo --yes failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Undid action") {
+		t.Fatalf("Unexpected undo output: %s", out)
+	}
+
+	out, err = runTasc(t, dbPath, "list")
+	if err != nil {
+		t.Fatalf("list failed: %v\nOutput: %s", err, out)
+	}
+	if strings.Contains(out, "Undo Add Task") {
+		t.Fatalf("Task still present after undo add. Output:\n%s", out)
+	}
+}
+
+func TestUndoDoneRestoresTask(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "undo-done.db")
+
+	out, err := runTasc(t, dbPath, "add", "Undo Done Task")
+	if err != nil {
+		t.Fatalf("add failed: %v\nOutput: %s", err, out)
+	}
+
+	out, err = runTasc(t, dbPath, "done", "1")
+	if err != nil {
+		t.Fatalf("done failed: %v\nOutput: %s", err, out)
+	}
+
+	out, err = runTasc(t, dbPath, "undo", "--yes")
+	if err != nil {
+		t.Fatalf("undo --yes failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Undid action") {
+		t.Fatalf("Unexpected undo output: %s", out)
+	}
+
+	out, err = runTasc(t, dbPath, "list")
+	if err != nil {
+		t.Fatalf("list failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Undo Done Task") {
+		t.Fatalf("Task not restored to open list after undo done. Output:\n%s", out)
+	}
+
+	out, err = runTasc(t, dbPath, "list", "--status", "done")
+	if err != nil {
+		t.Fatalf("list --status done failed: %v\nOutput: %s", err, out)
+	}
+	if strings.Contains(out, "Undo Done Task") {
+		t.Fatalf("Task still appears as done after undo. Output:\n%s", out)
 	}
 }

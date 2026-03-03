@@ -3,6 +3,7 @@ package sqlite
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -284,5 +285,40 @@ func TestSQLiteStore_RenumberTasks(t *testing.T) {
 	}
 	if id4 != 2 {
 		t.Fatalf("Fourth task ID = %d, want 2", id4)
+	}
+}
+
+func TestSQLiteStore_SearchTasks_FallbackWithoutFTS5(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	s := NewSQLiteStore(db)
+
+	if _, err := s.CreateTask(models.Task{Title: "Buy Milk", Description: "From grocery", Project: "Home"}); err != nil {
+		t.Fatalf("CreateTask(Buy Milk) failed: %v", err)
+	}
+	if _, err := s.CreateTask(models.Task{Title: "Write Report", Description: "Quarterly planning", Project: "Work"}); err != nil {
+		t.Fatalf("CreateTask(Write Report) failed: %v", err)
+	}
+
+	results, err := s.SearchTasks("milk")
+	if err != nil {
+		t.Fatalf("SearchTasks failed: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatalf("SearchTasks returned no results")
+	}
+
+	foundMilk := false
+	for _, task := range results {
+		titleLower := strings.ToLower(task.Title)
+		descLower := strings.ToLower(task.Description)
+		projectLower := strings.ToLower(task.Project)
+		if strings.Contains(titleLower, "milk") || strings.Contains(descLower, "milk") || strings.Contains(projectLower, "milk") {
+			foundMilk = true
+			break
+		}
+	}
+	if !foundMilk {
+		t.Fatalf("Expected at least one result matching 'milk', got %+v", results)
 	}
 }

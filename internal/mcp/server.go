@@ -154,6 +154,28 @@ func (ms *MCPServer) registerTools() {
 		mcp.WithDescription("Fuzzy search tasks by description or project"),
 		mcp.WithString("query", mcp.Required(), mcp.Description("Search query")),
 	), ms.handleSearch)
+
+	// 15. Get Task
+	ms.server.AddTool(mcp.NewTool("tasc_get_task",
+		mcp.WithDescription("Get a single task by ID"),
+		mcp.WithNumber("id", mcp.Required(), mcp.Description("The ID of the task to retrieve")),
+	), ms.handleGetTask)
+
+	// 16. Get Active Task
+	ms.server.AddTool(mcp.NewTool("tasc_get_active_task",
+		mcp.WithDescription("Get the currently active time-tracked task"),
+	), ms.handleGetActiveTask)
+
+	// 17. Get Dependencies
+	ms.server.AddTool(mcp.NewTool("tasc_get_dependencies",
+		mcp.WithDescription("List all task dependencies"),
+	), ms.handleGetDependencies)
+
+	// 18. Get Project
+	ms.server.AddTool(mcp.NewTool("tasc_get_project",
+		mcp.WithDescription("Get a single project's details"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The project name")),
+	), ms.handleGetProject)
 }
 
 func (ms *MCPServer) registerResources() {
@@ -245,6 +267,68 @@ func (ms *MCPServer) handleList(ctx context.Context, request mcp.CallToolRequest
 	}
 
 	return mcp.NewToolResultText(sb.String()), nil
+}
+
+func (ms *MCPServer) handleGetTask(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := request.GetArguments()
+	if _, ok := args["id"]; !ok {
+		return mcp.NewToolResultError("Invalid ID"), nil
+	}
+
+	id := int64(request.GetInt("id", 0))
+	if id < 0 {
+		return mcp.NewToolResultError("Invalid ID"), nil
+	}
+
+	task, err := ms.store.GetTask(id)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Task not found: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(formatTaskDetails(task)), nil
+}
+
+func (ms *MCPServer) handleGetActiveTask(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	task, err := ms.store.GetActiveTask()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Error getting active task: %v", err)), nil
+	}
+	if task == nil {
+		return mcp.NewToolResultText("No active task."), nil
+	}
+
+	return mcp.NewToolResultText(formatTaskDetails(*task)), nil
+}
+
+func (ms *MCPServer) handleGetDependencies(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	deps, err := ms.store.GetDependencies()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Error listing dependencies: %v", err)), nil
+	}
+	if len(deps) == 0 {
+		return mcp.NewToolResultText("No dependencies found."), nil
+	}
+
+	var sb strings.Builder
+	for _, dep := range deps {
+		sb.WriteString(fmt.Sprintf("- Task %d blocks Task %d\n", dep.BlockerID, dep.BlockedID))
+	}
+
+	return mcp.NewToolResultText(sb.String()), nil
+}
+
+func (ms *MCPServer) handleGetProject(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	name := request.GetString("name", "")
+	if name == "" {
+		return mcp.NewToolResultError("name is required"), nil
+	}
+
+	project, err := ms.store.GetProject(name)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Project not found: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(formatProjectDetails(project)), nil
 }
 
 func (ms *MCPServer) handleComplete(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -601,4 +685,82 @@ func (ms *MCPServer) handleSearch(ctx context.Context, request mcp.CallToolReque
 	}
 
 	return mcp.NewToolResultText(sb.String()), nil
+}
+
+func formatTaskDetails(t models.Task) string {
+	status := t.Status
+	if t.IsBlocked {
+		status = models.StatusBlocked
+	}
+
+	due := "none"
+	if t.DueAt != nil {
+		due = t.DueAt.Format("2006-01-02")
+	}
+
+	description := t.Description
+	if description == "" {
+		description = "none"
+	}
+
+	estimate := t.Estimate
+	if estimate == "" {
+		estimate = "none"
+	}
+
+	recurrence := t.Recurrence
+	if recurrence == "" {
+		recurrence = "none"
+	}
+
+	return fmt.Sprintf(
+		"- [%d] %s (Project: %s, Status: %s, Due: %s, Description: %s, Estimate: %s, Recurrence: %s, Time Spent: %ds)",
+		t.ID,
+		t.Title,
+		t.Project,
+		status,
+		due,
+		description,
+		estimate,
+		recurrence,
+		t.TimeSpent,
+	)
+}
+
+func formatProjectDetails(p models.Project) string {
+	shortName := p.ShortName
+	if shortName == "" {
+		shortName = "none"
+	}
+
+	description := p.Description
+	if description == "" {
+		description = "none"
+	}
+
+	parent := p.Parent
+	if parent == "" {
+		parent = "none"
+	}
+
+	due := "none"
+	if p.DueAt != nil {
+		due = p.DueAt.Format("2006-01-02")
+	}
+
+	createdAt := p.CreatedAt.Format(time.RFC3339)
+	if p.CreatedAt.IsZero() {
+		createdAt = "0001-01-01T00:00:00Z"
+	}
+
+	return fmt.Sprintf(
+		"Name: %s\nShort Name: %s\nDescription: %s\nParent: %s\nStatus: %s\nDue: %s\nCreated At: %s",
+		p.Name,
+		shortName,
+		description,
+		parent,
+		p.Status,
+		due,
+		createdAt,
+	)
 }
