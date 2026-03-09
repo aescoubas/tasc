@@ -63,6 +63,30 @@ Move the binary to your path:
 sudo mv tasc /usr/local/bin/
 ```
 
+### Build with Nix
+
+The flake keeps the primary package focused on the `tasc` CLI. The React dashboard remains a separate development build.
+
+```bash
+# Enter a shell with Go, Node.js, SQLite, GoReleaser, and Nix formatting tools
+nix develop
+
+# Build the main CLI package
+nix build
+
+# Run tasc directly from the flake
+nix run -- --help
+
+# Run the flake checks (CLI build/tests and web build)
+nix flake check
+```
+
+If you want to build the standalone web dashboard bundle as well:
+
+```bash
+nix build .#web
+```
+
 ## Usage
 
 ### Basic Commands
