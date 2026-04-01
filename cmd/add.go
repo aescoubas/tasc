@@ -30,6 +30,20 @@ var addCmd = &cobra.Command{
 			cfg = config.DefaultConfig()
 		}
 
+		dependencySelection, err := buildDependencySelection(dependsOn, blocks)
+		if err != nil {
+			fmt.Printf("Invalid dependency list: %v\n", err)
+			return
+		}
+		if err := dependencySelection.validate(nil); err != nil {
+			fmt.Printf("Invalid dependencies: %v\n", err)
+			return
+		}
+		if err := ensureTasksExist(dependencySelection.referencedIDs()); err != nil {
+			fmt.Printf("Invalid dependencies: %v\n", err)
+			return
+		}
+
 		title := strings.Join(args, " ")
 
 		var dueAt *time.Time
@@ -98,7 +112,16 @@ var addCmd = &cobra.Command{
 			return
 		}
 
+		linksAdded, err := addDependencyLinks([]int64{id}, dependencySelection)
+		if err != nil {
+			fmt.Printf("Created task %d, but failed to add dependencies: %v\n", id, err)
+			return
+		}
+
 		fmt.Printf("Created task %d.\n", id)
+		if linksAdded > 0 {
+			fmt.Printf("Added %d dependency link(s).\n", linksAdded)
+		}
 	},
 }
 
@@ -110,8 +133,12 @@ func init() {
 	addCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate (e.g. 2h, 30m)")
 	addCmd.Flags().StringVarP(&recurrenceFlag, "recurrence", "r", "", "Recurrence rule (e.g. 'daily', 'every 2 weeks')")
 	addCmd.Flags().StringVarP(&block, "block", "b", "", "Time block (e.g. morning, afternoon)")
+	addCmd.Flags().StringSliceVar(&dependsOn, "depends-on", nil, "Blocker task IDs for the new task (repeat or comma-separate)")
+	addCmd.Flags().StringSliceVar(&blocks, "blocks", nil, "Task IDs that the new task should block (repeat or comma-separate)")
 
 	addCmd.RegisterFlagCompletionFunc("project", projectCompletionFunc)
+	addCmd.RegisterFlagCompletionFunc("depends-on", taskIDCompletionFunc)
+	addCmd.RegisterFlagCompletionFunc("blocks", taskIDCompletionFunc)
 
 	addCmd.RegisterFlagCompletionFunc("block", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		cfg, err := config.LoadConfig()

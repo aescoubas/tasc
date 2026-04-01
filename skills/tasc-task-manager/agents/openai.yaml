@@ -1,0 +1,3 @@
+interface:
+  display_name: "Tasc Task Manager"
+  short_description: "Manage Tasc tasks and projects through MCP"

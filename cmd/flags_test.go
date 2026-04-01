@@ -26,6 +26,21 @@ func TestDueFlagStillPresent(t *testing.T) {
 	}
 }
 
+func TestDependencyFlagsPresent(t *testing.T) {
+	if addCmd.Flags().Lookup("depends-on") == nil {
+		t.Fatalf("add command must expose --depends-on")
+	}
+	if addCmd.Flags().Lookup("blocks") == nil {
+		t.Fatalf("add command must expose --blocks")
+	}
+	if modifyCmd.Flags().Lookup("depends-on") == nil {
+		t.Fatalf("modify command must expose --depends-on")
+	}
+	if modifyCmd.Flags().Lookup("blocks") == nil {
+		t.Fatalf("modify command must expose --blocks")
+	}
+}
+
 func TestAutoApproveFlagsPresent(t *testing.T) {
 	if modifyCmd.Flags().Lookup("yes") == nil {
 		t.Fatalf("modify command must expose --yes")

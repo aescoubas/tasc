@@ -9,6 +9,7 @@
 *   **Interactive TUI:** A beautiful, keyboard-driven UI powered by Bubble Tea for managing tasks.
 *   **Dependency Management:** Create and visualize task dependencies (graphs).
 *   **AI Integration:** Built-in integration with Google Gemini for natural language queries and advice.
+*   **Bundled Agent Skill:** Ships with a reusable `SKILL.md` bundle for Codex-style agent clients.
 *   **Smart Scheduling:** Track Due Dates and Estimates.
 *   **Priority System:** Dynamic priority scoring to highlight what matters most.
 *   **Time Tracking:** Built-in timer to track how long tasks take.
@@ -63,6 +64,11 @@ Move the binary to your path:
 sudo mv tasc /usr/local/bin/
 ```
 
+Install the bundled Codex skill:
+```bash
+tasc skill install
+```
+
 ### Build with Nix
 
 The flake keeps the primary package focused on the `tasc` CLI. The React dashboard remains a separate development build.
@@ -95,6 +101,8 @@ nix build .#web
     ```bash
     tasc add "Finish the report"
     tasc add "Buy milk" --due "tomorrow"
+    tasc add "Ship release" --depends-on 12,14
+    tasc add "Prepare changelog" --blocks 42
     ```
 
 *   **Log a completed task:**
@@ -121,6 +129,7 @@ nix build .#web
     ```bash
     tasc edit <task_id>        # Opens task in your default $EDITOR
     tasc modify <task_id> "New description" --due "next friday"
+    tasc modify <task_id> --depends-on 12 --blocks 42,43
     ```
 
 *   **Delete a task:**
@@ -165,7 +174,9 @@ nix build .#web
 *   **Dependencies:**
     Link tasks together:
     ```bash
-    tasc dep <parent_id> <child_id>
+    tasc dep <blocker_id> <blocked_id>
+    tasc add "Write tests" --depends-on 3
+    tasc modify 8 --blocks 9,10
     ```
     View dependency graph:
     ```bash
@@ -190,6 +201,33 @@ nix build .#web
       tasc:
         command: "tasc"
         args: ["mcp"]
+    ```
+
+*   **Bundled Agent Skill:**
+    Tasc ships with a bundled `tasc-task-manager` skill for clients that support the `SKILL.md` agent-skills format.
+    The source bundle lives in `skills/tasc-task-manager/` and is embedded into the `tasc` binary so you can install it after any normal `tasc` install.
+    Install it into the default Codex location (`~/.agents/skills`):
+    ```bash
+    tasc skill install --client codex
+    ```
+    Install it into the default Claude Code location (`~/.claude/skills`):
+    ```bash
+    tasc skill install --client claude
+    ```
+    Install it into the default Gemini CLI location (`~/.gemini/skills`) when you want a Gemini-specific copy:
+    ```bash
+    tasc skill install --client gemini
+    ```
+    If you already installed the Codex/shared copy into `~/.agents/skills`, Gemini CLI can discover that shared skill and you should avoid installing a duplicate Gemini-specific copy.
+    Install it into another compatible skills directory manually:
+    ```bash
+    tasc skill install --dest /path/to/skills
+    ```
+    The bundled skill assumes the client is configured to launch the Tasc MCP server with:
+    ```bash
+    codex mcp add tasc -- /usr/local/bin/tasc mcp
+    claude mcp add -s user tasc -- /usr/local/bin/tasc mcp
+    gemini mcp add -s user tasc /usr/local/bin/tasc mcp
     ```
 
 *   **Calendar:**

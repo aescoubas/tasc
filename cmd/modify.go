@@ -24,6 +24,16 @@ var modifyCmd = &cobra.Command{
 			cfg = config.DefaultConfig()
 		}
 
+		dependencySelection, err := buildDependencySelection(dependsOn, blocks)
+		if err != nil {
+			fmt.Printf("Invalid dependency list: %v\n", err)
+			return
+		}
+		if err := ensureTasksExist(dependencySelection.referencedIDs()); err != nil {
+			fmt.Printf("Invalid dependencies: %v\n", err)
+			return
+		}
+
 		var ids []int64
 		var titleParts []string
 
@@ -91,7 +101,7 @@ var modifyCmd = &cobra.Command{
 			updates["schedule_block"] = block
 		}
 
-		if len(updates) == 0 {
+		if len(updates) == 0 && !dependencySelection.hasLinks() {
 			fmt.Println("No changes specified. Use flags like --due, --project, --estimate, or provide a new title.")
 			return
 		}
@@ -135,6 +145,11 @@ var modifyCmd = &cobra.Command{
 			return
 		}
 
+		if err := dependencySelection.validate(ids); err != nil {
+			fmt.Printf("Invalid dependencies: %v\n", err)
+			return
+		}
+
 		// Recurrence Prompt Logic (Single Task Only)
 		if len(ids) == 1 && !modifyAutoApprove {
 			t, err := CurrentStore.GetTask(ids[0])
@@ -157,9 +172,26 @@ var modifyCmd = &cobra.Command{
 			}
 		}
 
-		err = CurrentStore.BatchUpdateTasks(ids, updates)
+		if len(updates) > 0 {
+			err = CurrentStore.BatchUpdateTasks(ids, updates)
+			if err != nil {
+				fmt.Printf("Error updating tasks: %v\n", err)
+				return
+			}
+		}
+
+		linksAdded, err := addDependencyLinks(ids, dependencySelection)
 		if err != nil {
-			fmt.Printf("Error updating tasks: %v\n", err)
+			if len(updates) > 0 {
+				fmt.Printf("Tasks updated, but failed to add dependencies: %v\n", err)
+			} else {
+				fmt.Printf("Error adding dependencies: %v\n", err)
+			}
+			return
+		}
+
+		if len(updates) == 0 && linksAdded == 0 {
+			fmt.Println("No new dependency links were added.")
 			return
 		}
 
@@ -167,6 +199,9 @@ var modifyCmd = &cobra.Command{
 			fmt.Printf("Task %d modified.\n", ids[0])
 		} else {
 			fmt.Printf("Modified %d tasks.\n", len(ids))
+		}
+		if linksAdded > 0 {
+			fmt.Printf("Added %d dependency link(s).\n", linksAdded)
 		}
 	},
 }
@@ -179,6 +214,8 @@ func init() {
 	modifyCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate")
 	modifyCmd.Flags().StringVarP(&recurrenceFlag, "recurrence", "r", "", "Recurrence rule")
 	modifyCmd.Flags().StringVarP(&block, "block", "b", "", "Time block")
+	modifyCmd.Flags().StringSliceVar(&dependsOn, "depends-on", nil, "Add blocker task IDs (repeat or comma-separate)")
+	modifyCmd.Flags().StringSliceVar(&blocks, "blocks", nil, "Add blocked task IDs (repeat or comma-separate)")
 	modifyCmd.Flags().BoolVarP(&modifyAutoApprove, "yes", "y", false, "Auto-approve modifications without confirmation prompts")
 
 	modifyCmd.RegisterFlagCompletionFunc("project", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -207,6 +244,9 @@ func init() {
 		}
 		return names, cobra.ShellCompDirectiveNoFileComp
 	})
+
+	modifyCmd.RegisterFlagCompletionFunc("depends-on", taskIDCompletionFunc)
+	modifyCmd.RegisterFlagCompletionFunc("blocks", taskIDCompletionFunc)
 
 	modifyCmd.RegisterFlagCompletionFunc("due", dateCompletionFunc)
 	modifyCmd.RegisterFlagCompletionFunc("recurrence", recurrenceCompletionFunc)

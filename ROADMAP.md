@@ -368,3 +368,22 @@ Implement time-blocking methodology for task scheduling.
 
 **Verification:**
 *   [x] `tasc add "Task" --block morning` schedules the task in the morning slot.
+
+---
+
+### Phase 19: Agent Skill Packaging
+**Status:** DONE
+**Token Budget:** Low
+**Prerequisites:** Phase 13
+
+**Objective:**
+Bundle a reusable agent skill for Tasc MCP workflows and provide a supported installation path from the `tasc` CLI.
+
+**Tasks:**
+- [x] **Bundled Skill:** Add a reusable `SKILL.md`-based task management skill with Tasc MCP workflow guidance.
+- [x] **Installer Command:** Add a `tasc skill install` command to install the bundled skill into a skills directory.
+- [x] **Documentation:** Document the bundled skill, MCP expectations, and install flow in the README.
+
+**Verification:**
+*   [x] `make test` passes with installer coverage.
+*   [x] `go run -tags fts5 . skill install --dest /tmp/<dir>` writes the bundled skill files successfully.
