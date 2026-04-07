@@ -301,6 +301,50 @@ func TestDateOnlyDueUsesEightPmDefault(t *testing.T) {
 	}
 }
 
+func TestAddSupportsDayFirstDueDateFormats(t *testing.T) {
+	tests := []struct {
+		name string
+		due  string
+	}{
+		{name: "dot", due: "20.04.2026"},
+		{name: "slash", due: "20/04/2026"},
+		{name: "dash", due: "20-04-2026"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			dbPath := filepath.Join(tmpDir, "day-first-due.db")
+
+			out, err := runTasc(t, dbPath, "add", "Day-first due task", "--due", tt.due)
+			if err != nil {
+				t.Fatalf("Add with due %q failed: %v\nOutput: %s", tt.due, err, out)
+			}
+			if !strings.Contains(out, "Created task") {
+				t.Fatalf("Unexpected add output for due %q: %s", tt.due, out)
+			}
+
+			db, err := sql.Open("sqlite3", dbPath)
+			if err != nil {
+				t.Fatalf("Open db failed: %v", err)
+			}
+			defer db.Close()
+
+			var dueAt time.Time
+			if err := db.QueryRow(`SELECT due_at FROM tasks WHERE title = ?`, "Day-first due task").Scan(&dueAt); err != nil {
+				t.Fatalf("Query due_at failed: %v", err)
+			}
+
+			if dueAt.Year() != 2026 || dueAt.Month() != time.April || dueAt.Day() != 20 {
+				t.Fatalf("due_at = %s, want 2026-04-20", dueAt.Format(time.RFC3339))
+			}
+			if dueAt.Hour() != 20 || dueAt.Minute() != 0 {
+				t.Fatalf("due_at stored as %02d:%02d, want 20:00", dueAt.Hour(), dueAt.Minute())
+			}
+		})
+	}
+}
+
 func TestListOutputJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "list-json.db")

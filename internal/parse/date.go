@@ -17,6 +17,9 @@ func Date(s string, defaultTime string) (*time.Time, error) {
 	}{
 		{"2006-01-02", false},
 		{"2006/01/02", false},
+		{"02.01.2006", false},
+		{"02/01/2006", false},
+		{"02-01-2006", false},
 		{"2006-01-02 15:04", true},
 		{"15:04", true},
 		{time.RFC3339, true},
@@ -30,7 +33,7 @@ func Date(s string, defaultTime string) (*time.Time, error) {
 				t = time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), 0, 0, time.Local)
 				return &t, nil
 			}
-			
+
 			if !f.hasTime && defaultTime != "" {
 				// Apply default time
 				t = applyTime(t, defaultTime)
@@ -44,14 +47,14 @@ func Date(s string, defaultTime string) (*time.Time, error) {
 	// We use 00:00:00 today as reference to avoid "now" time leaking into dates like "tomorrow"
 	now := time.Now()
 	ref := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
-	
+
 	t, err := naturaldate.Parse(processed, ref)
 	if err == nil {
 		// Heuristic: If the input string contains time indicators, trust the result.
 		// If not, apply defaultTime.
 		// Check original string 's' for time patterns
 		hasTime := regexp.MustCompile(`(\d{1,2}:\d{2})|(?i)(am|pm|morning|afternoon|evening|noon|midnight)`).MatchString(s)
-		
+
 		if !hasTime && defaultTime != "" {
 			t = applyTime(t, defaultTime)
 		}
@@ -96,7 +99,7 @@ func PreprocessDate(s string) string {
 	if matches := re.FindStringSubmatch(s); len(matches) == 3 {
 		num := matches[1]
 		unit := matches[2]
-		
+
 		if num != "1" {
 			// Normalize singular units to plural for consistency if > 1
 			switch strings.ToLower(unit) {

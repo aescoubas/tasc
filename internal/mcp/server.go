@@ -52,7 +52,7 @@ func (ms *MCPServer) registerTools() {
 		mcp.WithString("title", mcp.Required(), mcp.Description("The task title")),
 		mcp.WithString("description", mcp.Description("Optional detailed description")),
 		mcp.WithString("project", mcp.Description("The project name (optional)")),
-		mcp.WithString("due", mcp.Description("Due date (YYYY-MM-DD or natural language like 'tomorrow')")),
+		mcp.WithString("due", mcp.Description("Due date (YYYY-MM-DD, DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY, or natural language like 'tomorrow')")),
 		mcp.WithString("estimate", mcp.Description("Time estimate (e.g. 30m, 2h)")),
 		mcp.WithString("recurrence", mcp.Description("Recurrence rule (e.g. 'daily', 'every 2 weeks')")),
 	), ms.handleAdd)

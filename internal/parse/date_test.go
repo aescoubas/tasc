@@ -10,7 +10,7 @@ func TestPreprocessDate(t *testing.T) {
 		{"tomorrow", "tomorrow"},
 		{"next week", "next week"},
 		{"week", "next week"},
-		
+
 		// Spaced out
 		{"10 days", "in 10 days"},
 		{"2 weeks", "in 2 weeks"},
@@ -25,7 +25,7 @@ func TestPreprocessDate(t *testing.T) {
 
 		// Mixed case/variations
 		{"2Days", "in 2 days"},
-		
+
 		// Unaffected
 		{"in 2 days", "in 2 days"}, // Already has 'in'
 		{"2023-01-01", "2023-01-01"},
@@ -48,9 +48,9 @@ func TestPreprocessDate(t *testing.T) {
 }
 
 func TestDate(t *testing.T) {
-	// We can't easily test relative dates like "tomorrow" without mocking time, 
+	// We can't easily test relative dates like "tomorrow" without mocking time,
 	// but we can test explicit dates and default times.
-	
+
 	tests := []struct {
 		input       string
 		defaultTime string
@@ -66,14 +66,17 @@ func TestDate(t *testing.T) {
 		{"2025-01-01", "18:00", 18, 0, false},
 		{"2025-01-01", "09:00", 9, 0, false},
 		{"2025-01-01", "", 0, 0, false}, // Defaults to 00:00 if empty
+		{"20.04.2026", "18:00", 18, 0, false},
+		{"20/04/2026", "18:00", 18, 0, false},
+		{"20-04-2026", "18:00", 18, 0, false},
 
 		// RFC3339
 		{"2025-01-01T15:30:00Z", "18:00", 15, 30, false}, // TZ might shift hour, but let's assume ParseInLocation uses local or respects Z
-		
+
 		// Natural Language (assuming it works)
 		// "tomorrow at 5pm" -> 17:00
 		{"tomorrow at 5pm", "18:00", 17, 0, false},
-		
+
 		// "tomorrow" -> Should get default time
 		{"tomorrow", "18:00", 18, 0, false},
 		{"tomorrow", "23:59", 23, 59, false},
@@ -87,16 +90,16 @@ func TestDate(t *testing.T) {
 				return
 			}
 			if got != nil {
-				// We check H:M. 
+				// We check H:M.
 				// Note: RFC3339 "Z" parses to UTC. Our test checks Hour() which returns local time if .Local() is set or ...
 				// parse.Date uses time.ParseInLocation(..., time.Local).
 				// RFC3339 parsing in Go: `time.Parse(RFC3339, ...)` returns time with location set to whatever the string specifies (Z=UTC).
-				// So for the Z test case, Hour() will be in UTC. 
+				// So for the Z test case, Hour() will be in UTC.
 				// Let's rely on common sense behavior.
-				
-				// Handle potential TZ differences for the RFC test, skip strict H/M check if it's tricky, 
+
+				// Handle potential TZ differences for the RFC test, skip strict H/M check if it's tricky,
 				// but for "2025-01-01" it's simpler.
-				
+
 				if tt.input == "2025-01-01T15:30:00Z" {
 					// Skip hour check due to timezone complexity in test environment
 					return

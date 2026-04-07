@@ -210,7 +210,7 @@ func init() {
 	rootCmd.AddCommand(modifyCmd)
 	modifyCmd.Flags().StringVarP(&project, "project", "p", "", "Project name")
 	modifyCmd.Flags().StringVarP(&description, "description", "m", "", "Detailed description")
-	modifyCmd.Flags().StringVarP(&due, "due", "d", "", "Due date (YYYY-MM-DD)")
+	modifyCmd.Flags().StringVarP(&due, "due", "d", "", "Due date (YYYY-MM-DD, DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY, or natural language)")
 	modifyCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate")
 	modifyCmd.Flags().StringVarP(&recurrenceFlag, "recurrence", "r", "", "Recurrence rule")
 	modifyCmd.Flags().StringVarP(&block, "block", "b", "", "Time block")

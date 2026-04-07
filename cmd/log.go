@@ -55,7 +55,7 @@ var logCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(logCmd)
 	logCmd.Flags().StringVarP(&project, "project", "p", "", "Project name")
-	logCmd.Flags().StringVarP(&due, "due", "d", "", "Due date (YYYY-MM-DD)")
+	logCmd.Flags().StringVarP(&due, "due", "d", "", "Due date (YYYY-MM-DD, DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY, or natural language)")
 	logCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate (e.g. 2h, 30m)")
 
 	logCmd.RegisterFlagCompletionFunc("project", projectCompletionFunc)
