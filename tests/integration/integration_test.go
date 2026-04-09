@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -413,6 +414,47 @@ func TestShowOutputJSON(t *testing.T) {
 	}
 	if payload.Task.Title != "Show JSON Task" {
 		t.Fatalf("Unexpected title in JSON output: %q", payload.Task.Title)
+	}
+}
+
+func TestShowDisplaysCreatedAndDueWithTimestampFormat(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "show-format.db")
+
+	out, err := runTasc(t, dbPath, "add", "Show formatted dates", "--due", "15.01.2030")
+	if err != nil {
+		t.Fatalf("Add failed: %v\nOutput: %s", err, out)
+	}
+
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("Open db failed: %v", err)
+	}
+	defer db.Close()
+
+	var createdAt time.Time
+	if err := db.QueryRow(`SELECT created_at FROM tasks WHERE title = ?`, "Show formatted dates").Scan(&createdAt); err != nil {
+		t.Fatalf("Query created_at failed: %v", err)
+	}
+
+	out, err = runTasc(t, dbPath, "show", "1")
+	if err != nil {
+		t.Fatalf("show failed: %v\nOutput: %s", err, out)
+	}
+
+	wantCreated := fmt.Sprintf("Created:       %s", createdAt.Format("2006-01-02 15:04"))
+	if !strings.Contains(out, wantCreated) {
+		t.Fatalf("show output missing created timestamp %q\nOutput:\n%s", wantCreated, out)
+	}
+
+	wantDue := "Due:           2030-01-15 20:00"
+	if !strings.Contains(out, wantDue) {
+		t.Fatalf("show output missing due timestamp %q\nOutput:\n%s", wantDue, out)
+	}
+
+	dueLinePattern := regexp.MustCompile(`(?m)^Due:\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}$`)
+	if !dueLinePattern.MatchString(out) {
+		t.Fatalf("show output due line is not in YYYY-MM-DD HH:MM format\nOutput:\n%s", out)
 	}
 }
 

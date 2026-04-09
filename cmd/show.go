@@ -165,15 +165,15 @@ var showCmd = &cobra.Command{
 		fmt.Println("------------------------------------------------")
 		fmt.Printf("Project:       %s\n", t.Project)
 		fmt.Printf("Status:        %s\n", t.Status)
-		fmt.Printf("Created:       %s\n", t.CreatedAt.Format("2006-01-02 15:04"))
+		fmt.Printf("Created:       %s\n", ui.FormatTimestamp(t.CreatedAt))
 
 		if t.CompletedAt != nil {
-			fmt.Printf("Completed:     %s\n", t.CompletedAt.Format("2006-01-02 15:04"))
+			fmt.Printf("Completed:     %s\n", ui.FormatTimestamp(*t.CompletedAt))
 		}
 
 		dueStr := "-"
 		if t.DueAt != nil {
-			dueStr = ui.FormatDate(*t.DueAt, cfg)
+			dueStr = ui.FormatTimestamp(*t.DueAt)
 		}
 		fmt.Printf("Due:           %s\n", dueStr)
 
