@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(make check:*)",
+      "Bash(make test:*)",
+      "Bash(make test-race:*)",
+      "Bash(make vet:*)",
+      "Bash(make fmt:*)",
+      "Bash(make fmt-check:*)",
+      "Bash(make build:*)",
+      "Bash(make help:*)",
+      "Bash(nix develop --command make:*)",
+      "Bash(nix develop:*)",
+      "Bash(nix build:*)",
+      "Bash(nix flake check:*)",
+      "Bash(nix flake show:*)",
+      "Bash(nix fmt:*)",
+      "Bash(nixfmt:*)",
+      "Bash(go build:*)",
+      "Bash(go doc:*)",
+      "Bash(go list:*)",
+      "Bash(go test:*)",
+      "Bash(go vet:*)",
+      "Bash(gofmt:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git blame:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git add:*)",
+      "Bash(systemctl --user is-active tasc)",
+      "Bash(systemctl --user status tasc)",
+      "Bash(journalctl --user -u tasc:*)"
+    ],
+    "deny": [
+      "Edit(//home/alex/.tasc.db)",
+      "Write(//home/alex/.tasc.db)",
+      "Edit(//home/alex/.tasc.yaml)",
+      "Write(//home/alex/.tasc.yaml)",
+      "Edit(//home/alex/.claude/skills/tasc-task-manager/**)",
+      "Write(//home/alex/.claude/skills/tasc-task-manager/**)",
+      "Write(.github/**)",
+      "Edit(.github/**)",
+      "Write(.gitlab-ci.yml)",
+      "Edit(.gitlab-ci.yml)",
+      "Write(.circleci/**)",
+      "Edit(.circleci/**)",
+      "Write(Jenkinsfile)",
+      "Write(.travis.yml)",
+      "Write(.drone.yml)",
+      "Write(azure-pipelines.yml)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "statusMessage": "gofmt",
+            "command": "jq -r '.tool_response.filePath // .tool_input.file_path' | { read -r f; case \"$f\" in *.go) out=$(gofmt -l -w \"$f\"); [ -n \"$out\" ] && echo \"gofmt reformatted $out - re-read it before editing it again\";; esac; } 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}
