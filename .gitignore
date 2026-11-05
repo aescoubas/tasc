@@ -6,6 +6,10 @@
 # Modules
 /vendor/
 
+# Nix build symlinks (anchored: an unanchored pattern would hide source dirs too)
+/result
+/result-*
+
 # Go integration tests
 *.test
 *.out
