@@ -55,11 +55,12 @@ clean as of 2026-11-05.
 
 3. **The `tasc` on `PATH` is not your build.** It is
    `/etc/profiles/per-user/alex/bin/tasc`, built by Home Manager from homelab's
-   `pkgs/tasc/default.nix`, which pins a GitHub rev — currently `a232dd0`, equal to this
-   HEAD. `make build` produces `./tasc` and changes nothing the shell or the MCP client
-   sees. Shipping is: commit here → push → bump `rev` and `hash` in
-   `homelab/pkgs/tasc/default.nix` → `home-manager switch`. A local change is invisible
-   to the agent skill and to the `serve` unit until that pin moves.
+   `pkgs/tasc/default.nix`, which pins a GitHub `rev`. Check the distance with
+   `git rev-list --count <rev>..HEAD` before believing anything about the running
+   version — it was 4 on 2026-11-05. `make build` produces `./tasc` and changes nothing
+   the shell or the MCP client sees. Shipping is: commit here → push → bump `rev` and
+   `hash` in `homelab/pkgs/tasc/default.nix` → `home-manager switch`. A local change is
+   invisible to the agent skill and to the `serve` unit until that pin moves.
 
 4. **Migrations are append-only.** Six of them in `internal/db/migrate.go`; never edit a
    landed one, since every existing database has already run it. Migration 6 installs the
