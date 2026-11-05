@@ -25,14 +25,14 @@ var serveCmd = &cobra.Command{
 		}
 
 		st := sqlite.NewSQLiteStore(db.DB)
-		
+
 		// 2. Initialize Server
 		srv := server.NewServer(st)
 
 		// 3. Start Listener
 		addr := fmt.Sprintf(":%d", port)
 		fmt.Printf("Starting tasc server on %s...\n", addr)
-		
+
 		if err := http.ListenAndServe(addr, srv); err != nil {
 			log.Fatalf("Server failed: %v", err)
 		}
@@ -43,4 +43,3 @@ func init() {
 	serveCmd.Flags().IntVarP(&port, "port", "P", 8081, "Port to listen on")
 	rootCmd.AddCommand(serveCmd)
 }
-

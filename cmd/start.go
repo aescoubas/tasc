@@ -10,9 +10,9 @@ import (
 )
 
 var startCmd = &cobra.Command{
-	Use:   "start [id]",
-	Short: "Start tracking time for a task",
-	Args:  cobra.ExactArgs(1),
+	Use:               "start [id]",
+	Short:             "Start tracking time for a task",
+	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: pendingTaskIDCompletionFunc,
 	Run: func(cmd *cobra.Command, args []string) {
 		id, err := strconv.Atoi(args[0])

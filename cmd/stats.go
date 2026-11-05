@@ -17,17 +17,17 @@ var (
 	statsDisplay string
 
 	titleStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#FAFAFA")).
-		Background(lipgloss.Color("#7D56F4")).
-		Padding(0, 1).
-		MarginBottom(1)
+			Bold(true).
+			Foreground(lipgloss.Color("#FAFAFA")).
+			Background(lipgloss.Color("#7D56F4")).
+			Padding(0, 1).
+			MarginBottom(1)
 
 	sectionStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#04B575")).
-		MarginTop(1).
-		MarginBottom(0)
+			Bold(true).
+			Foreground(lipgloss.Color("#04B575")).
+			MarginTop(1).
+			MarginBottom(0)
 )
 
 var statsCmd = &cobra.Command{
@@ -190,9 +190,8 @@ func renderStaleTasks() string {
 		WHERE status != 'done' AND status != 'deleted' AND created_at < datetime('now', '-30 days')
 		ORDER BY created_at ASC 
 		LIMIT 5`
-	
 
-rows, err := db.DB.Query(query)
+	rows, err := db.DB.Query(query)
 	if err != nil {
 		return "Error loading data"
 	}
@@ -211,10 +210,10 @@ rows, err := db.DB.Query(query)
 		if err := rows.Scan(&id, &title, &created); err != nil {
 			continue
 		}
-		
+
 		age := time.Since(created)
 		days := int(age.Hours() / 24)
-		
+
 		titleShort := title
 		if len(titleShort) > 20 {
 			titleShort = titleShort[:17] + "..."
@@ -241,8 +240,7 @@ func renderFrictionAnalysis() string {
 		ORDER BY reschedule_count DESC 
 		LIMIT 5`
 
-
-rows, err := db.DB.Query(query)
+	rows, err := db.DB.Query(query)
 	if err != nil {
 		return "Error loading data"
 	}
@@ -261,7 +259,7 @@ rows, err := db.DB.Query(query)
 		if err := rows.Scan(&id, &title, &rCount); err != nil {
 			continue
 		}
-		
+
 		titleShort := title
 		if len(titleShort) > 20 {
 			titleShort = titleShort[:17] + "..."
@@ -285,9 +283,8 @@ func renderEstimationAccuracy() string {
 		SELECT estimate, time_spent 
 		FROM tasks 
 		WHERE status = 'done' AND estimate IS NOT NULL AND estimate != '' AND time_spent > 0`
-	
 
-rows, err := db.DB.Query(query)
+	rows, err := db.DB.Query(query)
 	if err != nil {
 		return "Error loading data"
 	}
@@ -309,9 +306,11 @@ rows, err := db.DB.Query(query)
 		if err != nil {
 			continue
 		}
-		
+
 		estSec := estDur.Seconds()
-		if estSec == 0 { continue }
+		if estSec == 0 {
+			continue
+		}
 
 		diff := float64(actualSec) - estSec
 		totalDiff += math.Abs(diff) / estSec
@@ -331,11 +330,11 @@ rows, err := db.DB.Query(query)
 
 	avgError := (totalDiff / float64(count)) * 100
 	fmt.Fprintf(&sb, "Avg Error: %.1f%%\n", avgError)
-	
+
 	tendency := "Balanced"
-	if overestimateCount > underestimateCount + (count/5) {
+	if overestimateCount > underestimateCount+(count/5) {
 		tendency = "Pessimistic"
-	} else if underestimateCount > overestimateCount + (count/5) {
+	} else if underestimateCount > overestimateCount+(count/5) {
 		tendency = "Optimistic"
 	}
 	fmt.Fprintf(&sb, "Trend:     %s\n", tendency)
@@ -346,8 +345,7 @@ func renderBurndown() string {
 	var sb strings.Builder
 	sb.WriteString(sectionStyle.Render("Burndown (Last 14 Days)") + "\n")
 
-
-rows, err := db.DB.Query("SELECT created_at, completed_at FROM tasks WHERE status != 'deleted'")
+	rows, err := db.DB.Query("SELECT created_at, completed_at FROM tasks WHERE status != 'deleted'")
 	if err != nil {
 		return "Error loading data"
 	}
@@ -387,7 +385,7 @@ rows, err := db.DB.Query("SELECT created_at, completed_at FROM tasks WHERE statu
 				continue
 			}
 			if t.completed != nil && t.completed.Before(endOfDay) {
-				continue 
+				continue
 			}
 			c++
 		}
@@ -401,18 +399,18 @@ rows, err := db.DB.Query("SELECT created_at, completed_at FROM tasks WHERE statu
 	for i := 0; i < days; i++ {
 		d := now.AddDate(0, 0, -(days - 1 - i))
 		label := d.Format("Jan 02")
-		
+
 		val := counts[i]
 		barLen := 0
 		if maxCount > 0 {
-			barLen = int((float64(val) / float64(maxCount)) * 50) 
+			barLen = int((float64(val) / float64(maxCount)) * 50)
 		}
-		
+
 		bar := strings.Repeat("█", barLen)
 		if barLen == 0 && val > 0 {
 			bar = "▏"
 		}
-		
+
 		fmt.Fprintf(&sb, "%s: %s %d\n", label, lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Render(bar), val)
 	}
 	return sb.String()

@@ -33,7 +33,7 @@ var (
 var projectCmd = &cobra.Command{
 	Use:   "project",
 	Short: "Manage projects",
-	Long:  `Create, list, edit, and delete projects.`, 
+	Long:  `Create, list, edit, and delete projects.`,
 }
 
 var projectListCmd = &cobra.Command{
@@ -77,7 +77,7 @@ var projectListCmd = &cobra.Command{
 			var desc, parent, status sql.NullString
 			var due sql.NullTime
 			var doneTasks sql.NullInt64 // Safety for SUM
-			
+
 			if err := rows.Scan(&p.name, &desc, &parent, &status, &due, &p.totalTasks, &doneTasks); err != nil {
 				continue
 			}
@@ -96,7 +96,7 @@ var projectListCmd = &cobra.Command{
 		// Build tree
 		tree := make(map[string][]proj)
 		var roots []proj
-		
+
 		for _, p := range projects {
 			if p.parent == "" {
 				roots = append(roots, p)
@@ -116,14 +116,16 @@ var projectListCmd = &cobra.Command{
 			if level > 0 {
 				prefix = "└─ "
 			}
-			
+
 			dueStr := "-"
 			if p.due != nil {
 				dueStr = p.due.Format("2006-01-02")
 			}
-			
+
 			status := p.status
-			if status == "" { status = "active" }
+			if status == "" {
+				status = "active"
+			}
 
 			pct := 0
 			if p.totalTasks > 0 {
@@ -161,7 +163,7 @@ var projectCreateCmd = &cobra.Command{
 		}
 
 		name := args[0]
-		
+
 		var dueAt *time.Time
 		if projDue != "" {
 			t, err := parse.Date(projDue, cfg.EndOfDay)
@@ -210,7 +212,7 @@ var projectEditCmd = &cobra.Command{
 		}
 
 		oldName := args[0]
-		
+
 		// 1. Fetch current project state
 		p, err := CurrentStore.GetProject(oldName)
 		if err != nil {
@@ -259,7 +261,7 @@ var projectEditCmd = &cobra.Command{
 			if cmd.Flags().Changed("status") {
 				p.Status = models.ProjectStatus(projStatus)
 			}
-			
+
 			// New Name handling
 			if cmd.Flags().Changed("name") && projNewName != "" {
 				p.Name = projNewName
@@ -272,7 +274,7 @@ var projectEditCmd = &cobra.Command{
 				ShortName   string `yaml:"short_name"`
 				Description string `yaml:"description"`
 				Parent      string `yaml:"parent,omitempty"`
-				Status      string `yaml:"status"` 
+				Status      string `yaml:"status"`
 				DueAt       string `yaml:"due_at,omitempty"`
 			}
 
@@ -317,12 +319,12 @@ var projectEditCmd = &cobra.Command{
 			if editor == "" {
 				editor = "vim"
 			}
-			
+
 			editCmd := exec.Command(editor, tmpfile.Name())
 			editCmd.Stdin = os.Stdin
 			editCmd.Stdout = os.Stdout
 			editCmd.Stderr = os.Stderr
-			
+
 			if err := editCmd.Run(); err != nil {
 				fmt.Printf("Error running editor: %v\n", err)
 				return
@@ -348,7 +350,7 @@ var projectEditCmd = &cobra.Command{
 			p.Description = newY.Description
 			p.Parent = newY.Parent
 			p.Status = models.ProjectStatus(newY.Status)
-			
+
 			if newY.DueAt != "" {
 				t, err := parse.Date(newY.DueAt, cfg.EndOfDay)
 				if err != nil {
@@ -366,15 +368,15 @@ var projectEditCmd = &cobra.Command{
 			fmt.Printf("Error updating project: %v\n", err)
 			return
 		}
-		
+
 		fmt.Printf("Project '%s' updated.\n", p.Name)
 	},
 }
 
 var projectArchiveCmd = &cobra.Command{
-	Use: "archive [name]",
+	Use:   "archive [name]",
 	Short: "Archive a project",
-	Args: cobra.ExactArgs(1),
+	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		name := args[0]
 		_, err := db.DB.Exec("UPDATE projects SET status = 'archived' WHERE name = ?", name)
@@ -399,24 +401,26 @@ var projectDeleteCmd = &cobra.Command{
 			return
 		}
 		defer tx.Rollback()
-		
+
 		// Helper to find all descendants
 		var findAllDescendants func(root string) ([]string, error)
 		findAllDescendants = func(root string) ([]string, error) {
-		
-rows, err := tx.Query("SELECT name FROM projects WHERE parent = ?", root)
+
+			rows, err := tx.Query("SELECT name FROM projects WHERE parent = ?", root)
 			if err != nil {
 				return nil, err
 			}
 			defer rows.Close()
-			
+
 			var descendants []string
 			for rows.Next() {
 				var child string
 				rows.Scan(&child)
 				descendants = append(descendants, child)
 				sub, err := findAllDescendants(child)
-				if err != nil { return nil, err } 
+				if err != nil {
+					return nil, err
+				}
 				descendants = append(descendants, sub...)
 			}
 			return descendants, nil
@@ -425,7 +429,7 @@ rows, err := tx.Query("SELECT name FROM projects WHERE parent = ?", root)
 		// Check for tasks and subprojects
 		var taskCount int
 		err = tx.QueryRow("SELECT COUNT(*) FROM tasks WHERE project = ? AND status != 'deleted'", name).Scan(&taskCount)
-		
+
 		descendants, err := findAllDescendants(name)
 		if err != nil {
 			fmt.Printf("Error checking subprojects: %v\n", err)
@@ -446,14 +450,14 @@ rows, err := tx.Query("SELECT name FROM projects WHERE parent = ?", root)
 					fmt.Printf("Error deleting associated tasks: %v\n", err)
 					return
 				}
-				
+
 				for _, d := range descendants {
 					// Delete tasks for descendant
 					_, err = tx.Exec("UPDATE tasks SET status = 'deleted' WHERE project = ?", d)
 					// Delete project
 					_, err = tx.Exec("DELETE FROM projects WHERE name = ?", d)
 				}
-				
+
 				fmt.Printf("Deleted %d associated tasks and %d subprojects.\n", taskCount, len(descendants))
 			} else if projUnlink {
 				// Unlink tasks
@@ -479,9 +483,9 @@ rows, err := tx.Query("SELECT name FROM projects WHERE parent = ?", root)
 
 func init() {
 	rootCmd.AddCommand(projectCmd)
-	
+
 	projectCmd.AddCommand(projectListCmd)
-	
+
 	projectCmd.AddCommand(projectCreateCmd)
 	projectCreateCmd.Flags().StringVarP(&projDesc, "desc", "d", "", "Project description")
 	projectCreateCmd.Flags().StringVarP(&projParent, "parent", "p", "", "Parent project")

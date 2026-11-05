@@ -25,7 +25,7 @@ func dateCompletionFunc(cmd *cobra.Command, args []string, toComplete string) ([
 
 	// Basic relative dates
 	basics := []string{"today", "tomorrow", "next week"}
-	
+
 	// Weekdays
 	weekdays := []string{
 		"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
@@ -94,12 +94,12 @@ func taskIDCompletionFunc(cmd *cobra.Command, args []string, toComplete string) 
 	if CurrentStore == nil {
 		return nil, cobra.ShellCompDirectiveError
 	}
-	
+
 	// We want all tasks that are not deleted? Or just all tasks?
 	// Usually for 'modify' or 'delete', we might want to see titles.
 	// Cobra expects "value\tdescription" for zsh/fish, or just "value" for bash.
 	// We can provide "ID\tTitle".
-	
+
 	tasks, err := CurrentStore.ListTasks(store.TaskFilter{}) // List all tasks
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError
