@@ -82,9 +82,12 @@ clean as of 2026-11-05.
    the way `tests/integration` does.
 
 6. **`skills/tasc-task-manager/` is the source of truth for the installed skill.**
-   `tasc skill install` copies it to `~/.claude/skills/tasc-task-manager`, where the two
-   are currently byte-identical. Editing the installed copy loses the change at the next
-   install; edit it here.
+   The directory is `go:embed`ed (`skills/bundle.go`), so the *binary* carries it and
+   `tasc skill install` unpacks from there, not from this checkout — a doc edit reaches
+   the installed skill only once the homelab pin moves. Mind the destination:
+   `--client` defaults to **codex** (`~/.agents/skills`), so the Claude copy needs
+   `tasc skill install --client claude --force`. Editing the installed copy loses the
+   change at the next install; edit it here.
 
 7. **In `tasc mcp`, stdout is the protocol.** `internal/mcp` runs `server.ServeStdio`.
    Diagnostics go through `log`, which is stderr by default — keep it that way, and never
