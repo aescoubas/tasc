@@ -91,11 +91,14 @@ var showCmd = &cobra.Command{
 
 		// 2. Fetch Dependencies
 		// Blocked By
+		// A done or deleted blocker no longer blocks anything, and listing it here
+		// would contradict is_blocked in every other view. The edge itself stays
+		// visible in `tasc graph` and `tasc_get_dependencies`.
 		blockedByRows, err := db.DB.Query(`
-			SELECT t.id, t.title 
-			FROM task_dependencies td 
-			JOIN tasks t ON td.blocker_id = t.id 
-			WHERE td.blocked_id = ?`, id)
+			SELECT t.id, t.title
+			FROM task_dependencies td
+			JOIN tasks t ON td.blocker_id = t.id
+			WHERE td.blocked_id = ? AND t.status NOT IN ('done', 'deleted')`, id)
 		var blockedBy []taskRef
 		if err == nil {
 			defer blockedByRows.Close()

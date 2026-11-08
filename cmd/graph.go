@@ -38,7 +38,12 @@ var graphCmd = &cobra.Command{
 		adj := make(map[int64][]models.Task)
 		tasks := make(map[int64]models.Task)
 
+		// hasIncoming decides the tree layout and counts every edge, so a satisfied
+		// blocker still owns its subtree. blockedByOpen is the narrower question of
+		// whether anything is actually holding the task up, which is what colouring
+		// should say.
 		hasIncoming := make(map[int64]bool)
+		blockedByOpen := make(map[int64]bool)
 
 		for rows.Next() {
 			var t1, t2 models.Task
@@ -62,11 +67,14 @@ var graphCmd = &cobra.Command{
 			tasks[t1.ID] = t1
 			tasks[t2.ID] = t2
 			hasIncoming[t2.ID] = true
+			if t1.Status != models.StatusDone {
+				blockedByOpen[t2.ID] = true
+			}
 		}
 
 		// Mark blocked tasks
 		for id, t := range tasks {
-			if hasIncoming[id] {
+			if blockedByOpen[id] {
 				t.IsBlocked = true
 				tasks[id] = t
 			}

@@ -379,3 +379,68 @@ func TestSQLiteStore_RemoveDependency(t *testing.T) {
 		t.Fatalf("GetDependencies returned %d dependencies after no-op removals, want 1", len(deps))
 	}
 }
+
+func TestSQLiteStore_IsBlockedIgnoresSatisfiedBlockers(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	s := NewSQLiteStore(db)
+
+	blocker, err := s.CreateTask(models.Task{Title: "Blocker"})
+	if err != nil {
+		t.Fatalf("CreateTask(blocker) failed: %v", err)
+	}
+	other, err := s.CreateTask(models.Task{Title: "Other Blocker"})
+	if err != nil {
+		t.Fatalf("CreateTask(other blocker) failed: %v", err)
+	}
+	blocked, err := s.CreateTask(models.Task{Title: "Blocked"})
+	if err != nil {
+		t.Fatalf("CreateTask(blocked) failed: %v", err)
+	}
+
+	if err := s.AddDependency(blocker, blocked); err != nil {
+		t.Fatalf("AddDependency(blocker) failed: %v", err)
+	}
+	if err := s.AddDependency(other, blocked); err != nil {
+		t.Fatalf("AddDependency(other) failed: %v", err)
+	}
+
+	isBlocked := func(id int64) bool {
+		t.Helper()
+		tasks, err := s.ListTasks(store.TaskFilter{IDs: []int64{id}})
+		if err != nil {
+			t.Fatalf("ListTasks failed: %v", err)
+		}
+		if len(tasks) != 1 {
+			t.Fatalf("ListTasks returned %d tasks for id %d, want 1", len(tasks), id)
+		}
+		return tasks[0].IsBlocked
+	}
+
+	if !isBlocked(blocked) {
+		t.Fatalf("task %d is not blocked while both blockers are open", blocked)
+	}
+
+	if err := s.MarkDone(blocker); err != nil {
+		t.Fatalf("MarkDone(blocker) failed: %v", err)
+	}
+	if !isBlocked(blocked) {
+		t.Fatalf("task %d stopped being blocked while %d is still open", blocked, other)
+	}
+
+	// The last open blocker going away is what clears it; the edges themselves stay.
+	if err := s.DeleteTask(other); err != nil {
+		t.Fatalf("DeleteTask(other) failed: %v", err)
+	}
+	if isBlocked(blocked) {
+		t.Fatalf("task %d is still blocked though every blocker is done or deleted", blocked)
+	}
+
+	deps, err := s.GetDependencies()
+	if err != nil {
+		t.Fatalf("GetDependencies failed: %v", err)
+	}
+	if len(deps) != 2 {
+		t.Fatalf("GetDependencies returned %d rows, want 2 — blocked-ness is derived, not stored", len(deps))
+	}
+}

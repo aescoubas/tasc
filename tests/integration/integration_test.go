@@ -795,3 +795,64 @@ func countDependencies(t *testing.T, dbPath string) int {
 	}
 	return count
 }
+
+func TestCompletingABlockerClearsTheDependent(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "satisfied-blocker.db")
+
+	if out, err := runTasc(t, dbPath, "add", "Satisfied Blocker"); err != nil {
+		t.Fatalf("add blocker failed: %v\nOutput: %s", err, out)
+	}
+	if out, err := runTasc(t, dbPath, "add", "Dependent Task"); err != nil {
+		t.Fatalf("add dependent failed: %v\nOutput: %s", err, out)
+	}
+	if out, err := runTasc(t, dbPath, "dep", "1", "2"); err != nil {
+		t.Fatalf("dep failed: %v\nOutput: %s", err, out)
+	}
+
+	out, err := runTasc(t, dbPath, "show", "2")
+	if err != nil {
+		t.Fatalf("show failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Blocked By") {
+		t.Fatalf("show 2 does not report the open blocker. Output:\n%s", out)
+	}
+
+	if out, err := runTasc(t, dbPath, "done", "1"); err != nil {
+		t.Fatalf("done failed: %v\nOutput: %s", err, out)
+	}
+
+	out, err = runTasc(t, dbPath, "show", "2")
+	if err != nil {
+		t.Fatalf("show after done failed: %v\nOutput: %s", err, out)
+	}
+	if strings.Contains(out, "Blocked By") {
+		t.Fatalf("show 2 still reports a blocker that is done. Output:\n%s", out)
+	}
+
+	out, err = runTasc(t, dbPath, "list", "--output", "json")
+	if err != nil {
+		t.Fatalf("list --output json failed: %v\nOutput: %s", err, out)
+	}
+
+	var rows []struct {
+		Task struct {
+			ID        int64 `json:"id"`
+			IsBlocked bool  `json:"is_blocked"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal([]byte(out), &rows); err != nil {
+		t.Fatalf("decode list json: %v\nOutput: %s", err, out)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("list returned %d open tasks, want 1", len(rows))
+	}
+	if rows[0].Task.ID != 2 || rows[0].Task.IsBlocked {
+		t.Fatalf("list reports is_blocked=%v for task %d, want false", rows[0].Task.IsBlocked, rows[0].Task.ID)
+	}
+
+	// The edge is still there — only its effect is gone.
+	if got := countDependencies(t, dbPath); got != 1 {
+		t.Fatalf("task_dependencies has %d rows, want 1", got)
+	}
+}

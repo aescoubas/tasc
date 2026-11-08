@@ -121,7 +121,11 @@ func fetchTasksInRange(start, end time.Time) ([]models.Task, error) {
 	query := `
 		SELECT 
 			id, title, project, status, due_at, estimate,
-			EXISTS(SELECT 1 FROM task_dependencies WHERE blocked_id = tasks.id) as is_blocked
+			EXISTS(
+				SELECT 1 FROM task_dependencies td
+				JOIN tasks blocker ON blocker.id = td.blocker_id
+				WHERE td.blocked_id = tasks.id AND blocker.status NOT IN ('done', 'deleted')
+			) as is_blocked
 		FROM tasks 
 		WHERE status NOT IN ('done', 'deleted', 'undefined') 
 		AND due_at >= ? AND due_at < ?

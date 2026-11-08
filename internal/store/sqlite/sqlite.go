@@ -311,7 +311,11 @@ func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) 
 	baseQuery := `
 		SELECT 
 			id, title, description, project, status, created_at, due_at, schedule_block, estimate, active_start, time_spent, reschedule_count,
-			EXISTS(SELECT 1 FROM task_dependencies WHERE blocked_id = tasks.id) as is_blocked
+			EXISTS(
+				SELECT 1 FROM task_dependencies td
+				JOIN tasks blocker ON blocker.id = td.blocker_id
+				WHERE td.blocked_id = tasks.id AND blocker.status NOT IN ('done', 'deleted')
+			) as is_blocked
 		FROM tasks 
 		WHERE 1=1
 	`
