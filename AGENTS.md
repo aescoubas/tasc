@@ -60,8 +60,15 @@ clean as of 2026-11-05.
    `git rev-list --count <rev>..HEAD` before believing anything about the running
    version — it was 4 on 2026-11-05. `make build` produces `./tasc` and changes nothing
    the shell or the MCP client sees. Shipping is: commit here → push → bump `rev` and
-   `hash` in `homelab/pkgs/tasc/default.nix` → `home-manager switch`. A local change is
-   invisible to the agent skill and to the `serve` unit until that pin moves.
+   `hash` in `homelab/pkgs/tasc/default.nix` → rebuild the **system**. Home Manager runs
+   as a NixOS module here (`nixos/hosts/thinkpad_perso/configuration.nix` imports
+   `home/alex-laptop.nix`), there is no `home-manager` CLI on `PATH`, and the deploy is
+   ```sh
+   sudo nixos-rebuild switch --flake "git+file:///home/alex/git_repos/github/aescoubas/homelab?rev=<sha>#thinkpad_perso"
+   ```
+   Name the committed `rev` rather than using `path:`, which copies the working tree and
+   would deploy whatever else is uncommitted in homelab. A local change is invisible to
+   the agent skill and to the `serve` unit until that pin moves.
 
 4. **Migrations are append-only.** Six of them in `internal/db/migrate.go`; never edit a
    landed one, since every existing database has already run it. Migration 6 installs the
