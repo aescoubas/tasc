@@ -194,6 +194,93 @@ func TestAddCommandCreatesDependencies(t *testing.T) {
 	}
 }
 
+func TestDepCommandAddsThroughTheStore(t *testing.T) {
+	setupDependencyTestStore(t)
+
+	blocker, err := CurrentStore.CreateTask(models.Task{Title: "Blocker"})
+	if err != nil {
+		t.Fatalf("create blocker: %v", err)
+	}
+	blocked, err := CurrentStore.CreateTask(models.Task{Title: "Blocked"})
+	if err != nil {
+		t.Fatalf("create blocked: %v", err)
+	}
+
+	depCmd.Run(depCmd, []string{
+		strconv.FormatInt(blocker, 10),
+		strconv.FormatInt(blocked, 10),
+	})
+
+	deps, err := CurrentStore.GetDependencies()
+	if err != nil {
+		t.Fatalf("GetDependencies failed: %v", err)
+	}
+	if len(deps) != 1 {
+		t.Fatalf("GetDependencies returned %d rows, want 1", len(deps))
+	}
+	if deps[0].BlockerID != blocker || deps[0].BlockedID != blocked {
+		t.Fatalf("stored dependency is %+v, want %d -> %d", deps[0], blocker, blocked)
+	}
+
+	// Repeating it is reported, not duplicated.
+	depCmd.Run(depCmd, []string{
+		strconv.FormatInt(blocker, 10),
+		strconv.FormatInt(blocked, 10),
+	})
+	deps, err = CurrentStore.GetDependencies()
+	if err != nil {
+		t.Fatalf("GetDependencies failed: %v", err)
+	}
+	if len(deps) != 1 {
+		t.Fatalf("GetDependencies returned %d rows after a repeat, want 1", len(deps))
+	}
+}
+
+func TestDepCommandRejectsUnknownAndCyclicEdges(t *testing.T) {
+	setupDependencyTestStore(t)
+
+	blocker, err := CurrentStore.CreateTask(models.Task{Title: "Blocker"})
+	if err != nil {
+		t.Fatalf("create blocker: %v", err)
+	}
+	blocked, err := CurrentStore.CreateTask(models.Task{Title: "Blocked"})
+	if err != nil {
+		t.Fatalf("create blocked: %v", err)
+	}
+
+	// foreign_keys is off, so this is the only thing standing between a typo and
+	// an edge pointing at a task that does not exist.
+	depCmd.Run(depCmd, []string{strconv.FormatInt(blocker, 10), "999999"})
+
+	deps, err := CurrentStore.GetDependencies()
+	if err != nil {
+		t.Fatalf("GetDependencies failed: %v", err)
+	}
+	if len(deps) != 0 {
+		t.Fatalf("GetDependencies returned %d rows for an unknown task, want 0", len(deps))
+	}
+
+	if err := CurrentStore.AddDependency(blocker, blocked); err != nil {
+		t.Fatalf("add dependency: %v", err)
+	}
+
+	depCmd.Run(depCmd, []string{
+		strconv.FormatInt(blocked, 10),
+		strconv.FormatInt(blocker, 10),
+	})
+
+	deps, err = CurrentStore.GetDependencies()
+	if err != nil {
+		t.Fatalf("GetDependencies failed: %v", err)
+	}
+	if len(deps) != 1 {
+		t.Fatalf("GetDependencies returned %d rows, want 1 — the reverse edge should be refused", len(deps))
+	}
+	if deps[0].BlockerID != blocker || deps[0].BlockedID != blocked {
+		t.Fatalf("stored dependency is %+v, want %d -> %d", deps[0], blocker, blocked)
+	}
+}
+
 func TestUndepCommandRemovesOnlyTheNamedEdge(t *testing.T) {
 	setupDependencyTestStore(t)
 

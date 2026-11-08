@@ -856,3 +856,43 @@ func TestCompletingABlockerClearsTheDependent(t *testing.T) {
 		t.Fatalf("task_dependencies has %d rows, want 1", got)
 	}
 }
+
+func TestDepRefusesEdgesThatCannotHold(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "dep-guards.db")
+
+	if out, err := runTasc(t, dbPath, "add", "Dep Guard Blocker"); err != nil {
+		t.Fatalf("add blocker failed: %v\nOutput: %s", err, out)
+	}
+	if out, err := runTasc(t, dbPath, "add", "Dep Guard Blocked"); err != nil {
+		t.Fatalf("add blocked failed: %v\nOutput: %s", err, out)
+	}
+
+	// foreign_keys is off on the connection, so without the existence check this
+	// would store an edge pointing at a task that does not exist.
+	out, err := runTasc(t, dbPath, "dep", "1", "999999")
+	if err != nil {
+		t.Fatalf("dep with an unknown ID failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "task 999999 not found") {
+		t.Fatalf("dep did not report the unknown task: %s", out)
+	}
+	if got := countDependencies(t, dbPath); got != 0 {
+		t.Fatalf("task_dependencies has %d rows after a bad dep, want 0", got)
+	}
+
+	if out, err := runTasc(t, dbPath, "dep", "1", "2"); err != nil {
+		t.Fatalf("dep failed: %v\nOutput: %s", err, out)
+	}
+
+	out, err = runTasc(t, dbPath, "dep", "2", "1")
+	if err != nil {
+		t.Fatalf("dep (reverse) failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "deadlock") {
+		t.Fatalf("dep did not refuse the reverse edge: %s", out)
+	}
+	if got := countDependencies(t, dbPath); got != 1 {
+		t.Fatalf("task_dependencies has %d rows, want 1", got)
+	}
+}
