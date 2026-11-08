@@ -41,8 +41,9 @@ clean as of 2026-11-05.
    ```sh
    TASC_DB_PATH=$(mktemp -d)/tasc.db HOME=$(mktemp -d) ./tasc <args>
    ```
-   That file is ~7 MB, written daily, and **`~/.config/tasc/backups/` is empty — `tasc
-   backup` has never been run.** There is no second copy to fall back on.
+   That file is ~7 MB and written daily. A `tasc-backup.timer` user unit now copies it
+   to `~/.config/tasc/backups/` nightly, so there is usually a copy from last midnight —
+   check its mtime rather than assuming, and never assume it covers today's edits.
 
 2. **`-tags fts5` or the search tests are theatre.** `rebuildTaskSearchIndex` probes for
    the module (`sqliteHasFTS5`), and when it is missing it *drops* `tasks_fts`, logs
