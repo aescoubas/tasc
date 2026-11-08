@@ -36,21 +36,15 @@
     ],
     "deny": [
       "Edit(//home/alex/.tasc.db)",
-      "Write(//home/alex/.tasc.db)",
       "Edit(//home/alex/.tasc.yaml)",
-      "Write(//home/alex/.tasc.yaml)",
       "Edit(//home/alex/.claude/skills/tasc-task-manager/**)",
-      "Write(//home/alex/.claude/skills/tasc-task-manager/**)",
-      "Write(.github/**)",
       "Edit(.github/**)",
-      "Write(.gitlab-ci.yml)",
       "Edit(.gitlab-ci.yml)",
-      "Write(.circleci/**)",
       "Edit(.circleci/**)",
-      "Write(Jenkinsfile)",
-      "Write(.travis.yml)",
-      "Write(.drone.yml)",
-      "Write(azure-pipelines.yml)"
+      "Edit(Jenkinsfile)",
+      "Edit(.travis.yml)",
+      "Edit(.drone.yml)",
+      "Edit(azure-pipelines.yml)"
     ]
   },
   "hooks": {
