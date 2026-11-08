@@ -65,6 +65,7 @@ func (s *Server) routes() {
 
 	s.mux.HandleFunc("GET /dependencies", s.handleListDependencies)
 	s.mux.HandleFunc("POST /dependencies", s.handleAddDependency)
+	s.mux.HandleFunc("DELETE /dependencies/{blocker_id}/{blocked_id}", s.handleRemoveDependency)
 
 	s.mux.HandleFunc("GET /search", s.handleSearch)
 }
@@ -287,6 +288,25 @@ func (s *Server) handleAddDependency(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *Server) handleRemoveDependency(w http.ResponseWriter, r *http.Request) {
+	blockerID, err := strconv.ParseInt(r.PathValue("blocker_id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid blocker ID", http.StatusBadRequest)
+		return
+	}
+	blockedID, err := strconv.ParseInt(r.PathValue("blocked_id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid blocked ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.store.RemoveDependency(blockerID, blockedID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {

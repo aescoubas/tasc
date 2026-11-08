@@ -194,6 +194,113 @@ func TestAddCommandCreatesDependencies(t *testing.T) {
 	}
 }
 
+func TestUndepCommandRemovesOnlyTheNamedEdge(t *testing.T) {
+	setupDependencyTestStore(t)
+
+	blockerA, err := CurrentStore.CreateTask(models.Task{Title: "Blocker A"})
+	if err != nil {
+		t.Fatalf("create blocker A: %v", err)
+	}
+	blockerB, err := CurrentStore.CreateTask(models.Task{Title: "Blocker B"})
+	if err != nil {
+		t.Fatalf("create blocker B: %v", err)
+	}
+	target, err := CurrentStore.CreateTask(models.Task{Title: "Target"})
+	if err != nil {
+		t.Fatalf("create target: %v", err)
+	}
+
+	if err := CurrentStore.AddDependency(blockerA, target); err != nil {
+		t.Fatalf("add dependency A: %v", err)
+	}
+	if err := CurrentStore.AddDependency(blockerB, target); err != nil {
+		t.Fatalf("add dependency B: %v", err)
+	}
+
+	undepCmd.Run(undepCmd, []string{
+		strconv.FormatInt(blockerA, 10),
+		strconv.FormatInt(target, 10),
+	})
+
+	deps, err := CurrentStore.GetDependencies()
+	if err != nil {
+		t.Fatalf("GetDependencies failed: %v", err)
+	}
+	if len(deps) != 1 {
+		t.Fatalf("GetDependencies returned %d rows, want 1", len(deps))
+	}
+	if deps[0].BlockerID != blockerB || deps[0].BlockedID != target {
+		t.Fatalf("surviving dependency is %+v, want %d -> %d", deps[0], blockerB, target)
+	}
+}
+
+func TestUndepCommandLeavesAnAbsentEdgeAlone(t *testing.T) {
+	setupDependencyTestStore(t)
+
+	blocker, err := CurrentStore.CreateTask(models.Task{Title: "Blocker"})
+	if err != nil {
+		t.Fatalf("create blocker: %v", err)
+	}
+	blocked, err := CurrentStore.CreateTask(models.Task{Title: "Blocked"})
+	if err != nil {
+		t.Fatalf("create blocked: %v", err)
+	}
+
+	if err := CurrentStore.AddDependency(blocker, blocked); err != nil {
+		t.Fatalf("add dependency: %v", err)
+	}
+
+	// Arguments the wrong way round: the stored edge must survive.
+	undepCmd.Run(undepCmd, []string{
+		strconv.FormatInt(blocked, 10),
+		strconv.FormatInt(blocker, 10),
+	})
+
+	deps, err := CurrentStore.GetDependencies()
+	if err != nil {
+		t.Fatalf("GetDependencies failed: %v", err)
+	}
+	if len(deps) != 1 {
+		t.Fatalf("GetDependencies returned %d rows, want 1", len(deps))
+	}
+	if deps[0].BlockerID != blocker || deps[0].BlockedID != blocked {
+		t.Fatalf("dependency changed to %+v, want %d -> %d", deps[0], blocker, blocked)
+	}
+}
+
+func TestDependencyExistsIsDirectional(t *testing.T) {
+	setupDependencyTestStore(t)
+
+	blocker, err := CurrentStore.CreateTask(models.Task{Title: "Blocker"})
+	if err != nil {
+		t.Fatalf("create blocker: %v", err)
+	}
+	blocked, err := CurrentStore.CreateTask(models.Task{Title: "Blocked"})
+	if err != nil {
+		t.Fatalf("create blocked: %v", err)
+	}
+
+	if err := CurrentStore.AddDependency(blocker, blocked); err != nil {
+		t.Fatalf("add dependency: %v", err)
+	}
+
+	exists, err := dependencyExists(blocker, blocked)
+	if err != nil {
+		t.Fatalf("dependencyExists returned error: %v", err)
+	}
+	if !exists {
+		t.Fatalf("dependencyExists(%d, %d) = false, want true", blocker, blocked)
+	}
+
+	exists, err = dependencyExists(blocked, blocker)
+	if err != nil {
+		t.Fatalf("dependencyExists returned error: %v", err)
+	}
+	if exists {
+		t.Fatalf("dependencyExists(%d, %d) = true, want false", blocked, blocker)
+	}
+}
+
 func TestModifyCommandAllowsDependencyOnlyChanges(t *testing.T) {
 	setupDependencyTestStore(t)
 	resetDependencyCommandState()

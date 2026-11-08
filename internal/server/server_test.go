@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -103,5 +104,52 @@ func TestServer_GetActiveTask(t *testing.T) {
 	json.NewDecoder(rr.Body).Decode(&active)
 	if active.ID != id {
 		t.Errorf("Active task ID mismatch")
+	}
+}
+
+func TestServer_AddAndRemoveDependency(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	st := sqlite.NewSQLiteStore(db)
+	srv := NewServer(st)
+
+	blocker, _ := st.CreateTask(models.Task{Title: "Blocker"})
+	blocked, _ := st.CreateTask(models.Task{Title: "Blocked"})
+
+	body, _ := json.Marshal(map[string]int64{"blocker_id": blocker, "blocked_id": blocked})
+	req, _ := http.NewRequest("POST", "/dependencies", bytes.NewBuffer(body))
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("POST /dependencies returned status %v", rr.Code)
+	}
+
+	req, _ = http.NewRequest("DELETE", fmt.Sprintf("/dependencies/%d/%d", blocker, blocked), nil)
+	rr = httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("DELETE /dependencies returned status %v", rr.Code)
+	}
+
+	req, _ = http.NewRequest("GET", "/dependencies", nil)
+	rr = httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /dependencies returned status %v", rr.Code)
+	}
+
+	var deps []models.TaskDependency
+	if err := json.NewDecoder(rr.Body).Decode(&deps); err != nil {
+		t.Fatalf("decode dependencies: %v", err)
+	}
+	if len(deps) != 0 {
+		t.Fatalf("GET /dependencies returned %d rows after delete, want 0", len(deps))
+	}
+
+	req, _ = http.NewRequest("DELETE", "/dependencies/not-an-id/3", nil)
+	rr = httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("DELETE /dependencies with a bad ID returned status %v, want 400", rr.Code)
 	}
 }

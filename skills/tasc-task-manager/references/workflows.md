@@ -30,5 +30,11 @@
 
 1. Inspect existing relationships with `tasc_get_dependencies`.
 2. Fetch relevant tasks with `tasc_get_task` when titles are ambiguous.
-3. Add a dependency with `tasc_add_dependency`.
+3. Add a dependency with `tasc_add_dependency`, or drop one with
+   `tasc_remove_dependency`.
 4. Restate the blocker and blocked task IDs clearly.
+
+A blocker due after the task it blocks cannot be cleared on time, so check the two
+due dates before adding an edge — and when the one that is already stored is wrong,
+remove it rather than moving the dates to hide the contradiction. Removal is
+undoable with `tasc undo`.

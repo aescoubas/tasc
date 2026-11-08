@@ -93,7 +93,7 @@ clean as of 2026-11-05.
 | `internal/priority/` | the urgency rules and their weights | calibrated against the owner's real task set; a weight change reorders every list — propose it |
 | `internal/recurrence/`, `parse/` | natural-language rules and dates | the richest unit tests in the repo; extend them rather than adding a new parser |
 | `internal/ui/` | Bubble Tea model, styles, tables | no tests — verify by running the TUI against a temp DB |
-| `internal/mcp/server.go` | all 18 MCP tools, 766 lines | no tests, and it is what the agent skill drives |
+| `internal/mcp/server.go` | all 19 MCP tools, 816 lines | no tests, and it is what the agent skill drives |
 | `internal/server/` | the REST API behind `tasc serve` | `TASC_REMOTE` makes the CLI a client of it |
 | `tests/integration/` | builds the real binary and drives it | already isolates `TASC_DB_PATH` and `HOME`; copy that pattern |
 | `web/` | Vue 3 dashboard, built by `nix/web.nix` | excluded from the Go package `src` |

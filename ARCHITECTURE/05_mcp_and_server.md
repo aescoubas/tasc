@@ -15,13 +15,13 @@ Tasc can run as a standalone local CLI or as a distributed system.
 - **Transport**: stdio, via `server.ServeStdio`. **Stdout is the protocol** — diagnostics
   go through `log` (stderr by default) and never `fmt.Print`.
 - **Resource**: `tasc://tasks`, giving the model the current state in one read.
-- **Tools**: 18, covering the `Store` interface.
+- **Tools**: 19, covering the `Store` interface.
 
 | Area | Tools |
 |---|---|
 | Tasks | `tasc_add_task`, `tasc_get_task`, `tasc_update_task`, `tasc_delete_task`, `tasc_list_tasks`, `tasc_search_tasks` |
 | Task actions | `tasc_complete_task`, `tasc_start_task`, `tasc_stop_task`, `tasc_get_active_task`, `tasc_batch_update_tasks` |
-| Dependencies | `tasc_add_dependency`, `tasc_get_dependencies` |
+| Dependencies | `tasc_add_dependency`, `tasc_remove_dependency`, `tasc_get_dependencies` |
 | Projects | `tasc_add_project`, `tasc_get_project`, `tasc_update_project`, `tasc_delete_project`, `tasc_list_projects` |
 
 - **Workflow**: the model reads state, then acts. A bulk request ("reschedule

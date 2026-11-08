@@ -248,6 +248,24 @@ func (c *Client) AddDependency(blockerID, blockedID int64) error {
 	return nil
 }
 
+func (c *Client) RemoveDependency(blockerID, blockedID int64) error {
+	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/dependencies/%d/%d", c.baseURL, blockerID, blockedID), nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("server error: %s", resp.Status)
+	}
+	return nil
+}
+
 func (c *Client) GetDependencies() ([]models.TaskDependency, error) {
 	resp, err := c.http.Get(c.baseURL + "/dependencies")
 	if err != nil {

@@ -32,6 +32,7 @@ type Store interface {
 
 	// Dependencies
 	AddDependency(blockerID, blockedID int64) error
+	RemoveDependency(blockerID, blockedID int64) error
 	GetDependencies() ([]models.TaskDependency, error)
 
 	// Projects

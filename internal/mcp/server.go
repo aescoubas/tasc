@@ -176,6 +176,13 @@ func (ms *MCPServer) registerTools() {
 		mcp.WithDescription("Get a single project's details"),
 		mcp.WithString("name", mcp.Required(), mcp.Description("The project name")),
 	), ms.handleGetProject)
+
+	// 19. Remove Dependency
+	ms.server.AddTool(mcp.NewTool("tasc_remove_dependency",
+		mcp.WithDescription("Remove a dependency between two tasks (Blocker no longer blocks Blocked)"),
+		mcp.WithNumber("blocker_id", mcp.Required(), mcp.Description("The ID of the blocking task")),
+		mcp.WithNumber("blocked_id", mcp.Required(), mcp.Description("The ID of the blocked task")),
+	), ms.handleRemoveDependency)
 }
 
 func (ms *MCPServer) registerResources() {
@@ -568,6 +575,49 @@ func (ms *MCPServer) handleAddDependency(ctx context.Context, request mcp.CallTo
 	}
 
 	return mcp.NewToolResultText(fmt.Sprintf("Task %d now blocks task %d.", blockerID, blockedID)), nil
+}
+
+func (ms *MCPServer) handleRemoveDependency(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := request.GetArguments()
+	if _, ok := args["blocker_id"]; !ok {
+		return mcp.NewToolResultError("Both blocker_id and blocked_id are required"), nil
+	}
+	if _, ok := args["blocked_id"]; !ok {
+		return mcp.NewToolResultError("Both blocker_id and blocked_id are required"), nil
+	}
+
+	blockerID := int64(request.GetInt("blocker_id", 0))
+	blockedID := int64(request.GetInt("blocked_id", 0))
+
+	deps, err := ms.store.GetDependencies()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Error listing dependencies: %v", err)), nil
+	}
+
+	exists := false
+	reversed := false
+	for _, dep := range deps {
+		if dep.BlockerID == blockerID && dep.BlockedID == blockedID {
+			exists = true
+		}
+		if dep.BlockerID == blockedID && dep.BlockedID == blockerID {
+			reversed = true
+		}
+	}
+
+	if !exists {
+		msg := fmt.Sprintf("No dependency from task %d to task %d.", blockerID, blockedID)
+		if reversed {
+			msg += fmt.Sprintf(" Task %d blocks task %d — the arguments may be the wrong way round.", blockedID, blockerID)
+		}
+		return mcp.NewToolResultText(msg), nil
+	}
+
+	if err := ms.store.RemoveDependency(blockerID, blockedID); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Error removing dependency: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("Task %d no longer blocks task %d.", blockerID, blockedID)), nil
 }
 
 func (ms *MCPServer) handleAddProject(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

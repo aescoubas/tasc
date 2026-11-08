@@ -31,6 +31,7 @@ func (m *mockStore) StopTask(id int64) error                                    
 func (m *mockStore) BatchUpdateTasks(ids []int64, updates map[string]interface{}) error { return nil }
 func (m *mockStore) GetActiveTask() (*models.Task, error)                               { return nil, nil }
 func (m *mockStore) AddDependency(blockerID, blockedID int64) error                     { return nil }
+func (m *mockStore) RemoveDependency(blockerID, blockedID int64) error                  { return nil }
 func (m *mockStore) GetDependencies() ([]models.TaskDependency, error)                  { return nil, nil }
 func (m *mockStore) ListProjects() ([]models.Project, error) {
 	return []models.Project{

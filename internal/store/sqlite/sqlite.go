@@ -731,6 +731,15 @@ func (s *SQLiteStore) AddDependency(blockerID, blockedID int64) error {
 	return err
 }
 
+// RemoveDependency drops one blocker -> blocked edge. The primary key makes it
+// exact, and a missing edge is not an error: callers that need to report whether
+// anything was there check GetDependencies first.
+func (s *SQLiteStore) RemoveDependency(blockerID, blockedID int64) error {
+	query := `DELETE FROM task_dependencies WHERE blocker_id = ? AND blocked_id = ?`
+	_, err := s.db.Exec(query, blockerID, blockedID)
+	return err
+}
+
 func (s *SQLiteStore) GetDependencies() ([]models.TaskDependency, error) {
 	rows, err := s.db.Query("SELECT blocker_id, blocked_id FROM task_dependencies")
 	if err != nil {

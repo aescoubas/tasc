@@ -50,5 +50,9 @@ Use these MCP endpoints when working with Tasc.
 
 - `tasc_add_dependency`
   - Create a blocker -> blocked relationship.
+- `tasc_remove_dependency`
+  - Drop one blocker -> blocked relationship. Directional: the arguments must name
+    the edge the same way round it was stored, and a non-existent edge is reported
+    rather than silently accepted.
 - `tasc_get_dependencies`
   - Inspect dependency structure before changing blockers or rescheduling blocked work.

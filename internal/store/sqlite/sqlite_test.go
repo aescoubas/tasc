@@ -322,3 +322,60 @@ func TestSQLiteStore_SearchTasks_FallbackWithoutFTS5(t *testing.T) {
 		t.Fatalf("Expected at least one result matching 'milk', got %+v", results)
 	}
 }
+
+func TestSQLiteStore_RemoveDependency(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	s := NewSQLiteStore(db)
+
+	blockerA, err := s.CreateTask(models.Task{Title: "Blocker A"})
+	if err != nil {
+		t.Fatalf("CreateTask(blocker A) failed: %v", err)
+	}
+	blockerB, err := s.CreateTask(models.Task{Title: "Blocker B"})
+	if err != nil {
+		t.Fatalf("CreateTask(blocker B) failed: %v", err)
+	}
+	target, err := s.CreateTask(models.Task{Title: "Target"})
+	if err != nil {
+		t.Fatalf("CreateTask(target) failed: %v", err)
+	}
+
+	if err := s.AddDependency(blockerA, target); err != nil {
+		t.Fatalf("AddDependency(A->target) failed: %v", err)
+	}
+	if err := s.AddDependency(blockerB, target); err != nil {
+		t.Fatalf("AddDependency(B->target) failed: %v", err)
+	}
+
+	if err := s.RemoveDependency(blockerA, target); err != nil {
+		t.Fatalf("RemoveDependency failed: %v", err)
+	}
+
+	deps, err := s.GetDependencies()
+	if err != nil {
+		t.Fatalf("GetDependencies failed: %v", err)
+	}
+	if len(deps) != 1 {
+		t.Fatalf("GetDependencies returned %d dependencies, want 1", len(deps))
+	}
+	if deps[0].BlockerID != blockerB || deps[0].BlockedID != target {
+		t.Fatalf("surviving dependency is %+v, want %d -> %d", deps[0], blockerB, target)
+	}
+
+	// Removal is one directed edge, and repeating it is not an error.
+	if err := s.RemoveDependency(blockerA, target); err != nil {
+		t.Fatalf("RemoveDependency(repeat) failed: %v", err)
+	}
+	if err := s.RemoveDependency(target, blockerB); err != nil {
+		t.Fatalf("RemoveDependency(reversed) failed: %v", err)
+	}
+
+	deps, err = s.GetDependencies()
+	if err != nil {
+		t.Fatalf("GetDependencies failed: %v", err)
+	}
+	if len(deps) != 1 {
+		t.Fatalf("GetDependencies returned %d dependencies after no-op removals, want 1", len(deps))
+	}
+}

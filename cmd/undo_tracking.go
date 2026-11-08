@@ -17,6 +17,7 @@ var (
 		"tasc start":           true,
 		"tasc stop":            true,
 		"tasc dep":             true,
+		"tasc undep":           true,
 		"tasc reschedule":      true,
 		"tasc vague":           true,
 		"tasc renumber":        true,

@@ -162,6 +162,24 @@ func addDependencyLinks(targetIDs []int64, selection dependencySelection) (int, 
 	return added, nil
 }
 
+// dependencyExists reports whether the exact blocker -> blocked edge is stored.
+// The store's delete is idempotent, so this is what lets a caller tell "removed"
+// from "there was nothing there".
+func dependencyExists(blockerID, blockedID int64) (bool, error) {
+	deps, err := CurrentStore.GetDependencies()
+	if err != nil {
+		return false, fmt.Errorf("get dependencies: %w", err)
+	}
+
+	for _, dep := range deps {
+		if dep.BlockerID == blockerID && dep.BlockedID == blockedID {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func uniqueInt64s(values []int64) []int64 {
 	var out []int64
 	seen := make(map[int64]struct{}, len(values))

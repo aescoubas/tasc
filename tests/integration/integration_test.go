@@ -710,3 +710,88 @@ func TestUndoDoneRestoresTask(t *testing.T) {
 		t.Fatalf("Task still appears as done after undo. Output:\n%s", out)
 	}
 }
+
+func TestUndepRemovesDependencyAndIsUndoable(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "undep.db")
+
+	if out, err := runTasc(t, dbPath, "add", "Undep Blocker"); err != nil {
+		t.Fatalf("add blocker failed: %v\nOutput: %s", err, out)
+	}
+	if out, err := runTasc(t, dbPath, "add", "Undep Blocked"); err != nil {
+		t.Fatalf("add blocked failed: %v\nOutput: %s", err, out)
+	}
+
+	if out, err := runTasc(t, dbPath, "dep", "1", "2"); err != nil {
+		t.Fatalf("dep failed: %v\nOutput: %s", err, out)
+	}
+
+	out, err := runTasc(t, dbPath, "show", "2")
+	if err != nil {
+		t.Fatalf("show failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Blocked By") {
+		t.Fatalf("show 2 does not report the dependency. Output:\n%s", out)
+	}
+
+	// Naming the pair the wrong way round must leave the edge in place.
+	out, err = runTasc(t, dbPath, "undep", "2", "1")
+	if err != nil {
+		t.Fatalf("undep (reversed) failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "No dependency from task 2 to task 1") {
+		t.Fatalf("undep (reversed) output unexpected: %s", out)
+	}
+	if countDependencies(t, dbPath) != 1 {
+		t.Fatalf("undep (reversed) changed the dependency table")
+	}
+
+	out, err = runTasc(t, dbPath, "undep", "1", "2")
+	if err != nil {
+		t.Fatalf("undep failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "no longer blocks") {
+		t.Fatalf("undep output unexpected: %s", out)
+	}
+
+	if got := countDependencies(t, dbPath); got != 0 {
+		t.Fatalf("task_dependencies has %d rows after undep, want 0", got)
+	}
+
+	out, err = runTasc(t, dbPath, "show", "2")
+	if err != nil {
+		t.Fatalf("show after undep failed: %v\nOutput: %s", err, out)
+	}
+	if strings.Contains(out, "Blocked By") {
+		t.Fatalf("show 2 still reports a blocker after undep. Output:\n%s", out)
+	}
+
+	// Migration 6 installs an AFTER DELETE trigger on task_dependencies, so the
+	// removal is undoable like any other tracked command.
+	out, err = runTasc(t, dbPath, "undo", "--yes")
+	if err != nil {
+		t.Fatalf("undo --yes failed: %v\nOutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Undid action") {
+		t.Fatalf("Unexpected undo output: %s", out)
+	}
+	if got := countDependencies(t, dbPath); got != 1 {
+		t.Fatalf("task_dependencies has %d rows after undo, want 1", got)
+	}
+}
+
+func countDependencies(t *testing.T, dbPath string) int {
+	t.Helper()
+
+	conn, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer conn.Close()
+
+	var count int
+	if err := conn.QueryRow("SELECT COUNT(*) FROM task_dependencies").Scan(&count); err != nil {
+		t.Fatalf("count dependencies: %v", err)
+	}
+	return count
+}
