@@ -1,7 +1,9 @@
 package server
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -152,8 +154,14 @@ func (s *Server) handleGetTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t, err := s.store.GetTask(id)
+	if errors.Is(err, sql.ErrNoRows) {
+		// A task that is not there is not a server fault, and the client turns
+		// this back into sql.ErrNoRows so callers can tell "missing" from
+		// "something broke" the same way they do against sqlite.
+		http.Error(w, "Task not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
-		// Differentiate 404?
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

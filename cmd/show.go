@@ -3,18 +3,26 @@ package cmd
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
 	"github.com/aescoubas/tasc/internal/config"
-	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/ui"
 	"github.com/spf13/cobra"
 )
 
 var showOutput string
+
+// taskRef is the shape of a neighbouring task in both the table and the JSON
+// output, so its tags are part of the `--output json` contract.
+type taskRef struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+}
 
 var showCmd = &cobra.Command{
 	Use:   "show [id]",
@@ -36,30 +44,8 @@ var showCmd = &cobra.Command{
 		}
 
 		// 1. Fetch Task
-		var t models.Task
-		var project sql.NullString
-		var description sql.NullString
-		var dueAt sql.NullTime
-		var estimate sql.NullString
-		var recurrence sql.NullString
-		var activeStart sql.NullTime
-		var timeSpent sql.NullInt64
-		var completedAt sql.NullTime
-
-		query := `SELECT 
-			id, title, description, project, status, created_at, 
-			completed_at, due_at, estimate, 
-			recurrence, active_start, time_spent, reschedule_count 
-		FROM tasks WHERE id = ?`
-
-		row := db.DB.QueryRow(query, id)
-		err = row.Scan(
-			&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt,
-			&completedAt, &dueAt, &estimate,
-			&recurrence, &activeStart, &timeSpent, &t.RescheduleCount,
-		)
-
-		if err == sql.ErrNoRows {
+		t, err := CurrentStore.GetTask(int64(id))
+		if errors.Is(err, sql.ErrNoRows) {
 			fmt.Printf("Task %d not found.\n", id)
 			return
 		} else if err != nil {
@@ -67,66 +53,11 @@ var showCmd = &cobra.Command{
 			return
 		}
 
-		t.Description = description.String
-		t.Project = project.String
-		t.Estimate = estimate.String
-		t.Recurrence = recurrence.String
-		if dueAt.Valid {
-			t.DueAt = &dueAt.Time
-		}
-		if activeStart.Valid {
-			t.ActiveStart = &activeStart.Time
-		}
-		if timeSpent.Valid {
-			t.TimeSpent = timeSpent.Int64
-		}
-		if completedAt.Valid {
-			t.CompletedAt = &completedAt.Time
-		}
-
-		type taskRef struct {
-			ID    int64  `json:"id"`
-			Title string `json:"title"`
-		}
-
 		// 2. Fetch Dependencies
-		// Blocked By
-		// A done or deleted blocker no longer blocks anything, and listing it here
-		// would contradict is_blocked in every other view. The edge itself stays
-		// visible in `tasc graph` and `tasc_get_dependencies`.
-		blockedByRows, err := db.DB.Query(`
-			SELECT t.id, t.title
-			FROM task_dependencies td
-			JOIN tasks t ON td.blocker_id = t.id
-			WHERE td.blocked_id = ? AND t.status NOT IN ('done', 'deleted')`, id)
-		var blockedBy []taskRef
-		if err == nil {
-			defer blockedByRows.Close()
-			for blockedByRows.Next() {
-				var bID int64
-				var bTitle string
-				if err := blockedByRows.Scan(&bID, &bTitle); err == nil {
-					blockedBy = append(blockedBy, taskRef{ID: bID, Title: bTitle})
-				}
-			}
-		}
-
-		// Blocking
-		blockingRows, err := db.DB.Query(`
-			SELECT t.id, t.title 
-			FROM task_dependencies td 
-			JOIN tasks t ON td.blocked_id = t.id 
-			WHERE td.blocker_id = ?`, id)
-		var blocking []taskRef
-		if err == nil {
-			defer blockingRows.Close()
-			for blockingRows.Next() {
-				var bID int64
-				var bTitle string
-				if err := blockingRows.Scan(&bID, &bTitle); err == nil {
-					blocking = append(blocking, taskRef{ID: bID, Title: bTitle})
-				}
-			}
+		blockedBy, blocking, err := showNeighbours(int64(id))
+		if err != nil {
+			fmt.Printf("Error fetching dependencies: %v\n", err)
+			return
 		}
 
 		totalDuration := t.TimeSpent
@@ -219,6 +150,70 @@ var showCmd = &cobra.Command{
 		}
 		fmt.Println()
 	},
+}
+
+// showNeighbours resolves one task's dependency edges into the two lists show
+// prints: the tasks still blocking it, and the tasks it blocks.
+//
+// This used to be two JOINs against db.DB, which is nil whenever TASC_REMOTE is
+// set — root.go only calls InitDB for the sqlite backend, so `tasc show` panicked
+// against a server. Titles now come from GetTask, which applies no status filter
+// on either backend, and the edges from one GetDependencies call.
+func showNeighbours(id int64) (blockedBy, blocking []taskRef, err error) {
+	deps, err := CurrentStore.GetDependencies()
+	if err != nil {
+		return nil, nil, fmt.Errorf("get dependencies: %w", err)
+	}
+
+	// One task can sit on both sides of several edges, and the two loops below
+	// ask about overlapping IDs, so resolve each neighbour once. A neighbour that
+	// does not resolve is dropped, which is what the old JOIN did with an edge
+	// pointing at a row that is not there — foreign_keys is off on this
+	// connection, so a mistyped ID can leave one behind.
+	resolved := make(map[int64]models.Task)
+	absent := make(map[int64]bool)
+	resolve := func(nid int64) (models.Task, bool) {
+		if absent[nid] {
+			return models.Task{}, false
+		}
+		if t, ok := resolved[nid]; ok {
+			return t, true
+		}
+		t, err := CurrentStore.GetTask(nid)
+		if err != nil {
+			absent[nid] = true
+			return models.Task{}, false
+		}
+		resolved[nid] = t
+		return t, true
+	}
+
+	for _, d := range deps {
+		switch {
+		case d.BlockedID == id:
+			// A done or deleted blocker no longer blocks anything, and listing it
+			// here would contradict is_blocked in every other view. The edge itself
+			// stays visible in `tasc graph` and `tasc_get_dependencies`.
+			t, ok := resolve(d.BlockerID)
+			if !ok || t.Status == models.StatusDone || t.Status == models.StatusDeleted {
+				continue
+			}
+			blockedBy = append(blockedBy, taskRef{ID: t.ID, Title: t.Title})
+		case d.BlockerID == id:
+			t, ok := resolve(d.BlockedID)
+			if !ok {
+				continue
+			}
+			blocking = append(blocking, taskRef{ID: t.ID, Title: t.Title})
+		}
+	}
+
+	// Neither JOIN had an ORDER BY, so the two lists came out in whatever order
+	// the rows happened to sit in. Sort them so repeated runs agree.
+	sort.Slice(blockedBy, func(i, j int) bool { return blockedBy[i].ID < blockedBy[j].ID })
+	sort.Slice(blocking, func(i, j int) bool { return blocking[i].ID < blocking[j].ID })
+
+	return blockedBy, blocking, nil
 }
 
 func init() {

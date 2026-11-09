@@ -2,6 +2,7 @@ package remote
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -54,6 +55,13 @@ func (c *Client) GetTask(id int64) (models.Task, error) {
 		return models.Task{}, err
 	}
 	defer resp.Body.Close()
+
+	// Report a missing task the way the sqlite backend does, so a caller can
+	// tell it apart from a transport or server failure without matching on
+	// message text.
+	if resp.StatusCode == http.StatusNotFound {
+		return models.Task{}, sql.ErrNoRows
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return models.Task{}, fmt.Errorf("server error: %s", resp.Status)
