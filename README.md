@@ -180,7 +180,8 @@ nix build .#web
     ```
     View dependency graph:
     ```bash
-    tasc graph
+    tasc graph        # every dependency in the database
+    tasc graph 8      # just task 8: what blocks it, and what it blocks
     ```
 
 *   **AI Assistant:**
