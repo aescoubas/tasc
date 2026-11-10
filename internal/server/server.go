@@ -252,12 +252,16 @@ func (s *Server) handleTaskStart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTaskStop(w http.ResponseWriter, r *http.Request) {
-	// Parse ID from body? Or assume active?
-	// The store method accepts ID or -1 for "active".
-	// Let's assume URL query or body if we want specific.
-	// For simplicity, stop whatever is active.
-
-	if err := s.store.StopTask(-1); err != nil {
+	id := int64(-1)
+	if r.URL.Query().Has("id") {
+		var err error
+		id, err = strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid ID", http.StatusBadRequest)
+			return
+		}
+	}
+	if err := s.store.StopTask(id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

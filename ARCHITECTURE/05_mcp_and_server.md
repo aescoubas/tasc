@@ -7,8 +7,14 @@ Tasc can run as a standalone local CLI or as a distributed system.
   `~/.tasc.db` open** — hence `PRAGMA busy_timeout = 10000` in `internal/db/db.go`.
 - **Client**: `cmd/root.go` detects `TASC_REMOTE`. If set, `CurrentStore` becomes
   `RemoteClient` instead of `SQLiteStore`.
-- **Transparency**: the rest of the CLI is agnostic to the backend, since it only ever
-  touches the `Store` interface.
+- **Store-backed commands**: task commands, timer start/stop, calendar, statistics,
+  project listing, and project editing use `Store` in both modes. Statistics aggregate
+  a single task snapshot; listing includes completion timestamps for closure rates and
+  burndown. Remaining commands that access SQLite directly reject remote mode in the
+  root pre-run hook; the README lists them and Phase 20 tracks the remaining work.
+- **Timer stop**: `POST /tasks/stop?id=<id>` stops only the requested active task.
+  Omitting `id` stops the current timer. Invalid IDs return HTTP 400. The remote Store
+  client preserves the ID instead of silently stopping whichever task is active.
 - **Task filters**: `GET /tasks` accepts comma-separated `status` values and
   `include_deleted=true`, alongside project, ID and due-date filters. Status matches
   the displayed dependency state (`blocked` for unfinished tasks with open blockers).

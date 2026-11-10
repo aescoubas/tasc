@@ -325,6 +325,27 @@ func TestSQLiteStore_SearchTasks_FallbackWithoutFTS5(t *testing.T) {
 	}
 }
 
+func TestSQLiteStore_SearchTasksReturnsRelevanceOrder(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	s := NewSQLiteStore(db)
+	weak, err := s.CreateTask(models.Task{Title: "rankprobe common"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	strong, err := s.CreateTask(models.Task{Title: "rankprobe rankprobe rankprobe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := s.SearchTasks("rankprobe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 2 || tasks[0].ID != strong || tasks[1].ID != weak {
+		t.Fatalf("search must return stronger relevance before insertion order: %+v", tasks)
+	}
+}
+
 func TestSQLiteStore_RemoveDependency(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()

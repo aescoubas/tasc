@@ -310,7 +310,7 @@ func (s *SQLiteStore) DeleteTask(id int64) error {
 func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) {
 	baseQuery := `
 		SELECT 
-			id, title, description, project, status, created_at, due_at, schedule_block, estimate, active_start, time_spent, reschedule_count,
+			id, title, description, project, status, created_at, completed_at, due_at, schedule_block, estimate, active_start, time_spent, reschedule_count,
 			is_blocked
 		FROM (
 			SELECT tasks.*, status NOT IN ('done', 'deleted') AND EXISTS(
@@ -373,6 +373,7 @@ func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) 
 		var t models.Task
 		var project sql.NullString
 		var description sql.NullString
+		var completedAt sql.NullTime
 		var dueAt sql.NullTime
 		var scheduleBlock sql.NullString
 		var estimate sql.NullString
@@ -380,14 +381,17 @@ func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) 
 		var timeSpent sql.NullInt64
 		var isBlocked bool
 
-		err := rows.Scan(&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt, &dueAt, &scheduleBlock, &estimate, &activeStart, &timeSpent, &t.RescheduleCount, &isBlocked)
+		err := rows.Scan(&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt, &completedAt, &dueAt, &scheduleBlock, &estimate, &activeStart, &timeSpent, &t.RescheduleCount, &isBlocked)
 		if err != nil {
-			continue
+			return nil, err
 		}
 		t.Description = description.String
 		t.Project = project.String
 		t.ScheduleBlock = scheduleBlock.String
 		t.IsBlocked = isBlocked
+		if completedAt.Valid {
+			t.CompletedAt = &completedAt.Time
+		}
 
 		if dueAt.Valid {
 			t.DueAt = &dueAt.Time
@@ -403,7 +407,7 @@ func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) 
 		}
 		tasks = append(tasks, t)
 	}
-	return tasks, nil
+	return tasks, rows.Err()
 }
 
 func (s *SQLiteStore) MarkDone(id int64) error {
@@ -922,11 +926,9 @@ func (s *SQLiteStore) DeleteProject(name string) error {
 
 func (s *SQLiteStore) SearchTasks(queryStr string) ([]models.Task, error) {
 	ftsQuery := `
-		SELECT id, title, description, project, status, created_at 
-		FROM tasks 
-		WHERE id IN (
-			SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ? ORDER BY rank
-		)
+		SELECT tasks.id, tasks.title, tasks.description, tasks.project, tasks.status, tasks.created_at
+		FROM tasks JOIN tasks_fts ON tasks_fts.rowid = tasks.id
+		WHERE tasks_fts MATCH ? ORDER BY rank
 	`
 	rows, err := s.db.Query(ftsQuery, queryStr)
 	if err != nil {

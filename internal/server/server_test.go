@@ -110,6 +110,56 @@ func TestServer_GetActiveTask(t *testing.T) {
 	}
 }
 
+func TestRemoteStopRespectsRequestedID(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	st := sqlite.NewSQLiteStore(db)
+	first, err := st.CreateTask(models.Task{Title: "Active timer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := st.CreateTask(models.Task{Title: "Inactive timer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.StartTask(first); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(NewServer(st))
+	defer srv.Close()
+	client := remote.NewClient(srv.URL)
+	if err := client.StopTask(second); err == nil {
+		t.Fatal("stopping an inactive ID must fail")
+	}
+	for _, id := range []string{"not-an-id", ""} {
+		resp, err := srv.Client().Post(srv.URL+"/tasks/stop?id="+id, "application/json", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("invalid stop ID %q returned %d", id, resp.StatusCode)
+		}
+	}
+	active, err := st.GetActiveTask()
+	if err != nil || active == nil || active.ID != first {
+		t.Fatalf("unsuccessful stops changed the active timer: %+v, %v", active, err)
+	}
+	if err := client.StopTask(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.StartTask(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.StopTask(-1); err != nil {
+		t.Fatal(err)
+	}
+	active, err = st.GetActiveTask()
+	if err != nil || active != nil {
+		t.Fatalf("default stop left an active timer: %+v, %v", active, err)
+	}
+}
+
 func TestServer_AddAndRemoveDependency(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()

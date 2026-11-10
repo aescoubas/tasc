@@ -1,4 +1,4 @@
-# Draw Project Roadmap
+# Tasc Project Roadmap
 *Technomancer Standard v1.0*
 
 ## 1. Context Profile
@@ -8,12 +8,15 @@
 *   `README.md`
 *   `GEMINI.md`
 *   `go.mod`
-*   `web/package.json`
 
 ### Dynamic Context (Source Code)
 *   `cmd/` (CLI Commands)
 *   `internal/` (Core Logic)
-*   `web/src/` (Frontend Application)
+
+### Current Scope
+Active work covers the CLI, TUI, MCP tools, and REST backend. The web dashboard is
+frozen and off limits: do not iterate on its implementation or reopen its known gaps
+without an explicit request from the owner. Historical phase numbers are retained.
 
 ---
 
@@ -160,52 +163,17 @@ Refactor the application into a client-server architecture to support remote acc
 
 ---
 
-### Phase 8: Mobile Applications
-**Status:** PENDING
-**Token Budget:** High
-**Prerequisites:** Phase 7, Phase 10
-
-**Objective:**
-Develop mobile interfaces (Android/iOS) reusing the web frontend logic.
-
-**Tasks:**
-- [ ] **Unified Architecture:** Adopt a shared React-based framework for Web and Mobile.
-- [ ] **Hybrid Packaging:** Use Capacitor to package the React app as a native Android app.
-- [ ] **Secure Connectivity:** Integrate with Cloudflare Tunnel (cloudflared).
-
-**Verification:**
-- [ ] App builds and installs on Android emulator.
-- [ ] App connects to backend via secure tunnel.
-
----
-
-### Phase 9: External Integrations
-**Status:** PENDING
-**Token Budget:** Medium
-**Prerequisites:** Phase 1
-
-**Objective:**
-Integrate with external services, primarily Google Calendar, for bidirectional synchronization.
-
-**Tasks:**
-- [ ] **Google OAuth2:** Implement secure authentication flow.
-- [ ] **Event Mapping:** Logic to translate Tasc projects/priorities into GCal events.
-- [ ] **Bidirectional Sync:** Sync engine for updates, deletions, and conflicts.
-- [ ] **Recurrence Translation:** Map `tasc` recurrence rules to GCal RRULEs.
-
-**Verification:**
-- [ ] Adding a task in `tasc` creates an event in Google Calendar.
-- [ ] Modifying an event in Calendar updates the task in `tasc`.
-
----
-
 ### Phase 10: Web Dashboard
-**Status:** DONE
+**Status:** FROZEN — OFF LIMITS
 **Token Budget:** High
 **Prerequisites:** Phase 7
 
 **Objective:**
 Build a responsive web interface for planning and visualization using React.
+
+The existing implementation is retained as historical work. As of 2026-11-10 the
+owner has suspended all dashboard iteration; its known gaps are outside the active
+backlog. The completed items below describe the original implementation.
 
 **Tasks:**
 - [x] **React Dashboard:** Build a responsive web interface.
@@ -387,3 +355,41 @@ Bundle a reusable agent skill for Tasc MCP workflows and provide a supported ins
 **Verification:**
 *   [x] `make test` passes with installer coverage.
 *   [x] `go run -tags fts5 . skill install --dest /tmp/<dir>` writes the bundled skill files successfully.
+
+---
+
+### Phase 20: Core Implementation Gaps
+**Status:** IN PROGRESS
+**Prerequisites:** Phase 7, Phase 12, Phase 13, Phase 18
+
+**Objective:**
+Resolve the non-dashboard gaps confirmed by the 2026-11-10 codebase evaluation.
+Each fix needs regression evidence through the affected interface. Stored-data
+semantics and migrations still require the approval specified in `AGENTS.md`.
+
+**Tasks:**
+- [ ] **1451 — Complete remote CLI support and eliminate local-database panics.**
+- [ ] **1452 — Unify task completion, recurrence, and timer finalization.**
+- [ ] **1453 — Restrict REST server exposure and add access controls.**
+- [ ] **1454 — Make time blocks effective and enforce scheduling capacity.**
+- [ ] **1455 — Return truthful errors for invalid and missing task operations.**
+
+**Progress (2026-11-10):**
+- [x] First batch for **1451 — Complete remote CLI support and eliminate local-database panics**:
+  route `start`, `stop`, `stats`, `project list`, `calendar`, and `search` through
+  Store; reject remaining local-only commands with nonzero errors; preserve requested
+  timer IDs over REST and search relevance ordering.
+- [x] `nix develop --command make check` passed; integration output:
+  `ok github.com/aescoubas/tasc/tests/integration 31.869s`.
+- [x] `nix develop --command make test-race` passed; integration output:
+  `ok github.com/aescoubas/tasc/tests/integration 41.872s`.
+- [x] `nix develop --command make build` produced the local binary.
+
+Real-binary regressions cover local/remote read parity, unchanged client database
+contents, timer start/stop failures, local timer undo, and local-only rejection.
+The broader remote-support task remains open. This batch is not deployed.
+
+**Verification:**
+- [ ] `nix develop --command make check` passes with regressions for every resolved gap.
+- [ ] `nix develop --command make test-race` passes for changes to the server and timers.
+- [ ] Local and remote CLI, MCP, and REST probes confirm the claimed behavior using temporary databases.

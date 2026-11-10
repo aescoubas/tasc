@@ -281,7 +281,9 @@ nix build .#web
 
 ### Web Dashboard
 
-Tasc comes with a modern React-based web dashboard for visual planning.
+The existing React web dashboard is frozen and off limits to further iteration as of
+2026-11-10. It is outside the active roadmap; the instructions below are retained for
+the existing implementation.
 
 1.  **Start the API Server:**
     ```bash
@@ -321,7 +323,16 @@ Set the `TASC_REMOTE` environment variable to point to your server:
 export TASC_REMOTE=http://localhost:8081
 ```
 
-Now, all `tasc` commands (add, list, done, etc.) will operate on the remote server instead of the local database.
+Task commands using the Store interface (`add`, `list`, `show`, `modify`, `delete`,
+`done`, `start`, `stop`, `search`, `reschedule`, `dep`, `undep`, and `graph`) operate
+on the remote server. `calendar`, `stats`, `project list`, and `project edit` also
+support remote mode.
+
+Commands that still require local SQLite access reject remote mode with a nonzero
+error: `ask`, `backup` (including `backup list`), `edit`, `import-tw`, `log`,
+`project create`, `project archive`, `project delete`, `renumber`, `restore`, `seed`,
+`serve`, `ui`, `undo`, and `vague`. Use `modify` for remote task edits. Broader remote
+support remains tracked in the roadmap.
 
 You can also specify the remote URL per command using the `--remote` flag:
 ```bash

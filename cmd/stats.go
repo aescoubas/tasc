@@ -1,14 +1,15 @@
 package cmd
 
 import (
-	"database/sql"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
 
-	"github.com/aescoubas/tasc/internal/db"
+	"github.com/aescoubas/tasc/internal/models"
+	"github.com/aescoubas/tasc/internal/store"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
@@ -33,15 +34,20 @@ var (
 var statsCmd = &cobra.Command{
 	Use:   "stats",
 	Short: "Show enhanced productivity metrics",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		tasks, err := CurrentStore.ListTasks(store.TaskFilter{IncludeDeleted: true})
+		if err != nil {
+			return fmt.Errorf("error loading statistics: %w", err)
+		}
+		now := time.Now()
 		// Fetch all components
-		closure := renderClosureRates()
-		status := renderStatusBreakdown()
-		timeAlloc := renderTimeAllocation()
-		stale := renderStaleTasks()
-		friction := renderFrictionAnalysis()
-		est := renderEstimationAccuracy()
-		burndown := renderBurndown()
+		closure := renderClosureRates(tasks, now)
+		status := renderStatusBreakdown(tasks)
+		timeAlloc := renderTimeAllocation(tasks)
+		stale := renderStaleTasks(tasks, now)
+		friction := renderFrictionAnalysis(tasks)
+		est := renderEstimationAccuracy(tasks)
+		burndown := renderBurndown(tasks, now)
 
 		if statsDisplay == "list" {
 			fmt.Println(titleStyle.Render("Enhanced Productivity Metrics"))
@@ -87,57 +93,69 @@ var statsCmd = &cobra.Command{
 			fmt.Println(row2)
 			fmt.Println(row3)
 		}
+		return nil
 	},
 }
 
-func renderClosureRates() string {
+func renderClosureRates(tasks []models.Task, now time.Time) string {
 	var sb strings.Builder
 	sb.WriteString(sectionStyle.Render("Closure Rates") + "\n")
 
-	queries := map[string]string{
-		"Last 7 Days":  "SELECT COUNT(*) FROM tasks WHERE status = 'done' AND completed_at >= datetime('now', '-7 days')",
-		"Last 30 Days": "SELECT COUNT(*) FROM tasks WHERE status = 'done' AND completed_at >= datetime('now', '-30 days')",
-		"All Time":     "SELECT COUNT(*) FROM tasks WHERE status = 'done'",
-	}
-
 	labels := []string{"Last 7 Days", "Last 30 Days", "All Time"}
-
-	w := tabwriter.NewWriter(&sb, 0, 0, 2, ' ', 0)
-	for _, label := range labels {
-		var count int
-		err := db.DB.QueryRow(queries[label]).Scan(&count)
-		if err != nil {
+	counts := make([]int, len(labels))
+	for _, task := range tasks {
+		if task.Status != models.StatusDone {
 			continue
 		}
-		fmt.Fprintf(w, "%s:\t%d\n", label, count)
+		counts[2]++
+		if task.CompletedAt != nil {
+			if !task.CompletedAt.Before(now.Add(-7 * 24 * time.Hour)) {
+				counts[0]++
+			}
+			if !task.CompletedAt.Before(now.Add(-30 * 24 * time.Hour)) {
+				counts[1]++
+			}
+		}
+	}
+
+	w := tabwriter.NewWriter(&sb, 0, 0, 2, ' ', 0)
+	for i, label := range labels {
+		fmt.Fprintf(w, "%s:\t%d\n", label, counts[i])
 	}
 	w.Flush()
 	return sb.String()
 }
 
-func renderTimeAllocation() string {
+func renderTimeAllocation(tasks []models.Task) string {
 	var sb strings.Builder
 	sb.WriteString(sectionStyle.Render("Time Allocation") + "\n")
 
-	query := `SELECT project, SUM(time_spent) FROM tasks WHERE time_spent > 0 GROUP BY project ORDER BY SUM(time_spent) DESC LIMIT 10`
-	rows, err := db.DB.Query(query)
-	if err != nil {
-		return "Error loading data"
+	secondsByProject := make(map[string]int64)
+	for _, task := range tasks {
+		if task.TimeSpent > 0 {
+			secondsByProject[task.Project] += task.TimeSpent
+		}
 	}
-	defer rows.Close()
+	var projects []string
+	for project := range secondsByProject {
+		projects = append(projects, project)
+	}
+	sort.Slice(projects, func(i, j int) bool {
+		if secondsByProject[projects[i]] == secondsByProject[projects[j]] {
+			return projects[i] < projects[j]
+		}
+		return secondsByProject[projects[i]] > secondsByProject[projects[j]]
+	})
+	if len(projects) > 10 {
+		projects = projects[:10]
+	}
 
 	w := tabwriter.NewWriter(&sb, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "Project\tDuration")
 	fmt.Fprintln(w, "-------\t--------")
 
-	var totalSeconds int64
-
-	for rows.Next() {
-		var project string
-		var seconds int64
-		if err := rows.Scan(&project, &seconds); err != nil {
-			continue
-		}
+	for _, project := range projects {
+		seconds := secondsByProject[project]
 		if project == "" {
 			project = "[No Project]"
 		}
@@ -147,162 +165,139 @@ func renderTimeAllocation() string {
 			project = project[:12] + "..."
 		}
 		fmt.Fprintf(w, "%s\t%s\n", project, dur.String())
-		totalSeconds += seconds
 	}
 	w.Flush()
 	return sb.String()
 }
 
-func renderStatusBreakdown() string {
+func renderStatusBreakdown(tasks []models.Task) string {
 	var sb strings.Builder
 	sb.WriteString(sectionStyle.Render("Status Breakdown") + "\n")
 
-	query := `SELECT status, COUNT(*) FROM tasks GROUP BY status ORDER BY COUNT(*) DESC`
-	rows, err := db.DB.Query(query)
-	if err != nil {
-		return "Error loading data"
+	counts := make(map[models.TaskStatus]int)
+	for _, task := range tasks {
+		counts[task.Status]++
 	}
-	defer rows.Close()
+	var statuses []models.TaskStatus
+	for status := range counts {
+		statuses = append(statuses, status)
+	}
+	sort.Slice(statuses, func(i, j int) bool {
+		if counts[statuses[i]] == counts[statuses[j]] {
+			return statuses[i] < statuses[j]
+		}
+		return counts[statuses[i]] > counts[statuses[j]]
+	})
 
 	w := tabwriter.NewWriter(&sb, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "Status\tCount")
 	fmt.Fprintln(w, "------\t-----")
 
-	for rows.Next() {
-		var status string
-		var count int
-		if err := rows.Scan(&status, &count); err != nil {
-			continue
-		}
-		fmt.Fprintf(w, "%s\t%d\n", strings.Title(status), count)
+	for _, status := range statuses {
+		fmt.Fprintf(w, "%s\t%d\n", strings.Title(string(status)), counts[status])
 	}
 	w.Flush()
 	return sb.String()
 }
 
-func renderStaleTasks() string {
+func renderStaleTasks(tasks []models.Task, now time.Time) string {
 	var sb strings.Builder
 	sb.WriteString(sectionStyle.Render("Stale Tasks (>30d)") + "\n")
 
-	query := `
-		SELECT id, title, created_at 
-		FROM tasks 
-		WHERE status != 'done' AND status != 'deleted' AND created_at < datetime('now', '-30 days')
-		ORDER BY created_at ASC 
-		LIMIT 5`
-
-	rows, err := db.DB.Query(query)
-	if err != nil {
-		return "Error loading data"
+	var stale []models.Task
+	for _, task := range tasks {
+		if task.Status != models.StatusDone && task.Status != models.StatusDeleted && task.CreatedAt.Before(now.Add(-30*24*time.Hour)) {
+			stale = append(stale, task)
+		}
 	}
-	defer rows.Close()
+	sort.Slice(stale, func(i, j int) bool {
+		if stale[i].CreatedAt.Equal(stale[j].CreatedAt) {
+			return stale[i].ID < stale[j].ID
+		}
+		return stale[i].CreatedAt.Before(stale[j].CreatedAt)
+	})
+	if len(stale) > 5 {
+		stale = stale[:5]
+	}
 
-	count := 0
 	w := tabwriter.NewWriter(&sb, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "ID\tAge\tTask")
 	fmt.Fprintln(w, "--\t---\t----")
 
-	for rows.Next() {
-		count++
-		var id int
-		var title string
-		var created time.Time
-		if err := rows.Scan(&id, &title, &created); err != nil {
-			continue
-		}
-
-		age := time.Since(created)
+	for _, task := range stale {
+		age := now.Sub(task.CreatedAt)
 		days := int(age.Hours() / 24)
 
-		titleShort := title
+		titleShort := task.Title
 		if len(titleShort) > 20 {
 			titleShort = titleShort[:17] + "..."
 		}
 
-		fmt.Fprintf(w, "%d\t%dd\t%s\n", id, days, titleShort)
+		fmt.Fprintf(w, "%d\t%dd\t%s\n", task.ID, days, titleShort)
 	}
 	w.Flush()
 
-	if count == 0 {
+	if len(stale) == 0 {
 		sb.WriteString("No stale tasks! \n")
 	}
 	return sb.String()
 }
 
-func renderFrictionAnalysis() string {
+func renderFrictionAnalysis(tasks []models.Task) string {
 	var sb strings.Builder
 	sb.WriteString(sectionStyle.Render("Top Rescheduled") + "\n")
 
-	query := `
-		SELECT id, title, reschedule_count 
-		FROM tasks 
-		WHERE reschedule_count > 0 AND status != 'deleted'
-		ORDER BY reschedule_count DESC 
-		LIMIT 5`
-
-	rows, err := db.DB.Query(query)
-	if err != nil {
-		return "Error loading data"
+	var rescheduled []models.Task
+	for _, task := range tasks {
+		if task.RescheduleCount > 0 && task.Status != models.StatusDeleted {
+			rescheduled = append(rescheduled, task)
+		}
 	}
-	defer rows.Close()
+	sort.Slice(rescheduled, func(i, j int) bool {
+		if rescheduled[i].RescheduleCount == rescheduled[j].RescheduleCount {
+			return rescheduled[i].ID < rescheduled[j].ID
+		}
+		return rescheduled[i].RescheduleCount > rescheduled[j].RescheduleCount
+	})
+	if len(rescheduled) > 5 {
+		rescheduled = rescheduled[:5]
+	}
 
-	count := 0
 	w := tabwriter.NewWriter(&sb, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "ID\t#\tTask")
 	fmt.Fprintln(w, "--\t-\t----")
 
-	for rows.Next() {
-		count++
-		var id int
-		var title string
-		var rCount int
-		if err := rows.Scan(&id, &title, &rCount); err != nil {
-			continue
-		}
-
-		titleShort := title
+	for _, task := range rescheduled {
+		titleShort := task.Title
 		if len(titleShort) > 20 {
 			titleShort = titleShort[:17] + "..."
 		}
 
-		fmt.Fprintf(w, "%d\t%d\t%s\n", id, rCount, titleShort)
+		fmt.Fprintf(w, "%d\t%d\t%s\n", task.ID, task.RescheduleCount, titleShort)
 	}
 	w.Flush()
 
-	if count == 0 {
+	if len(rescheduled) == 0 {
 		sb.WriteString("No rescheduled tasks.\n")
 	}
 	return sb.String()
 }
 
-func renderEstimationAccuracy() string {
+func renderEstimationAccuracy(tasks []models.Task) string {
 	var sb strings.Builder
 	sb.WriteString(sectionStyle.Render("Estimation Accuracy") + "\n")
-
-	query := `
-		SELECT estimate, time_spent 
-		FROM tasks 
-		WHERE status = 'done' AND estimate IS NOT NULL AND estimate != '' AND time_spent > 0`
-
-	rows, err := db.DB.Query(query)
-	if err != nil {
-		return "Error loading data"
-	}
-	defer rows.Close()
 
 	var totalDiff float64
 	var count int
 	var overestimateCount int
 	var underestimateCount int
 
-	for rows.Next() {
-		var estStr string
-		var actualSec int64
-		if err := rows.Scan(&estStr, &actualSec); err != nil {
+	for _, task := range tasks {
+		if task.Status != models.StatusDone || task.Estimate == "" || task.TimeSpent <= 0 {
 			continue
 		}
 
-		estDur, err := parseDurationString(estStr)
+		estDur, err := parseDurationString(task.Estimate)
 		if err != nil {
 			continue
 		}
@@ -312,7 +307,7 @@ func renderEstimationAccuracy() string {
 			continue
 		}
 
-		diff := float64(actualSec) - estSec
+		diff := float64(task.TimeSpent) - estSec
 		totalDiff += math.Abs(diff) / estSec
 
 		if diff < 0 {
@@ -341,36 +336,10 @@ func renderEstimationAccuracy() string {
 	return sb.String()
 }
 
-func renderBurndown() string {
+func renderBurndown(tasks []models.Task, now time.Time) string {
 	var sb strings.Builder
 	sb.WriteString(sectionStyle.Render("Burndown (Last 14 Days)") + "\n")
 
-	rows, err := db.DB.Query("SELECT created_at, completed_at FROM tasks WHERE status != 'deleted'")
-	if err != nil {
-		return "Error loading data"
-	}
-	defer rows.Close()
-
-	type taskDates struct {
-		created   time.Time
-		completed *time.Time
-	}
-	var allTasks []taskDates
-
-	for rows.Next() {
-		var c time.Time
-		var comp sql.NullTime
-		if err := rows.Scan(&c, &comp); err != nil {
-			continue
-		}
-		td := taskDates{created: c}
-		if comp.Valid {
-			td.completed = &comp.Time
-		}
-		allTasks = append(allTasks, td)
-	}
-
-	now := time.Now()
 	days := 14
 	counts := make([]int, days)
 	maxCount := 0
@@ -380,11 +349,11 @@ func renderBurndown() string {
 		endOfDay := time.Date(d.Year(), d.Month(), d.Day(), 23, 59, 59, 0, d.Location())
 
 		c := 0
-		for _, t := range allTasks {
-			if t.created.After(endOfDay) {
+		for _, task := range tasks {
+			if task.Status == models.StatusDeleted || task.CreatedAt.After(endOfDay) {
 				continue
 			}
-			if t.completed != nil && t.completed.Before(endOfDay) {
+			if task.CompletedAt != nil && task.CompletedAt.Before(endOfDay) {
 				continue
 			}
 			c++

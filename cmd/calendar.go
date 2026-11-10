@@ -3,13 +3,14 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/aescoubas/tasc/internal/config"
-	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/scheduling"
+	"github.com/aescoubas/tasc/internal/store"
 	"github.com/aescoubas/tasc/internal/ui"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
@@ -24,7 +25,7 @@ var (
 var calendarCmd = &cobra.Command{
 	Use:   "calendar",
 	Short: "Show a calendar view of tasks",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, _ := config.LoadConfig()
 
 		now := time.Now()
@@ -83,8 +84,7 @@ var calendarCmd = &cobra.Command{
 		// Fetch Tasks
 		tasks, err := fetchTasksInRange(start, end)
 		if err != nil {
-			fmt.Printf("Error fetching tasks: %v\n", err)
-			return
+			return fmt.Errorf("error fetching tasks: %w", err)
 		}
 
 		// Apply Smart Auto-Schedule (Virtual Times)
@@ -114,48 +114,31 @@ var calendarCmd = &cobra.Command{
 		case "year":
 			renderYearView(tasks, start, width, cfg, now)
 		}
+		return nil
 	},
 }
 
 func fetchTasksInRange(start, end time.Time) ([]models.Task, error) {
-	query := `
-		SELECT 
-			id, title, project, status, due_at, estimate,
-			EXISTS(
-				SELECT 1 FROM task_dependencies td
-				JOIN tasks blocker ON blocker.id = td.blocker_id
-				WHERE td.blocked_id = tasks.id AND blocker.status NOT IN ('done', 'deleted')
-			) as is_blocked
-		FROM tasks 
-		WHERE status NOT IN ('done', 'deleted', 'undefined') 
-		AND due_at >= ? AND due_at < ?
-		ORDER BY due_at
-	`
-	sDate := start.Format("2006-01-02")
-	eDate := end.Format("2006-01-02")
-
-	rows, err := db.DB.Query(query, sDate, eDate)
+	// DueAfter is exclusive. Widen it by one second, then apply the exact
+	// inclusive start below; remote filters serialize timestamps to seconds.
+	after := start.Add(-time.Second)
+	tasks, err := CurrentStore.ListTasks(store.TaskFilter{DueAfter: &after, DueBefore: &end})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var tasks []models.Task
-	for rows.Next() {
-		var t models.Task
-		var dueAt *time.Time
-		var est string
-		var isBlocked bool
-		err := rows.Scan(&t.ID, &t.Title, &t.Project, &t.Status, &dueAt, &est, &isBlocked)
-		if err != nil {
-			continue
+	var inRange []models.Task
+	for _, task := range tasks {
+		if task.DueAt != nil && !task.DueAt.Before(start) && task.DueAt.Before(end) {
+			inRange = append(inRange, task)
 		}
-		t.DueAt = dueAt
-		t.Estimate = est
-		t.IsBlocked = isBlocked
-		tasks = append(tasks, t)
 	}
-	return tasks, nil
+	sort.SliceStable(inRange, func(i, j int) bool {
+		if inRange[i].DueAt.Equal(*inRange[j].DueAt) {
+			return inRange[i].ID < inRange[j].ID
+		}
+		return inRange[i].DueAt.Before(*inRange[j].DueAt)
+	})
+	return inRange, nil
 }
 
 func renderTimeGrid(days []time.Time, tasks []models.Task, width int, cfg config.Config, now time.Time) {

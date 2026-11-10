@@ -3,9 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strconv"
-	"time"
 
-	"github.com/aescoubas/tasc/internal/db"
 	"github.com/spf13/cobra"
 )
 
@@ -19,78 +17,33 @@ var stopCmd = &cobra.Command{
 		return nil
 	},
 	ValidArgsFunction: activeTaskIDCompletionFunc,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		var targetID int64 = -1
 		if len(args) > 0 {
-			id, err := strconv.Atoi(args[0])
+			id, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
-				fmt.Println("Invalid task ID")
-				return
+				return fmt.Errorf("invalid task ID: %s", args[0])
 			}
-			targetID = int64(id)
+			targetID = id
 		}
 
-		tx, err := db.DB.Begin()
+		active, err := CurrentStore.GetActiveTask()
 		if err != nil {
-			fmt.Printf("Error starting transaction: %v\n", err)
-			return
+			return fmt.Errorf("error checking active task: %w", err)
 		}
-		defer tx.Rollback()
-
-		query := "SELECT id, active_start FROM tasks WHERE active_start IS NOT NULL"
-
-		rows, err := tx.Query(query)
-		if err != nil {
-			fmt.Printf("Error querying active tasks: %v\n", err)
-			return
+		if targetID != -1 && (active == nil || active.ID != targetID) {
+			return fmt.Errorf("task %d is not active", targetID)
+		}
+		if active == nil {
+			return fmt.Errorf("no active task to stop")
 		}
 
-		var activeID int64
-		var activeStart time.Time
-		found := false
-
-		for rows.Next() {
-			if err := rows.Scan(&activeID, &activeStart); err != nil {
-				rows.Close()
-				fmt.Printf("Error scanning task: %v\n", err)
-				return
-			}
-
-			// If targetID is specified, only stop if it matches
-			if targetID != -1 && activeID != targetID {
-				continue
-			}
-
-			// We found a task to stop
-			found = true
-			break // Only stop one
-		}
-		rows.Close()
-
-		if !found {
-			if targetID != -1 {
-				fmt.Printf("Task %d is not active.\n", targetID)
-			} else {
-				fmt.Println("No active task to stop.")
-			}
-			return
+		if err := CurrentStore.StopTask(active.ID); err != nil {
+			return fmt.Errorf("error stopping task %d: %w", active.ID, err)
 		}
 
-		now := time.Now()
-		elapsed := int64(now.Sub(activeStart).Seconds())
-
-		_, err = tx.Exec("UPDATE tasks SET active_start = NULL, time_spent = time_spent + ? WHERE id = ?", elapsed, activeID)
-		if err != nil {
-			fmt.Printf("Error stopping task: %v\n", err)
-			return
-		}
-
-		if err := tx.Commit(); err != nil {
-			fmt.Printf("Error committing transaction: %v\n", err)
-			return
-		}
-
-		fmt.Printf("Stopped task %d (added %ds, total duration recorded).\n", activeID, elapsed)
+		fmt.Printf("Stopped task %d.\n", active.ID)
+		return nil
 	},
 }
 

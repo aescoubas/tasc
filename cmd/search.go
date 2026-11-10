@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/aescoubas/tasc/internal/config"
-	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/store"
 	"github.com/aescoubas/tasc/internal/ui"
@@ -16,7 +15,7 @@ var searchCmd = &cobra.Command{
 	Use:   "search [query]",
 	Short: "Fuzzy search tasks",
 	Args:  cobra.MinimumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.LoadConfig()
 		if err != nil {
 			cfg = config.DefaultConfig()
@@ -24,27 +23,19 @@ var searchCmd = &cobra.Command{
 
 		queryStr := strings.Join(args, " ")
 
-		// Use FTS5 MATCH operator
-		query := `SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ? ORDER BY rank`
-
-		rows, err := db.DB.Query(query, queryStr)
+		matches, err := CurrentStore.SearchTasks(queryStr)
 		if err != nil {
-			fmt.Printf("Error searching tasks: %v\n", err)
-			return
+			return fmt.Errorf("error searching tasks: %w", err)
 		}
-		defer rows.Close()
 
 		var ids []int64
-		for rows.Next() {
-			var id int64
-			if err := rows.Scan(&id); err == nil {
-				ids = append(ids, id)
-			}
+		for _, task := range matches {
+			ids = append(ids, task.ID)
 		}
 
 		if len(ids) == 0 {
 			fmt.Println("No matches found.")
-			return
+			return nil
 		}
 
 		// Fetch full tasks
@@ -53,8 +44,7 @@ var searchCmd = &cobra.Command{
 		}
 		tasks, err := CurrentStore.ListTasks(filter)
 		if err != nil {
-			fmt.Printf("Error fetching tasks: %v\n", err)
-			return
+			return fmt.Errorf("error fetching tasks: %w", err)
 		}
 
 		// Re-order tasks to match search rank (ids order)
@@ -82,6 +72,7 @@ var searchCmd = &cobra.Command{
 
 		// Pass nil for scores (all 0.0)
 		ui.RenderTaskTable(sortedTasks, nil, cfg, projects, opts)
+		return nil
 	},
 }
 

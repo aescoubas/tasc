@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"database/sql"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -14,6 +13,7 @@ import (
 	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/parse"
+	"github.com/aescoubas/tasc/internal/store"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
@@ -39,27 +39,15 @@ var projectCmd = &cobra.Command{
 var projectListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all projects",
-	Run: func(cmd *cobra.Command, args []string) {
-		query := `
-			SELECT 
-				p.name, 
-				p.description, 
-				p.parent, 
-				p.status, 
-				p.due_at, 
-				COUNT(t.id) as total_tasks,
-				SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END) as completed_tasks
-			FROM projects p 
-			LEFT JOIN tasks t ON p.name = t.project AND t.status != 'deleted' 
-			GROUP BY p.name 
-			ORDER BY p.name
-		`
-		rows, err := db.DB.Query(query)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		allProjects, err := CurrentStore.ListProjects()
 		if err != nil {
-			fmt.Printf("Error querying projects: %v\n", err)
-			return
+			return fmt.Errorf("error loading projects: %w", err)
 		}
-		defer rows.Close()
+		tasks, err := CurrentStore.ListTasks(store.TaskFilter{IncludeDeleted: true})
+		if err != nil {
+			return fmt.Errorf("error loading project tasks: %w", err)
+		}
 
 		type proj struct {
 			name        string
@@ -71,25 +59,21 @@ var projectListCmd = &cobra.Command{
 			doneTasks   int
 		}
 
+		totals := make(map[string]int)
+		completed := make(map[string]int)
+		for _, task := range tasks {
+			if task.Status != models.StatusDeleted {
+				totals[task.Project]++
+				if task.Status == models.StatusDone {
+					completed[task.Project]++
+				}
+			}
+		}
 		var projects []proj
-		for rows.Next() {
-			var p proj
-			var desc, parent, status sql.NullString
-			var due sql.NullTime
-			var doneTasks sql.NullInt64 // Safety for SUM
-
-			if err := rows.Scan(&p.name, &desc, &parent, &status, &due, &p.totalTasks, &doneTasks); err != nil {
-				continue
-			}
-			p.description = desc.String
-			p.parent = parent.String
-			p.status = status.String
-			if due.Valid {
-				p.due = &due.Time
-			}
-			if doneTasks.Valid {
-				p.doneTasks = int(doneTasks.Int64)
-			}
+		for _, project := range allProjects {
+			p := proj{name: project.Name, description: project.Description,
+				parent: project.Parent, status: string(project.Status), due: project.DueAt,
+				totalTasks: totals[project.Name], doneTasks: completed[project.Name]}
 			projects = append(projects, p)
 		}
 
@@ -149,6 +133,7 @@ var projectListCmd = &cobra.Command{
 		if len(projects) == 0 {
 			fmt.Println("No projects found.")
 		}
+		return nil
 	},
 }
 

@@ -807,6 +807,183 @@ func countDependencies(t *testing.T, dbPath string) int {
 	return count
 }
 
+func TestRemoteCLICommandsUseStore(t *testing.T) {
+	serverPath := filepath.Join(t.TempDir(), "server.db")
+	conn, err := sql.Open("sqlite3", serverPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if err := dbpkg.RunMigrations(conn); err != nil {
+		t.Fatal(err)
+	}
+	st := sqlite.NewSQLiteStore(conn)
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 10, 0, 0, 0, now.Location())
+	end := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+	create := func(task models.Task) int64 {
+		t.Helper()
+		id, err := st.CreateTask(task)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	agenda := create(models.Task{Title: "Remote agenda", Project: "RemoteOps", DueAt: &today, Estimate: "20m"})
+	finished := create(models.Task{Title: "Finished", Project: "RemoteOps", Estimate: "20m"})
+	deleted := create(models.Task{Title: "Deleted", Project: "RemoteOps"})
+	create(models.Task{Title: "Next-day boundary", DueAt: &end})
+	if _, err := conn.Exec("UPDATE tasks SET status = 'done', completed_at = ?, time_spent = 1800 WHERE id = ?", now.Add(-time.Hour), finished); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec("UPDATE tasks SET status = 'deleted' WHERE id = ?", deleted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec("UPDATE tasks SET created_at = ?, reschedule_count = 3 WHERE id = ?", now.Add(-40*24*time.Hour), agenda); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(server.NewServer(st))
+	defer srv.Close()
+
+	// A remote command must never initialize or migrate the client's database.
+	clientPath := filepath.Join(t.TempDir(), "client.db")
+	sentinel := []byte("client database must remain untouched")
+	if err := os.WriteFile(clientPath, sentinel, 0600); err != nil {
+		t.Fatal(err)
+	}
+	runRemote := func(args ...string) string {
+		t.Helper()
+		out, err := runTasc(t, clientPath, append([]string{"--remote", srv.URL}, args...)...)
+		if err != nil {
+			t.Fatalf("remote %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	t.Run("timer actions", func(t *testing.T) {
+		id := fmt.Sprint(agenda)
+		if out := runRemote("start", id); !strings.Contains(out, "Started task") {
+			t.Fatalf("start output: %s", out)
+		}
+		active, err := st.GetActiveTask()
+		if err != nil || active == nil || active.ID != agenda {
+			t.Fatalf("active task = %+v, err = %v", active, err)
+		}
+		if _, err := conn.Exec("UPDATE tasks SET active_start = ? WHERE id = ?", now.Add(-2*time.Minute), agenda); err != nil {
+			t.Fatal(err)
+		}
+		for _, args := range [][]string{{"stop", fmt.Sprint(finished)}, {"start", "999999"}} {
+			out, err := runTasc(t, clientPath, append([]string{"--remote", srv.URL}, args...)...)
+			if err == nil || strings.Contains(out, "panic:") {
+				t.Fatalf("remote %v must fail without panicking: err=%v\n%s", args, err, out)
+			}
+			active, err := st.GetActiveTask()
+			if err != nil || active == nil || active.ID != agenda {
+				t.Fatalf("failed action changed active task: %+v, %v", active, err)
+			}
+		}
+		runRemote("stop", id)
+		task, err := st.GetTask(agenda)
+		if err != nil || task.ActiveStart != nil || task.TimeSpent < 120 {
+			t.Fatalf("stopped task = %+v, err = %v", task, err)
+		}
+		runRemote("start", id)
+		runRemote("stop")
+	})
+
+	for _, tt := range []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{"statistics", []string{"stats", "--display", "list"}, []string{"Last 7 Days:", "Avg Error: 50.0%", "Remote agenda"}},
+		{"projects", []string{"project", "list"}, []string{"RemoteOps", "50%"}},
+		{"calendar", []string{"calendar", "--view", "day"}, []string{"Calendar View: Day", "Remote agenda"}},
+		{"search", []string{"search", "agenda"}, []string{"Remote agenda"}},
+		{"empty search", []string{"search", "unmatchedword"}, []string{"No matches found."}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			out := runRemote(tt.args...)
+			local, err := runTasc(t, serverPath, tt.args...)
+			if err != nil {
+				t.Fatalf("local %v: %v\n%s", tt.args, err, local)
+			}
+			if out != local {
+				t.Fatalf("local and remote %v differ\nlocal:\n%s\nremote:\n%s", tt.args, local, out)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(out, want) {
+					t.Errorf("%v missing %q:\n%s", tt.args, want, out)
+				}
+			}
+			if tt.name == "statistics" && !regexp.MustCompile(`Last 7 Days:\s+1\b`).MatchString(out) {
+				t.Errorf("closure count must include the completed task:\n%s", out)
+			}
+			if tt.name == "calendar" && strings.Contains(out, "Next-day boundary") {
+				t.Errorf("calendar included its exclusive end:\n%s", out)
+			}
+		})
+	}
+	if got, err := os.ReadFile(clientPath); err != nil || !bytes.Equal(got, sentinel) {
+		t.Fatalf("remote commands touched local database: %q, %v", got, err)
+	}
+}
+
+func TestTimerCommandsRemainUndoable(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "timer.db")
+	for _, args := range [][]string{{"add", "Undo timer probe"}, {"start", "1"}, {"stop", "1"}, {"undo", "--yes"}} {
+		if out, err := runTasc(t, dbPath, args...); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+	conn, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	st := sqlite.NewSQLiteStore(conn)
+	active, err := st.GetActiveTask()
+	if err != nil || active == nil || active.Title != "Undo timer probe" {
+		t.Fatalf("undo stop did not restore timer: %+v, %v", active, err)
+	}
+	out, err := runTasc(t, dbPath, "start", "999999")
+	if err == nil {
+		t.Fatalf("missing target must fail: %s", out)
+	}
+	var actionID sql.NullInt64
+	if err := conn.QueryRow("SELECT action_id FROM undo_context WHERE id = 1").Scan(&actionID); err != nil || actionID.Valid {
+		t.Fatalf("failed command left undo tracking active: %+v, %v", actionID, err)
+	}
+	if out, err := runTasc(t, dbPath, "undo", "--yes"); err != nil {
+		t.Fatalf("undo start failed: %v\n%s", err, out)
+	}
+	active, err = st.GetActiveTask()
+	if err != nil || active != nil {
+		t.Fatalf("undo start did not clear timer: %+v, %v", active, err)
+	}
+}
+
+func TestLocalOnlyCommandsRejectRemoteMode(t *testing.T) {
+	clientPath := filepath.Join(t.TempDir(), "client.db")
+	for _, args := range [][]string{
+		{"ask", "What next?"}, {"backup"}, {"backup", "list"}, {"edit", "1"},
+		{"import-tw"}, {"log", "Completed work"}, {"project", "archive", "Work"},
+		{"project", "create", "Work"}, {"project", "delete", "Work"},
+		{"renumber", "--yes"}, {"restore", "backup.db"}, {"seed"},
+		{"serve"}, {"ui"}, {"undo", "--yes"}, {"vague", "1"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			out, err := runTasc(t, clientPath, append([]string{"--remote", "http://127.0.0.1:1"}, args...)...)
+			if err == nil || strings.Contains(out, "panic:") || !strings.Contains(out, "requires a local SQLite database") {
+				t.Fatalf("expected a nonzero local-only error: %v\n%s", err, out)
+			}
+		})
+	}
+	if _, err := os.Stat(clientPath); !os.IsNotExist(err) {
+		t.Fatalf("local-only remote command created a client database: %v", err)
+	}
+}
+
 func TestDependencyValidationThroughCLIAndMCP(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "dependency-validation.db")
 	for _, args := range [][]string{

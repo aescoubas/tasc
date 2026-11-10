@@ -1,8 +1,8 @@
 # tasc
 
 A terminal task manager: a Cobra CLI and a Bubble Tea TUI over SQLite, with a REST
-server, an MCP surface, and a Vue dashboard in `web/`. Feature-complete as of Phase 19 —
-most work here is modification, not construction.
+server, an MCP surface, and a frozen React dashboard in `web/`. Active work addresses
+the core implementation gaps tracked in Phase 20.
 
 `~/.claude/CLAUDE.md` holds the standing rules (gates, evidence, git, shell hygiene) and
 is not repeated here. `CLAUDE.md` and `GEMINI.md` are symlinks to this file.
@@ -107,7 +107,7 @@ clean as of 2026-11-05.
 | `internal/mcp/server.go` | all 19 MCP tools, 816 lines | no tests, and it is what the agent skill drives |
 | `internal/server/` | the REST API behind `tasc serve` | `TASC_REMOTE` makes the CLI a client of it |
 | `tests/integration/` | builds the real binary and drives it | already isolates `TASC_DB_PATH` and `HOME`; copy that pattern |
-| `web/` | Vue 3 dashboard, built by `nix/web.nix` | excluded from the Go package `src` |
+| `web/` | frozen React dashboard, built by `nix/web.nix` | off limits; excluded from the Go package `src` |
 
 **No tests at all:** `internal/mcp`, `internal/ui`, `internal/store/remote`. The first of
 those is the agent-facing surface, so a change there is verified by driving the tool, not
@@ -115,9 +115,11 @@ by reasoning about it.
 
 ## The roadmap
 
-`ROADMAP.md` is 19 phases in Technomancer Standard v1.0 format. All are `DONE` except
-**Phase 8 (Mobile Applications)** and **Phase 9 (External Integrations)**, both `PENDING`
-and neither started. Finishing work means ticking the phase checklist and its
+`ROADMAP.md` uses Technomancer Standard v1.0 and retains historical phase numbers.
+Mobile applications and external integrations were removed from scope on 2026-11-10.
+Phase 10 (Web Dashboard) is frozen and off limits: do not change or iterate on the
+dashboard unless the owner explicitly reopens it. Phase 20 tracks the active core
+implementation gaps. Finishing work means ticking the phase checklist and its
 Verification block, and a verification line is ticked against a command that was run.
 
 ## Deliberate gaps

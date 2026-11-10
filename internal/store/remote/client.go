@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -216,7 +217,11 @@ func (c *Client) StartTask(id int64) error {
 }
 
 func (c *Client) StopTask(id int64) error {
-	resp, err := c.http.Post(fmt.Sprintf("%s/tasks/stop", c.baseURL), "application/json", nil)
+	endpoint := c.baseURL + "/tasks/stop"
+	if id != -1 {
+		endpoint += "?id=" + strconv.FormatInt(id, 10)
+	}
+	resp, err := c.http.Post(endpoint, "application/json", nil)
 	if err != nil {
 		return err
 	}

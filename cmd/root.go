@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -21,8 +22,12 @@ var rootCmd = &cobra.Command{
 	Use:   "tasc",
 	Short: "A modern, snappy task manager",
 	Long:  `Tasc is a fast and efficient CLI task manager for your terminal.`,
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if db.DB == nil && requiresLocalDatabase(cmd.CommandPath()) {
+			return fmt.Errorf("%s requires a local SQLite database; remote mode is not supported", cmd.CommandPath())
+		}
 		beginUndoTracking(cmd)
+		return nil
 	},
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
 		endUndoTracking()
@@ -31,9 +36,22 @@ var rootCmd = &cobra.Command{
 
 func Execute() {
 	err := rootCmd.Execute()
+	// Cobra does not run PersistentPostRun after a RunE failure.
+	endUndoTracking()
 	if err != nil {
 		os.Exit(1)
 	}
+}
+
+func requiresLocalDatabase(command string) bool {
+	switch command {
+	case "tasc ask", "tasc backup", "tasc backup list", "tasc edit",
+		"tasc import-tw", "tasc log", "tasc project archive", "tasc project create",
+		"tasc project delete", "tasc renumber", "tasc restore", "tasc seed",
+		"tasc serve", "tasc ui", "tasc undo", "tasc vague":
+		return true
+	}
+	return false
 }
 
 func init() {
