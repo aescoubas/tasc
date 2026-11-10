@@ -311,12 +311,15 @@ func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) 
 	baseQuery := `
 		SELECT 
 			id, title, description, project, status, created_at, due_at, schedule_block, estimate, active_start, time_spent, reschedule_count,
-			EXISTS(
+			is_blocked
+		FROM (
+			SELECT tasks.*, status NOT IN ('done', 'deleted') AND EXISTS(
 				SELECT 1 FROM task_dependencies td
 				JOIN tasks blocker ON blocker.id = td.blocker_id
 				WHERE td.blocked_id = tasks.id AND blocker.status NOT IN ('done', 'deleted')
-			) as is_blocked
-		FROM tasks 
+			) AS is_blocked
+			FROM tasks
+		) AS task_states
 		WHERE 1=1
 	`
 	var args []interface{}
@@ -327,7 +330,8 @@ func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) 
 			placeholders[i] = "?"
 			args = append(args, st)
 		}
-		baseQuery += fmt.Sprintf(" AND status IN (%s)", strings.Join(placeholders, ","))
+		// Match the displayed status without replacing the saved workflow status.
+		baseQuery += fmt.Sprintf(" AND CASE WHEN is_blocked THEN 'blocked' ELSE status END IN (%s)", strings.Join(placeholders, ","))
 	} else if !filter.IncludeDeleted {
 		baseQuery += " AND status NOT IN ('done', 'deleted', 'undefined')"
 	}

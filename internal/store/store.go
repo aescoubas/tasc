@@ -7,6 +7,7 @@ import (
 )
 
 type TaskFilter struct {
+	// Status matches the displayed status: open dependencies override it with blocked.
 	Status         []models.TaskStatus
 	Projects       []string
 	IDs            []int64

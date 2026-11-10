@@ -414,7 +414,19 @@ func TestSQLiteStore_IsBlockedIgnoresSatisfiedBlockers(t *testing.T) {
 		if len(tasks) != 1 {
 			t.Fatalf("ListTasks returned %d tasks for id %d, want 1", len(tasks), id)
 		}
-		return tasks[0].IsBlocked
+		blocked := tasks[0].IsBlocked
+		filtered, err := s.ListTasks(store.TaskFilter{IDs: []int64{id}, Status: []models.TaskStatus{models.StatusBlocked}})
+		if err != nil {
+			t.Fatalf("ListTasks(blocked) failed: %v", err)
+		}
+		wantCount := 0
+		if blocked {
+			wantCount = 1
+		}
+		if len(filtered) != wantCount {
+			t.Fatalf("blocked filter returned %d tasks for %d — %s, want %d", len(filtered), id, tasks[0].Title, wantCount)
+		}
+		return blocked
 	}
 
 	if !isBlocked(blocked) {
@@ -442,5 +454,94 @@ func TestSQLiteStore_IsBlockedIgnoresSatisfiedBlockers(t *testing.T) {
 	}
 	if len(deps) != 2 {
 		t.Fatalf("GetDependencies returned %d rows, want 2 — blocked-ness is derived, not stored", len(deps))
+	}
+}
+
+func TestSQLiteStore_ListTasksFiltersDisplayedStatus(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	s := NewSQLiteStore(db)
+
+	create := func(title string, status models.TaskStatus) int64 {
+		t.Helper()
+		id, err := s.CreateTask(models.Task{Title: title, Project: "FilterProject"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.BatchUpdateTasks([]int64{id}, map[string]interface{}{"status": status}); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	blocker := create("Open blocker", models.StatusBacklog)
+	backlog := create("Ready backlog", models.StatusBacklog)
+	ongoing := create("Ready ongoing", models.StatusOngoing)
+	manual := create("Manually blocked", models.StatusBlocked)
+	blockedBacklog := create("Blocked backlog", models.StatusBacklog)
+	blockedOngoing := create("Blocked ongoing", models.StatusOngoing)
+	done := create("Done dependent", models.StatusDone)
+	deleted := create("Deleted dependent", models.StatusDeleted)
+	for _, id := range []int64{blockedBacklog, blockedOngoing, done, deleted} {
+		if err := s.AddDependency(blocker, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	check := func(t *testing.T, filter store.TaskFilter, want []int64) {
+		t.Helper()
+		tasks, err := s.ListTasks(filter)
+		if err != nil {
+			t.Fatalf("ListTasks: %v", err)
+		}
+		if len(tasks) != len(want) {
+			t.Fatalf("ListTasks returned %d tasks, want %d: %+v", len(tasks), len(want), tasks)
+		}
+		expected := make(map[int64]bool, len(want))
+		for _, id := range want {
+			expected[id] = true
+		}
+		for _, task := range tasks {
+			if !expected[task.ID] {
+				t.Errorf("unexpected task %d — %s", task.ID, task.Title)
+			}
+			delete(expected, task.ID)
+			if (task.Status == models.StatusDone || task.Status == models.StatusDeleted) && task.IsBlocked {
+				t.Errorf("finished task %d — %s is displayed as blocked", task.ID, task.Title)
+			}
+		}
+		if len(expected) != 0 {
+			t.Errorf("missing tasks: %v", expected)
+		}
+	}
+
+	for _, tt := range []struct {
+		name   string
+		filter store.TaskFilter
+		want   []int64
+	}{
+		{"blocked", store.TaskFilter{Status: []models.TaskStatus{models.StatusBlocked}}, []int64{manual, blockedBacklog, blockedOngoing}},
+		{"backlog", store.TaskFilter{Status: []models.TaskStatus{models.StatusBacklog}}, []int64{blocker, backlog}},
+		{"ongoing", store.TaskFilter{Status: []models.TaskStatus{models.StatusOngoing}}, []int64{ongoing}},
+		{"mixed", store.TaskFilter{Status: []models.TaskStatus{models.StatusBlocked, models.StatusOngoing}}, []int64{manual, blockedBacklog, blockedOngoing, ongoing}},
+		{"done", store.TaskFilter{Status: []models.TaskStatus{models.StatusDone}}, []int64{done}},
+		{"deleted", store.TaskFilter{Status: []models.TaskStatus{models.StatusDeleted}}, []int64{deleted}},
+		{"all", store.TaskFilter{IncludeDeleted: true}, []int64{blocker, backlog, ongoing, manual, blockedBacklog, blockedOngoing, done, deleted}},
+		{"project and id", store.TaskFilter{Status: []models.TaskStatus{models.StatusBlocked}, Projects: []string{"FilterProject"}, IDs: []int64{blockedBacklog, backlog}}, []int64{blockedBacklog}},
+		{"other project", store.TaskFilter{Status: []models.TaskStatus{models.StatusBlocked}, Projects: []string{"OtherProject"}}, nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) { check(t, tt.filter, tt.want) })
+	}
+
+	if err := s.MarkDone(blocker); err != nil {
+		t.Fatal(err)
+	}
+	check(t, store.TaskFilter{Status: []models.TaskStatus{models.StatusBlocked}}, []int64{manual})
+	check(t, store.TaskFilter{Status: []models.TaskStatus{models.StatusBacklog}}, []int64{backlog, blockedBacklog})
+	check(t, store.TaskFilter{Status: []models.TaskStatus{models.StatusOngoing}}, []int64{ongoing, blockedOngoing})
+
+	// Listing must leave the saved workflow status intact.
+	task, err := s.GetTask(blockedBacklog)
+	if err != nil || task.Status != models.StatusBacklog {
+		t.Fatalf("saved status changed: task=%+v, err=%v", task, err)
 	}
 }

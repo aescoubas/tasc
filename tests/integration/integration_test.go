@@ -2,6 +2,7 @@ package integration
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/mcp"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -794,6 +797,79 @@ func countDependencies(t *testing.T, dbPath string) int {
 		t.Fatalf("count dependencies: %v", err)
 	}
 	return count
+}
+
+func TestMCPBlockedStatusFilter(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "mcp-blocked.db")
+	for _, args := range [][]string{
+		{"add", "MCP Open Blocker", "--project", "Blockers", "--due", "2999-01-01"},
+		{"add", "MCP Blocked Backlog", "--project", "Dependents", "--due", "2999-01-01"},
+		{"add", "MCP Blocked Ongoing", "--project", "Dependents", "--due", "2999-01-01"},
+		{"start", "3"},
+		{"dep", "1", "2"},
+		{"dep", "1", "3"},
+	} {
+		if out, err := runTasc(t, dbPath, args...); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	c, err := client.NewStdioMCPClient(binaryPath, []string{
+		"TASC_DB_PATH=" + dbPath, "HOME=" + tmpDir, "TASC_REMOTE=",
+	}, "mcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if _, err := c.Initialize(ctx, mcp.InitializeRequest{Params: mcp.InitializeParams{
+		ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+		ClientInfo:      mcp.Implementation{Name: "tasc-integration", Version: "1"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	call := func(name string, args map[string]any) string {
+		t.Helper()
+		result, err := c.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{
+			Name: name, Arguments: args,
+		}})
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if result.IsError || len(result.Content) != 1 {
+			t.Fatalf("%s returned unexpected result: %+v", name, result)
+		}
+		content, ok := result.Content[0].(mcp.TextContent)
+		if !ok {
+			t.Fatalf("%s returned non-text content: %+v", name, result.Content)
+		}
+		return content.Text
+	}
+	checkList := func(args map[string]any, want string) {
+		t.Helper()
+		got := call("tasc_list_tasks", args)
+		if got != want {
+			t.Fatalf("list %v:\ngot: %q\nwant: %q", args, got, want)
+		}
+		t.Logf("list %v: %s", args, got)
+	}
+	blocker := "- [1] MCP Open Blocker (Project: Blockers, Status: backlog) Due: 2999-01-01\n"
+	dependents := "- [2] MCP Blocked Backlog (Project: Dependents, Status: blocked) Due: 2999-01-01\n" +
+		"- [3] MCP Blocked Ongoing (Project: Dependents, Status: blocked) Due: 2999-01-01\n"
+	checkList(nil, blocker+dependents)
+	checkList(map[string]any{"status": "blocked"}, dependents)
+	checkList(map[string]any{"status": "backlog"}, blocker)
+	checkList(map[string]any{"status": "ongoing"}, "No tasks found.")
+	checkList(map[string]any{"status": "backlog, blocked"}, blocker+dependents)
+	checkList(map[string]any{"status": "blocked", "project": "Dependents"}, dependents)
+	checkList(map[string]any{"status": "blocked", "project": "Blockers"}, "No tasks found.")
+	call("tasc_complete_task", map[string]any{"id": 1})
+	checkList(map[string]any{"status": "blocked"}, "No tasks found.")
+	checkList(map[string]any{"status": "backlog"}, "- [2] MCP Blocked Backlog (Project: Dependents, Status: backlog) Due: 2999-01-01\n")
+	checkList(map[string]any{"status": "ongoing"}, "- [3] MCP Blocked Ongoing (Project: Dependents, Status: ongoing) Due: 2999-01-01\n")
 }
 
 func TestCompletingABlockerClearsTheDependent(t *testing.T) {
