@@ -389,6 +389,38 @@ Real-binary regressions cover local/remote read parity, unchanged client databas
 contents, timer start/stop failures, local timer undo, and local-only rejection.
 The broader remote-support task remains open. This batch is not deployed.
 
+**Next: 1452 — Unify task completion, recurrence, and timer finalization.**
+
+Proposed stored-data behavior, pending owner approval under `AGENTS.md`:
+- Complete an open task, finalize its active timer, and create its next recurring
+  occurrence in one transaction. Preserve the existing recurrence date rule: advance
+  from the prior due date, or from completion time when there is no due date.
+- Retrying completion of an already-done task is a no-op: preserve its completion
+  timestamp and recorded time, and create no additional occurrence.
+- Preserve title, description, project, recurrence, estimate, and time block on the
+  successor. Start that new backlog task with no active timer or accumulated time.
+- Reject missing or deleted targets and invalid recurrence rules without changing
+  tasks, timers, projects, or successors. Bulk completion is all-or-nothing and
+  deduplicates repeated IDs.
+- Route CLI, MCP, REST completion actions, and the TUI through the same Store
+  operation. Cover bulk status-to-done updates too, so they cannot bypass the rules.
+- Retain local CLI undo support. Add failure, retry, concurrent-completion, and
+  cross-interface regression cases using temporary databases. No migration, priority
+  weight change, deployment, or dashboard iteration is proposed.
+
+Baseline probe against `cff1d1a`, using the built local CLI and Store with FTS5 and
+temporary databases (`/tmp/tasc-completion-teE1Xt/probe.go`):
+```text
+CLI retry: successors=2; proposed=1
+CLI successor block=""; proposed="morning"
+Store completion: successors=0; proposed=1
+Store completion: timer_active=true; proposed=false
+Invalid recurrence: error=<nil> status="done"; proposed=error with status "backlog"
+Bulk missing target: error=<nil> valid_status="done"; proposed=error with status "backlog"
+```
+These are confirmed defects and proposed expectations, not passing verification of
+an implementation. Completion behavior has not yet been changed.
+
 **Verification:**
 - [ ] `nix develop --command make check` passes with regressions for every resolved gap.
 - [ ] `nix develop --command make test-race` passes for changes to the server and timers.
