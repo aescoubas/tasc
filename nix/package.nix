@@ -1,9 +1,10 @@
-{ buildGoModule
-, go_1_24
-, installShellFiles
-, lib
-, stdenv
-, version ? "unstable"
+{
+  buildGoModule,
+  go_1_24,
+  installShellFiles,
+  lib,
+  stdenv,
+  version ? "unstable",
 }:
 
 buildGoModule rec {
@@ -12,7 +13,8 @@ buildGoModule rec {
 
   src = lib.cleanSourceWith {
     src = ../.;
-    filter = path: type:
+    filter =
+      path: type:
       let
         relPath = lib.removePrefix "${toString ../.}/" (toString path);
       in
@@ -22,7 +24,7 @@ buildGoModule rec {
       && !(lib.hasPrefix "web/" relPath);
   };
 
-  vendorHash = "sha256-3FpOIUs+7aey4wwnH/BZU7JAr/vIx4/qhztOGvfbXDI=";
+  vendorHash = "sha256-yGiADbaQ8tsLpYV9eNGSe+ssUf6bVTHEZsvjEOot9/s=";
   go = go_1_24;
   subPackages = [ "." ];
   tags = [ "fts5" ];
