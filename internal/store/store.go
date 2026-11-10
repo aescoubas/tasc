@@ -1,10 +1,14 @@
 package store
 
 import (
+	"errors"
 	"time"
 
 	"github.com/aescoubas/tasc/internal/models"
 )
+
+// ErrInvalidDependency identifies a link that would violate the task graph rules.
+var ErrInvalidDependency = errors.New("invalid dependency")
 
 type TaskFilter struct {
 	// Status matches the displayed status: open dependencies override it with blocked.
@@ -32,6 +36,7 @@ type Store interface {
 	GetActiveTask() (*models.Task, error)
 
 	// Dependencies
+	// AddDependency requires existing, distinct tasks and rejects cycles.
 	AddDependency(blockerID, blockedID int64) error
 	RemoveDependency(blockerID, blockedID int64) error
 	GetDependencies() ([]models.TaskDependency, error)

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -259,6 +260,18 @@ func (c *Client) AddDependency(blockerID, blockedID int64) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusBadRequest {
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if err != nil {
+			return fmt.Errorf("%w: read validation error: %v", store.ErrInvalidDependency, err)
+		}
+		message := strings.TrimSpace(string(body))
+		message = strings.TrimPrefix(message, store.ErrInvalidDependency.Error()+": ")
+		if message == "" {
+			return store.ErrInvalidDependency
+		}
+		return fmt.Errorf("%w: %s", store.ErrInvalidDependency, message)
+	}
 	if resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("failed: %s", resp.Status)
 	}

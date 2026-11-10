@@ -40,6 +40,11 @@ Migration 5 dropped `scheduled_at`. `schedule_block` is the only scheduling colu
 Blocking relationships, as a graph.
 - **`blocker_id`**, **`blocked_id`**: FKs to `tasks.id`; composite primary key.
 
+`Store.AddDependency` requires existing, distinct tasks and rejects direct and indirect
+cycles. SQLite validates and inserts in one atomic write statement, including across
+connections. REST returns HTTP 400 for validation failures; the remote client preserves
+`store.ErrInvalidDependency` for callers.
+
 ### `undo_actions`, `undo_entries`, `undo_context`
 Added by migration 6. An `undo_actions` row is one user command; `undo_entries` holds
 the inverse SQL statements that roll it back, emitted by audit triggers on `tasks` and

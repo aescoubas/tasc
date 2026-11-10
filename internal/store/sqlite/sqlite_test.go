@@ -2,7 +2,9 @@ package sqlite
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -377,6 +379,126 @@ func TestSQLiteStore_RemoveDependency(t *testing.T) {
 	}
 	if len(deps) != 1 {
 		t.Fatalf("GetDependencies returned %d dependencies after no-op removals, want 1", len(deps))
+	}
+}
+
+func TestSQLiteStore_AddDependencyRejectsInvalidLinks(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	s := NewSQLiteStore(db)
+	var ids []int64
+	for _, title := range []string{"First", "Second", "Third", "Fourth"} {
+		id, err := s.CreateTask(models.Task{Title: title})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	for _, edge := range [][2]int64{{ids[0], ids[1]}, {ids[1], ids[2]}} {
+		if err := s.AddDependency(edge[0], edge[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tt := range []struct {
+		name             string
+		blocker, blocked int64
+	}{
+		{"self", ids[0], ids[0]},
+		{"missing blocker", 9999, ids[0]},
+		{"missing dependent", ids[0], 9999},
+		{"direct cycle", ids[1], ids[0]},
+		{"indirect cycle", ids[2], ids[0]},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := s.AddDependency(tt.blocker, tt.blocked); !errors.Is(err, store.ErrInvalidDependency) {
+				t.Fatalf("got %v, want ErrInvalidDependency", err)
+			}
+			deps, err := s.GetDependencies()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(deps) != 2 {
+				t.Fatalf("rejected dependency changed the graph: %+v", deps)
+			}
+		})
+	}
+	// Multiple parents and a shortcut along an existing path are valid DAG edges.
+	for _, edge := range [][2]int64{{ids[3], ids[1]}, {ids[0], ids[2]}} {
+		if err := s.AddDependency(edge[0], edge[1]); err != nil {
+			t.Fatalf("valid dependency rejected: %v", err)
+		}
+	}
+	deps, err := s.GetDependencies()
+	if err != nil || len(deps) != 4 {
+		t.Fatalf("valid dependencies not stored: deps=%+v err=%v", deps, err)
+	}
+}
+
+func TestSQLiteStore_AddDependencyTraversesLegacyCycles(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	s := NewSQLiteStore(db)
+	for _, title := range []string{"Legacy first", "Legacy second", "New parent"} {
+		if _, err := s.CreateTask(models.Task{Title: title}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Older versions permitted cycles. Traversal must terminate on existing data.
+	if _, err := db.Exec("INSERT INTO task_dependencies (blocker_id, blocked_id) VALUES (1, 2), (2, 1)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddDependency(3, 1); err != nil {
+		t.Fatalf("valid incoming edge rejected: %v", err)
+	}
+	if err := s.AddDependency(2, 3); err == nil {
+		t.Fatal("new cycle through the legacy graph was accepted")
+	}
+	deps, err := s.GetDependencies()
+	if err != nil || len(deps) != 3 {
+		t.Fatalf("legacy graph changed: deps=%+v, err=%v", deps, err)
+	}
+}
+
+func TestSQLiteStore_AddDependencySerializesOppositeEdges(t *testing.T) {
+	dsn := filepath.Join(t.TempDir(), "concurrent-dependencies.db") + "?_busy_timeout=10000"
+	db, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := dbpkg.RunMigrations(db); err != nil {
+		t.Fatal(err)
+	}
+	other, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	first, second := NewSQLiteStore(db), NewSQLiteStore(other)
+	for _, title := range []string{"Concurrent first", "Concurrent second"} {
+		if _, err := first.CreateTask(models.Task{Title: title}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	go func() { <-start; results <- first.AddDependency(1, 2) }()
+	go func() { <-start; results <- second.AddDependency(2, 1) }()
+	close(start)
+	accepted, rejected := 0, 0
+	for range 2 {
+		err := <-results
+		if err == nil {
+			accepted++
+		} else if errors.Is(err, store.ErrInvalidDependency) {
+			rejected++
+		} else {
+			t.Errorf("unexpected concurrent write error: %v", err)
+		}
+	}
+	deps, err := first.GetDependencies()
+	if err != nil || accepted != 1 || rejected != 1 || len(deps) != 1 {
+		t.Fatalf("accepted=%d rejected=%d deps=%+v err=%v", accepted, rejected, deps, err)
 	}
 }
 

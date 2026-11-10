@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,8 @@ import (
 
 	dbpkg "github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
+	"github.com/aescoubas/tasc/internal/store"
+	"github.com/aescoubas/tasc/internal/store/remote"
 	"github.com/aescoubas/tasc/internal/store/sqlite"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -151,5 +154,70 @@ func TestServer_AddAndRemoveDependency(t *testing.T) {
 	srv.ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("DELETE /dependencies with a bad ID returned status %v, want 400", rr.Code)
+	}
+}
+
+func TestServer_DependencyValidation(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	st := sqlite.NewSQLiteStore(db)
+	for _, title := range []string{"Zero", "Second", "Third", "Fourth"} {
+		if _, err := st.CreateTask(models.Task{Title: title}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec("UPDATE tasks SET id = 0 WHERE id = 1"); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(NewServer(st))
+	defer srv.Close()
+	c := remote.NewClient(srv.URL)
+	for _, edge := range [][2]int64{{0, 2}, {2, 3}} {
+		if err := c.AddDependency(edge[0], edge[1]); err != nil {
+			t.Fatalf("valid dependency rejected: %v", err)
+		}
+	}
+	for _, tt := range []struct {
+		name string
+		body string
+	}{
+		{"self", `{"blocker_id":2,"blocked_id":2}`},
+		{"missing blocker task", `{"blocker_id":9999,"blocked_id":2}`},
+		{"missing dependent task", `{"blocker_id":2,"blocked_id":9999}`},
+		{"direct cycle", `{"blocker_id":2,"blocked_id":0}`},
+		{"indirect cycle", `{"blocker_id":3,"blocked_id":0}`},
+		{"missing blocker field", `{"blocked_id":4}`},
+		{"missing dependent field", `{"blocker_id":4}`},
+		{"null blocker field", `{"blocker_id":null,"blocked_id":4}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			response, err := srv.Client().Post(srv.URL+"/dependencies", "application/json", bytes.NewBufferString(tt.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			if response.StatusCode != http.StatusBadRequest {
+				t.Fatalf("invalid dependency returned HTTP %d, want 400", response.StatusCode)
+			}
+			deps, err := st.GetDependencies()
+			if err != nil || len(deps) != 2 {
+				t.Fatalf("invalid request changed graph: deps=%+v err=%v", deps, err)
+			}
+		})
+	}
+	if err := c.AddDependency(3, 0); !errors.Is(err, store.ErrInvalidDependency) {
+		t.Fatalf("remote validation error = %v, want ErrInvalidDependency", err)
+	}
+	// Store failures must remain server errors rather than being called bad input.
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	response, err := srv.Client().Post(srv.URL+"/dependencies", "application/json", bytes.NewBufferString(`{"blocker_id":0,"blocked_id":4}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("closed database returned HTTP %d, want 500", response.StatusCode)
 	}
 }

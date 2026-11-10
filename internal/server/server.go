@@ -299,16 +299,24 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAddDependency(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		BlockerID int64 `json:"blocker_id"`
-		BlockedID int64 `json:"blocked_id"`
+		BlockerID *int64 `json:"blocker_id"`
+		BlockedID *int64 `json:"blocked_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err := s.store.AddDependency(req.BlockerID, req.BlockedID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if req.BlockerID == nil || req.BlockedID == nil {
+		http.Error(w, "blocker_id and blocked_id are required", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.AddDependency(*req.BlockerID, *req.BlockedID); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, store.ErrInvalidDependency) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)

@@ -807,6 +807,77 @@ func countDependencies(t *testing.T, dbPath string) int {
 	return count
 }
 
+func TestDependencyValidationThroughCLIAndMCP(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "dependency-validation.db")
+	for _, args := range [][]string{
+		{"add", "Validation first"}, {"add", "Validation second"}, {"add", "Validation third"},
+		{"dep", "1", "2"}, {"dep", "2", "3"},
+	} {
+		if out, err := runTasc(t, dbPath, args...); err != nil {
+			t.Fatalf("%v: %v\n%s", args, err, out)
+		}
+	}
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	srv := httptest.NewServer(server.NewServer(sqlite.NewSQLiteStore(db)))
+	defer srv.Close()
+	for _, backend := range []struct {
+		name   string
+		prefix []string
+	}{
+		{"local", nil}, {"remote", []string{"--remote", srv.URL}},
+	} {
+		t.Run(backend.name, func(t *testing.T) {
+			out, err := runTasc(t, dbPath, append(append([]string{}, backend.prefix...), "dep", "3", "1")...)
+			if err != nil || !strings.Contains(out, "cycle") || countDependencies(t, dbPath) != 2 {
+				t.Fatalf("CLI accepted indirect cycle: err=%v output=%s", err, out)
+			}
+			args := append(append([]string{}, backend.prefix...), "mcp")
+			c, err := client.NewStdioMCPClient(binaryPath, []string{
+				"HOME=" + filepath.Dir(dbPath), "TASC_DB_PATH=" + dbPath, "TASC_REMOTE=",
+			}, args...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if _, err := c.Initialize(ctx, mcp.InitializeRequest{Params: mcp.InitializeParams{
+				ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+				ClientInfo:      mcp.Implementation{Name: "dependency-validation", Version: "1"},
+			}}); err != nil {
+				t.Fatal(err)
+			}
+			for _, tt := range []struct {
+				name             string
+				blocker, blocked int64
+			}{
+				{"self", 1, 1}, {"missing blocker", 9999, 1}, {"missing dependent", 1, 9999},
+				{"direct cycle", 2, 1}, {"indirect cycle", 3, 1},
+			} {
+				t.Run(tt.name, func(t *testing.T) {
+					result, err := c.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{
+						Name: "tasc_add_dependency", Arguments: map[string]any{"blocker_id": tt.blocker, "blocked_id": tt.blocked},
+					}})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !result.IsError || countDependencies(t, dbPath) != 2 {
+						t.Fatalf("MCP accepted invalid dependency: %+v", result)
+					}
+					text, ok := result.Content[0].(mcp.TextContent)
+					if !ok || !strings.Contains(text.Text, "invalid dependency") {
+						t.Fatalf("MCP lost validation reason: %+v", result)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestRemoteListTaskFiltersMatchLocal(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "remote-filters.db")
 	db, err := sql.Open("sqlite3", dbPath)

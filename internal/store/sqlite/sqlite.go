@@ -734,9 +734,36 @@ func (s *SQLiteStore) GetActiveTask() (*models.Task, error) {
 }
 
 func (s *SQLiteStore) AddDependency(blockerID, blockedID int64) error {
-	query := `INSERT INTO task_dependencies (blocker_id, blocked_id) VALUES (?, ?)`
-	_, err := s.db.Exec(query, blockerID, blockedID)
-	return err
+	if blockerID == blockedID {
+		return fmt.Errorf("%w: a task cannot block itself", store.ErrInvalidDependency)
+	}
+	// Check and insert in one write statement so concurrent callers cannot both
+	// pass validation and then create a cycle. UNION terminates on legacy cycles.
+	query := `
+		WITH RECURSIVE descendants(id) AS (
+			SELECT ?
+			UNION
+			SELECT d.blocked_id FROM task_dependencies d
+			JOIN descendants ON d.blocker_id = descendants.id
+		)
+		INSERT INTO task_dependencies (blocker_id, blocked_id)
+		SELECT ?, ?
+		WHERE EXISTS (SELECT 1 FROM tasks WHERE id = ?)
+		  AND EXISTS (SELECT 1 FROM tasks WHERE id = ?)
+		  AND NOT EXISTS (SELECT 1 FROM descendants WHERE id = ?)
+	`
+	result, err := s.db.Exec(query, blockedID, blockerID, blockedID, blockerID, blockedID, blockerID)
+	if err != nil {
+		return err
+	}
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if inserted == 0 {
+		return fmt.Errorf("%w: both tasks must exist and the link must not create a cycle", store.ErrInvalidDependency)
+	}
+	return nil
 }
 
 // RemoveDependency drops one blocker -> blocked edge. The primary key makes it
