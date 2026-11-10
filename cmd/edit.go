@@ -1,14 +1,13 @@
 package cmd
 
 import (
-	"database/sql"
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 
 	"strings"
 
-	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -18,41 +17,26 @@ var editCmd = &cobra.Command{
 	Use:   "edit [id]",
 	Short: "Edit a task in your default editor",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		idStr := args[0]
-
-		// 1. Fetch Task
-		var t models.Task
-		var project sql.NullString
-		var description sql.NullString
-		var estimate sql.NullString
-		var recurrence sql.NullString
-
-		query := "SELECT id, title, description, project, status, created_at, due_at, estimate, recurrence FROM tasks WHERE id = ?"
-		row := db.DB.QueryRow(query, idStr)
-
-		err := row.Scan(&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt, &t.DueAt, &estimate, &recurrence)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, err := strconv.ParseInt(args[0], 10, 64)
 		if err != nil {
-			fmt.Printf("Error fetching task: %v\n", err)
-			return
+			return fmt.Errorf("invalid task ID: %s", args[0])
 		}
-		t.Description = description.String
-		t.Project = project.String
-		t.Estimate = estimate.String
-		t.Recurrence = recurrence.String
+		t, err := CurrentStore.GetTask(id)
+		if err != nil {
+			return fmt.Errorf("error fetching task: %w", err)
+		}
 
 		// 2. Marshal to YAML
 		data, err := yaml.Marshal(&t)
 		if err != nil {
-			fmt.Printf("Error marshaling task: %v\n", err)
-			return
+			return fmt.Errorf("error marshaling task: %w", err)
 		}
 
 		// Post-process YAML to force multiline description
 		var node yaml.Node
 		if err := yaml.Unmarshal(data, &node); err != nil {
-			fmt.Printf("Error processing YAML: %v\n", err)
-			return
+			return fmt.Errorf("error processing YAML: %w", err)
 		}
 
 		if len(node.Content) > 0 && node.Content[0].Kind == yaml.MappingNode {
@@ -88,8 +72,7 @@ var editCmd = &cobra.Command{
 
 		data, err = yaml.Marshal(&node)
 		if err != nil {
-			fmt.Printf("Error re-marshaling task: %v\n", err)
-			return
+			return fmt.Errorf("error re-marshaling task: %w", err)
 		}
 
 		// Force |- for empty strings if yaml.v3 output ""
@@ -102,18 +85,15 @@ var editCmd = &cobra.Command{
 		// 3. Write to temp file
 		tmpFile, err := os.CreateTemp("", "tasc-*.yaml")
 		if err != nil {
-			fmt.Printf("Error creating temp file: %v\n", err)
-			return
+			return fmt.Errorf("error creating temp file: %w", err)
 		}
 		defer os.Remove(tmpFile.Name())
 
 		if _, err := tmpFile.Write(data); err != nil {
-			fmt.Printf("Error writing temp file: %v\n", err)
-			return
+			return fmt.Errorf("error writing temp file: %w", err)
 		}
 		if err := tmpFile.Close(); err != nil {
-			fmt.Printf("Error closing temp file: %v\n", err)
-			return
+			return fmt.Errorf("error closing temp file: %w", err)
 		}
 
 		// 4. Open Editor
@@ -128,22 +108,22 @@ var editCmd = &cobra.Command{
 		c.Stderr = os.Stderr
 
 		if err := c.Run(); err != nil {
-			fmt.Printf("Error running editor: %v\n", err)
-			return
+			return fmt.Errorf("error running editor: %w", err)
 		}
 
 		// 5. Read back
 		newData, err := os.ReadFile(tmpFile.Name())
 		if err != nil {
-			fmt.Printf("Error reading temp file: %v\n", err)
-			return
+			return fmt.Errorf("error reading temp file: %w", err)
 		}
 
 		// 6. Unmarshal
 		var newT models.Task
 		if err := yaml.Unmarshal(newData, &newT); err != nil {
-			fmt.Printf("Error parsing YAML: %v\n", err)
-			return
+			return fmt.Errorf("error parsing YAML: %w", err)
+		}
+		if newT.ID != t.ID {
+			return fmt.Errorf("task ID cannot be changed in the editor")
 		}
 
 		// 7. Update DB
@@ -154,14 +134,13 @@ var editCmd = &cobra.Command{
 			rescheduleIncrement = 1
 		}
 
-		updateQuery := `UPDATE tasks SET title = ?, description = ?, project = ?, status = ?, due_at = ?, estimate = ?, recurrence = ?, reschedule_count = reschedule_count + ? WHERE id = ?`
-		_, err = db.DB.Exec(updateQuery, newT.Title, newT.Description, newT.Project, newT.Status, newT.DueAt, newT.Estimate, newT.Recurrence, rescheduleIncrement, newT.ID)
-		if err != nil {
-			fmt.Printf("Error updating task: %v\n", err)
-			return
+		newT.RescheduleCount = t.RescheduleCount + rescheduleIncrement
+		if err := CurrentStore.UpdateTask(newT); err != nil {
+			return fmt.Errorf("error updating task: %w", err)
 		}
 
 		fmt.Printf("Task %d updated.\n", newT.ID)
+		return nil
 	},
 }
 

@@ -22,8 +22,13 @@ Use these MCP endpoints when working with Tasc.
   - Edit one task.
 - `tasc_batch_update_tasks`
   - Bulk reschedule or move tasks by project or status.
+  - Setting status to `done` atomically completes the whole batch, finalizes timers,
+    and advances recurrence. A missing/deleted task or invalid recurrence rolls back
+    the whole batch. Repeated IDs are processed once.
 - `tasc_complete_task`
-  - Mark a task done.
+  - Atomically mark a task done, finalize its timer, and create its next recurring
+    occurrence with the same time block and metadata. Retrying an already-done task
+    leaves its completion timestamp and time spent unchanged and creates no duplicate.
 - `tasc_delete_task`
   - Soft delete a task. Require explicit intent.
 - `tasc_start_task`

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -452,18 +453,21 @@ func (ms *MCPServer) handleBatchUpdate(ctx context.Context, request mcp.CallTool
 	}
 
 	var ids []int64
+	seen := make(map[int64]bool)
 	parts := strings.Split(idsStr, ",")
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue
 		}
-		var id int64
-		_, err := fmt.Sscanf(p, "%d", &id)
+		id, err := strconv.ParseInt(p, 10, 64)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Invalid ID: %s", p)), nil
 		}
-		ids = append(ids, id)
+		if !seen[id] {
+			ids = append(ids, id)
+			seen[id] = true
+		}
 	}
 
 	if len(ids) == 0 {

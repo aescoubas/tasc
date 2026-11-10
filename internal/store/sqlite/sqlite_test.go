@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +27,245 @@ func setupTestDB(t *testing.T) *sql.DB {
 	}
 
 	return db
+}
+
+func completionFixture(t *testing.T, db *sql.DB, rule string) models.Task {
+	t.Helper()
+	due := time.Date(2030, 1, 10, 9, 0, 0, 0, time.UTC)
+	task := models.Task{Title: "Completion probe", Description: "Preserve this\nbody", Project: "Series",
+		DueAt: &due, ScheduleBlock: "morning", Estimate: "45m", Recurrence: rule}
+	st := NewSQLiteStore(db)
+	id, err := st.CreateTask(task)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err = st.GetTask(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return task
+}
+
+func TestCompletionFinalizesTimerAndPreservesRecurrence(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	s := NewSQLiteStore(db)
+	task := completionFixture(t, db, "daily")
+	start := time.Now().Add(-2 * time.Minute)
+	if _, err := db.Exec("UPDATE tasks SET active_start = ?, time_spent = 90, reschedule_count = 4 WHERE id = ?", start, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkDone(task.ID); err != nil {
+		t.Fatal(err)
+	}
+	done, err := s.GetTask(task.ID)
+	if err != nil || done.Status != models.StatusDone || done.CompletedAt == nil || done.ActiveStart != nil {
+		t.Fatalf("completion state: %+v, %v", done, err)
+	}
+	wantSeconds := 90 + int64(done.CompletedAt.Sub(start).Seconds())
+	if done.TimeSpent != wantSeconds {
+		t.Fatalf("recorded %d seconds, want %d", done.TimeSpent, wantSeconds)
+	}
+	var nextID int64
+	if err := db.QueryRow("SELECT id FROM tasks WHERE id != ?", task.ID).Scan(&nextID); err != nil {
+		t.Fatal(err)
+	}
+	next, err := s.GetTask(nextID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Title != task.Title || next.Description != task.Description || next.Project != task.Project ||
+		next.Recurrence != task.Recurrence || next.Estimate != task.Estimate || next.ScheduleBlock != task.ScheduleBlock {
+		t.Fatalf("successor lost metadata: %+v", next)
+	}
+	if next.DueAt == nil || !next.DueAt.Equal(task.DueAt.AddDate(0, 0, 1)) || next.Status != models.StatusBacklog ||
+		next.TimeSpent != 0 || next.ActiveStart != nil || next.CompletedAt != nil || next.RescheduleCount != 0 {
+		t.Fatalf("invalid successor lifecycle: %+v", next)
+	}
+	project, err := s.GetProject(task.Project)
+	if err != nil || project.Status != models.ProjectStatus("active") {
+		t.Fatalf("recurring project should remain active: %+v, %v", project, err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := s.MarkDone(task.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	retried, err := s.GetTask(task.ID)
+	if err != nil || !reflect.DeepEqual(retried, done) {
+		t.Fatalf("completion retry changed task: %+v, %v", retried, err)
+	}
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&count); err != nil || count != 2 {
+		t.Fatalf("retry left %d task rows, want 2: %v", count, err)
+	}
+}
+
+func TestCompletionWithoutDueDateUsesCompletionTime(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	s := NewSQLiteStore(db)
+	task := completionFixture(t, db, "weekly")
+	if _, err := db.Exec("UPDATE tasks SET due_at = NULL WHERE id = ?", task.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkDone(task.ID); err != nil {
+		t.Fatal(err)
+	}
+	done, err := s.GetTask(task.ID)
+	if err != nil || done.CompletedAt == nil {
+		t.Fatalf("completed task: %+v, %v", done, err)
+	}
+	var nextDue time.Time
+	if err := db.QueryRow("SELECT due_at FROM tasks WHERE id != ?", task.ID).Scan(&nextDue); err != nil {
+		t.Fatal(err)
+	}
+	if !nextDue.Equal(done.CompletedAt.AddDate(0, 0, 7)) {
+		t.Fatalf("next due = %v, want one week after %v", nextDue, done.CompletedAt)
+	}
+}
+
+func TestCompletionBatchRollsBackFailures(t *testing.T) {
+	for _, name := range []string{"missing", "deleted", "invalid recurrence", "zero interval", "insert failure", "project failure"} {
+		t.Run(name, func(t *testing.T) {
+			db := setupTestDB(t)
+			defer db.Close()
+			db.SetMaxOpenConns(1)
+			s := NewSQLiteStore(db)
+			rule := "daily"
+			if name == "project failure" {
+				rule = ""
+			}
+			first := completionFixture(t, db, rule)
+			second := completionFixture(t, db, "daily")
+			if _, err := db.Exec("UPDATE tasks SET active_start = ?, time_spent = 50 WHERE id = ?", time.Now().Add(-time.Minute), first.ID); err != nil {
+				t.Fatal(err)
+			}
+			ids := []int64{first.ID, second.ID}
+			var wantErr error
+			var prepare string
+			switch name {
+			case "missing":
+				ids[1] = 999999
+				wantErr = sql.ErrNoRows
+			case "deleted":
+				prepare = "UPDATE tasks SET status = 'deleted' WHERE id = 2"
+				wantErr = store.ErrInvalidCompletion
+			case "invalid recurrence":
+				prepare = "UPDATE tasks SET recurrence = 'not-a-rule' WHERE id = 2"
+				wantErr = store.ErrInvalidCompletion
+			case "zero interval":
+				prepare = "UPDATE tasks SET recurrence = 'every 0 days' WHERE id = 2"
+				wantErr = store.ErrInvalidCompletion
+			case "insert failure":
+				prepare = "CREATE TRIGGER fail_successor BEFORE INSERT ON tasks BEGIN SELECT RAISE(ABORT, 'injected insert failure'); END"
+			case "project failure":
+				prepare = "CREATE TRIGGER fail_project BEFORE UPDATE ON projects WHEN NEW.status = 'archived' BEGIN SELECT RAISE(ABORT, 'injected project failure'); END"
+				if _, err := db.Exec("UPDATE tasks SET recurrence = ''"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if prepare != "" {
+				if _, err := db.Exec(prepare); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, err := s.GetTask(first.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = s.BatchUpdateTasks(ids, map[string]interface{}{"status": "done", "project": "MovedSeries"})
+			if err == nil || (wantErr != nil && !errors.Is(err, wantErr)) {
+				t.Fatalf("completion error = %v, want %v", err, wantErr)
+			}
+			after, err := s.GetTask(first.ID)
+			if err != nil || !reflect.DeepEqual(before, after) {
+				t.Fatalf("failed batch changed valid task: before=%+v after=%+v err=%v", before, after, err)
+			}
+			var tasks, moved int
+			if err := db.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&tasks); err != nil || tasks != 2 {
+				t.Fatalf("failed batch left %d rows, want 2: %v", tasks, err)
+			}
+			if err := db.QueryRow("SELECT COUNT(*) FROM projects WHERE name = 'MovedSeries'").Scan(&moved); err != nil || moved != 0 {
+				t.Fatalf("failed batch left a new project: %d, %v", moved, err)
+			}
+			project, err := s.GetProject(first.Project)
+			if err != nil || project.Status != models.ProjectStatus("active") {
+				t.Fatalf("failed batch changed project status: %+v, %v", project, err)
+			}
+		})
+	}
+}
+
+func TestCompletionDeduplicatesAndSupportsFullUpdates(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	s := NewSQLiteStore(db)
+	task := completionFixture(t, db, "daily")
+	if err := s.BatchUpdateTasks([]int64{task.ID, task.ID}, map[string]interface{}{"status": models.StatusDone}); err != nil {
+		t.Fatal(err)
+	}
+	done, err := s.GetTask(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done.Title = "Edited completed task"
+	if err := s.UpdateTask(done); err != nil {
+		t.Fatal(err)
+	}
+	edited, err := s.GetTask(task.ID)
+	if err != nil || edited.Title != done.Title || !edited.CompletedAt.Equal(*done.CompletedAt) {
+		t.Fatalf("completed metadata edit: %+v, %v", edited, err)
+	}
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&count); err != nil || count != 2 {
+		t.Fatalf("duplicate or metadata update created extra successors: %d, %v", count, err)
+	}
+	open := completionFixture(t, db, "daily")
+	open.Status = models.StatusDone
+	if err := s.UpdateTask(open); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&count); err != nil || count != 4 {
+		t.Fatalf("full update bypassed completion: %d rows, %v", count, err)
+	}
+}
+
+func TestConcurrentCompletionCreatesOneSuccessor(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "completion.db") + "?_busy_timeout=10000"
+	first, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	if err := dbpkg.RunMigrations(first); err != nil {
+		t.Fatal(err)
+	}
+	second, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	task := completionFixture(t, first, "daily")
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for _, conn := range []*sql.DB{first, second} {
+		go func(conn *sql.DB) {
+			<-start
+			results <- NewSQLiteStore(conn).MarkDone(task.ID)
+		}(conn)
+	}
+	close(start)
+	for i := 0; i < 2; i++ {
+		if err := <-results; err != nil {
+			t.Fatal(err)
+		}
+	}
+	var count int
+	if err := first.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&count); err != nil || count != 2 {
+		t.Fatalf("concurrent completion left %d tasks, want 2: %v", count, err)
+	}
 }
 
 func TestSQLiteStore_TaskCRUD(t *testing.T) {

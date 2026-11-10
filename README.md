@@ -124,6 +124,10 @@ nix build .#web
     ```bash
     tasc done <task_id>
     ```
+    Completion stops the task's timer and creates its next recurring occurrence in
+    one transaction, preserving its time block. Repeating completion creates no extra
+    occurrence. For multiple IDs, a missing/deleted task or invalid recurrence fails
+    the entire completion batch without partial changes.
 
 *   **Edit a task:**
     ```bash

@@ -20,6 +20,10 @@ func NewSQLiteStore(db *sql.DB) *SQLiteStore {
 }
 
 func (s *SQLiteStore) generateUniqueShortName(name string) (string, error) {
+	return generateUniqueShortName(s.db, name)
+}
+
+func generateUniqueShortName(q taskQueries, name string) (string, error) {
 	clean := strings.Map(func(r rune) rune {
 		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
 			return r
@@ -53,7 +57,7 @@ func (s *SQLiteStore) generateUniqueShortName(name string) (string, error) {
 
 	for _, cand := range candidates {
 		var exists int
-		err := s.db.QueryRow("SELECT COUNT(*) FROM projects WHERE short_name = ?", cand).Scan(&exists)
+		err := q.QueryRow("SELECT COUNT(*) FROM projects WHERE short_name = ?", cand).Scan(&exists)
 		if err != nil {
 			return "", err
 		}
@@ -67,47 +71,55 @@ func (s *SQLiteStore) generateUniqueShortName(name string) (string, error) {
 }
 
 func (s *SQLiteStore) ensureProjectExists(name string) error {
+	return ensureProjectExists(s.db, name)
+}
+
+func ensureProjectExists(q taskQueries, name string) error {
 	if name == "" {
 		return nil
 	}
 
 	// Check if exists first to avoid generating short name unnecessarily
 	var exists int
-	err := s.db.QueryRow("SELECT COUNT(*) FROM projects WHERE name = ?", name).Scan(&exists)
+	err := q.QueryRow("SELECT COUNT(*) FROM projects WHERE name = ?", name).Scan(&exists)
 	if err != nil {
 		return err
 	}
 	if exists > 0 {
 		// Just ensure it is active
-		_, err := s.db.Exec("UPDATE projects SET status = 'active' WHERE name = ?", name)
+		_, err := q.Exec("UPDATE projects SET status = 'active' WHERE name = ?", name)
 		return err
 	}
 
 	// Create new
-	shortName, err := s.generateUniqueShortName(name)
+	shortName, err := generateUniqueShortName(q, name)
 	if err != nil {
 		return err
 	}
 
 	query := `INSERT INTO projects (name, short_name, description, status) VALUES (?, ?, '', 'active')`
-	_, err = s.db.Exec(query, name, shortName)
+	_, err = q.Exec(query, name, shortName)
 	return err
 }
 
 func (s *SQLiteStore) checkProjectCompletion(name string) error {
+	return checkProjectCompletion(s.db, name)
+}
+
+func checkProjectCompletion(q taskQueries, name string) error {
 	if name == "" {
 		return nil
 	}
 	// Check if any pending tasks exist
 	var count int
-	err := s.db.QueryRow("SELECT COUNT(*) FROM tasks WHERE project = ? AND status NOT IN ('done', 'deleted', 'undefined')", name).Scan(&count)
+	err := q.QueryRow("SELECT COUNT(*) FROM tasks WHERE project = ? AND status NOT IN ('done', 'deleted', 'undefined')", name).Scan(&count)
 	if err != nil {
 		return err
 	}
 
 	if count == 0 {
 		// Mark archive
-		_, err := s.db.Exec("UPDATE projects SET status = 'archived' WHERE name = ?", name)
+		_, err := q.Exec("UPDATE projects SET status = 'archived' WHERE name = ?", name)
 		return err
 	}
 	return nil
@@ -134,6 +146,10 @@ func (s *SQLiteStore) CreateTask(t models.Task) (int64, error) {
 }
 
 func (s *SQLiteStore) GetTask(id int64) (models.Task, error) {
+	return getTask(s.db, id)
+}
+
+func getTask(q taskQueries, id int64) (models.Task, error) {
 	var t models.Task
 	var project sql.NullString
 	var description sql.NullString
@@ -151,7 +167,7 @@ func (s *SQLiteStore) GetTask(id int64) (models.Task, error) {
 		recurrence, active_start, time_spent, reschedule_count 
 	FROM tasks WHERE id = ?`
 
-	row := s.db.QueryRow(query, id)
+	row := q.QueryRow(query, id)
 	err := row.Scan(
 		&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt,
 		&completedAt, &dueAt, &scheduleBlock, &estimate,
@@ -184,6 +200,13 @@ func (s *SQLiteStore) GetTask(id int64) (models.Task, error) {
 }
 
 func (s *SQLiteStore) UpdateTask(t models.Task) error {
+	if t.Status == models.StatusDone {
+		return s.completeTasks([]int64{t.ID}, map[string]interface{}{
+			"title": t.Title, "description": t.Description, "project": t.Project,
+			"due_at": t.DueAt, "schedule_block": t.ScheduleBlock, "estimate": t.Estimate,
+			"recurrence": t.Recurrence, "reschedule_count": t.RescheduleCount,
+		}, true)
+	}
 	// Fetch old project
 	var oldProject sql.NullString
 	err := s.db.QueryRow("SELECT project FROM tasks WHERE id = ?", t.ID).Scan(&oldProject)
@@ -219,6 +242,9 @@ func (s *SQLiteStore) BatchUpdateTasks(ids []int64, updates map[string]interface
 	}
 	if len(updates) == 0 {
 		return nil
+	}
+	if status, ok := updates["status"]; ok && fmt.Sprint(status) == string(models.StatusDone) {
+		return s.completeTasks(ids, updates, false)
 	}
 
 	// 1. Identify affected projects (Before update)
@@ -411,19 +437,7 @@ func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) 
 }
 
 func (s *SQLiteStore) MarkDone(id int64) error {
-	var project sql.NullString
-	s.db.QueryRow("SELECT project FROM tasks WHERE id = ?", id).Scan(&project)
-
-	queryUpdate := `UPDATE tasks SET status = 'done', completed_at = CURRENT_TIMESTAMP WHERE id = ?`
-	_, err := s.db.Exec(queryUpdate, id)
-	if err != nil {
-		return err
-	}
-
-	if project.Valid {
-		return s.checkProjectCompletion(project.String)
-	}
-	return nil
+	return s.completeTasks([]int64{id}, nil, false)
 }
 
 func (s *SQLiteStore) StartTask(id int64) error {

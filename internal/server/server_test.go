@@ -160,6 +160,85 @@ func TestRemoteStopRespectsRequestedID(t *testing.T) {
 	}
 }
 
+func TestCompletionErrorsAcrossRESTAndRemoteStore(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	st := sqlite.NewSQLiteStore(db)
+	create := func(title, rule string) int64 {
+		t.Helper()
+		id, err := st.CreateTask(models.Task{Title: title, Recurrence: rule})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	valid := create("Valid active completion", "daily")
+	invalid := create("Invalid recurrence completion", "not-a-rule")
+	deleted := create("Deleted completion", "daily")
+	if err := st.DeleteTask(deleted); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.StartTask(valid); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(NewServer(st))
+	defer srv.Close()
+	for _, tt := range []struct {
+		name, method, path string
+		body               interface{}
+		status             int
+	}{
+		{"missing", "POST", "/tasks/999999/done", nil, http.StatusNotFound},
+		{"invalid recurrence", "POST", fmt.Sprintf("/tasks/%d/done", invalid), nil, http.StatusBadRequest},
+		{"deleted", "POST", fmt.Sprintf("/tasks/%d/done", deleted), nil, http.StatusBadRequest},
+		{"missing batch", "POST", "/tasks/batch-update", map[string]interface{}{"ids": []int64{valid, 999999}, "updates": map[string]interface{}{"status": "done"}}, http.StatusNotFound},
+		{"invalid batch", "POST", "/tasks/batch-update", map[string]interface{}{"ids": []int64{valid, invalid}, "updates": map[string]interface{}{"status": "done"}}, http.StatusBadRequest},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := json.Marshal(tt.body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req, err := http.NewRequest(tt.method, srv.URL+tt.path, bytes.NewReader(data))
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp, err := srv.Client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != tt.status {
+				t.Fatalf("completion returned %d, want %d", resp.StatusCode, tt.status)
+			}
+		})
+	}
+	remoteStore := remote.NewClient(srv.URL)
+	if err := remoteStore.MarkDone(999999); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("remote store lost not-found error: %v", err)
+	}
+	if err := remoteStore.BatchUpdateTasks([]int64{valid, invalid}, map[string]interface{}{"status": "done"}); !errors.Is(err, store.ErrInvalidCompletion) {
+		t.Fatalf("remote batch lost invalid-completion error: %v", err)
+	}
+	task, err := st.GetTask(invalid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task.Status = models.StatusDone
+	if err := remoteStore.UpdateTask(task); !errors.Is(err, store.ErrInvalidCompletion) {
+		t.Fatalf("remote full update lost invalid-completion error: %v", err)
+	}
+	active, err := st.GetActiveTask()
+	if err != nil || active == nil || active.ID != valid {
+		t.Fatalf("failed completions changed the active timer: %+v, %v", active, err)
+	}
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&count); err != nil || count != 3 {
+		t.Fatalf("failed completions left %d tasks, want 3: %v", count, err)
+	}
+}
+
 func TestServer_AddAndRemoveDependency(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()

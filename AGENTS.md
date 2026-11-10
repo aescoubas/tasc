@@ -103,15 +103,15 @@ clean as of 2026-11-05.
 | `internal/db/` | connection, the six migrations, the FTS5 probe | rules 1, 2 and 4 live here |
 | `internal/priority/` | the urgency rules and their weights | calibrated against the owner's real task set; a weight change reorders every list — propose it |
 | `internal/recurrence/`, `parse/` | natural-language rules and dates | the richest unit tests in the repo; extend them rather than adding a new parser |
-| `internal/ui/` | Bubble Tea model, styles, tables | no tests — verify by running the TUI against a temp DB |
+| `internal/ui/` | Bubble Tea model, styles, tables | completion regressions; also verify by running the TUI against a temp DB |
 | `internal/mcp/server.go` | all 19 MCP tools, 816 lines | no tests, and it is what the agent skill drives |
 | `internal/server/` | the REST API behind `tasc serve` | `TASC_REMOTE` makes the CLI a client of it |
 | `tests/integration/` | builds the real binary and drives it | already isolates `TASC_DB_PATH` and `HOME`; copy that pattern |
 | `web/` | frozen React dashboard, built by `nix/web.nix` | off limits; excluded from the Go package `src` |
 
-**No tests at all:** `internal/mcp`, `internal/ui`, `internal/store/remote`. The first of
-those is the agent-facing surface, so a change there is verified by driving the tool, not
-by reasoning about it.
+**No package-local tests:** `internal/mcp`, `internal/store/remote`. Integration tests
+drive both through the real binary and HTTP server. The first is the agent-facing
+surface, so a change there is verified by driving the tool, not by reasoning about it.
 
 ## The roadmap
 

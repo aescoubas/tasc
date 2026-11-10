@@ -69,6 +69,220 @@ func runTasc(t *testing.T, dbPath string, args ...string) (string, error) {
 	return out.String(), err
 }
 
+func TestCompletionAcrossInterfaces(t *testing.T) {
+	for _, surface := range []string{"CLI local", "CLI remote", "MCP local", "MCP remote", "MCP batch local", "MCP batch remote", "REST action", "REST batch", "REST update", "editor"} {
+		t.Run(surface, func(t *testing.T) {
+			dbPath := filepath.Join(t.TempDir(), "completion.db")
+			conn, err := sql.Open("sqlite3", dbPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			if err := dbpkg.RunMigrations(conn); err != nil {
+				t.Fatal(err)
+			}
+			st := sqlite.NewSQLiteStore(conn)
+			due := time.Date(2030, 1, 10, 9, 0, 0, 0, time.UTC)
+			id, err := st.CreateTask(models.Task{Title: "Interface completion", Description: "Preserve the body", Project: "InterfaceSeries",
+				DueAt: &due, ScheduleBlock: "morning", Estimate: "30m", Recurrence: "daily"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			start := time.Now().Add(-2 * time.Minute)
+			if _, err := conn.Exec("UPDATE tasks SET active_start = ?, time_spent = 77 WHERE id = ?", start, id); err != nil {
+				t.Fatal(err)
+			}
+			srv := httptest.NewServer(server.NewServer(st))
+			defer srv.Close()
+			var prefix []string
+			if strings.HasSuffix(surface, "remote") {
+				prefix = []string{"--remote", srv.URL}
+			}
+			var complete func() error
+			switch {
+			case strings.HasPrefix(surface, "CLI"):
+				complete = func() error {
+					out, err := runTasc(t, dbPath, append(prefix, "done", fmt.Sprint(id), fmt.Sprint(id))...)
+					if err != nil {
+						return fmt.Errorf("CLI completion: %w: %s", err, out)
+					}
+					return nil
+				}
+			case strings.HasPrefix(surface, "MCP"):
+				c, err := client.NewStdioMCPClient(binaryPath, []string{"HOME=" + filepath.Dir(dbPath), "TASC_DB_PATH=" + dbPath, "TASC_REMOTE="}, append(prefix, "mcp")...)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer c.Close()
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				if _, err := c.Initialize(ctx, mcp.InitializeRequest{Params: mcp.InitializeParams{
+					ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION, ClientInfo: mcp.Implementation{Name: "completion-regression", Version: "1"},
+				}}); err != nil {
+					t.Fatal(err)
+				}
+				for _, bad := range []struct {
+					name string
+					args map[string]any
+				}{
+					{"tasc_complete_task", map[string]any{"id": 999999}},
+					{"tasc_batch_update_tasks", map[string]any{"ids": fmt.Sprintf("%d,999999", id), "status": "done"}},
+					{"tasc_batch_update_tasks", map[string]any{"ids": fmt.Sprintf("%djunk", id), "status": "done"}},
+				} {
+					result, err := c.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Name: bad.name, Arguments: bad.args}})
+					if err != nil || !result.IsError {
+						t.Fatalf("MCP accepted invalid completion: %+v, %v", result, err)
+					}
+					active, err := st.GetActiveTask()
+					if err != nil || active == nil || active.ID != id {
+						t.Fatalf("failed MCP completion changed the timer: %+v, %v", active, err)
+					}
+				}
+				complete = func() error {
+					name, args := "tasc_complete_task", map[string]any{"id": id}
+					if strings.Contains(surface, "batch") {
+						name, args = "tasc_batch_update_tasks", map[string]any{"ids": fmt.Sprintf("%d,%d", id, id), "status": "done"}
+					}
+					result, err := c.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Name: name, Arguments: args}})
+					if err != nil {
+						return err
+					}
+					if result.IsError {
+						return fmt.Errorf("MCP completion: %+v", result.Content)
+					}
+					return nil
+				}
+			case surface == "editor":
+				sh, err := exec.LookPath("sh")
+				if err != nil {
+					t.Fatal(err)
+				}
+				editor := filepath.Join(t.TempDir(), "complete-editor")
+				if err := os.WriteFile(editor, []byte("#!"+sh+"\nsed 's/^status: .*/status: done/' \"$1\" > \"$1.edited\" && mv \"$1.edited\" \"$1\"\n"), 0700); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv("EDITOR", editor)
+				complete = func() error {
+					out, err := runTasc(t, dbPath, "edit", fmt.Sprint(id))
+					if err != nil {
+						return fmt.Errorf("editor completion: %w: %s", err, out)
+					}
+					return nil
+				}
+			default:
+				complete = func() error {
+					method, path := http.MethodPost, fmt.Sprintf("/tasks/%d/done", id)
+					var body any
+					if surface == "REST batch" {
+						path, body = "/tasks/batch-update", map[string]any{"ids": []int64{id, id}, "updates": map[string]any{"status": "done"}}
+					} else if surface == "REST update" {
+						task, err := st.GetTask(id)
+						if err != nil {
+							return err
+						}
+						task.Status = models.StatusDone
+						method, path, body = http.MethodPut, fmt.Sprintf("/tasks/%d", id), task
+					}
+					data, err := json.Marshal(body)
+					if err != nil {
+						return err
+					}
+					req, err := http.NewRequest(method, srv.URL+path, bytes.NewReader(data))
+					if err != nil {
+						return err
+					}
+					response, err := srv.Client().Do(req)
+					if err != nil {
+						return err
+					}
+					defer response.Body.Close()
+					if response.StatusCode != http.StatusOK {
+						return fmt.Errorf("REST completion: %s", response.Status)
+					}
+					if surface == "REST update" {
+						var persisted models.Task
+						if err := json.NewDecoder(response.Body).Decode(&persisted); err != nil {
+							return err
+						}
+						if persisted.CompletedAt == nil || persisted.ActiveStart != nil {
+							return fmt.Errorf("response did not report persisted lifecycle state: %+v", persisted)
+						}
+					}
+					return nil
+				}
+			}
+			if err := complete(); err != nil {
+				t.Fatal(err)
+			}
+			done, err := st.GetTask(id)
+			if err != nil || done.Status != models.StatusDone || done.CompletedAt == nil || done.ActiveStart != nil {
+				t.Fatalf("completion state: %+v, %v", done, err)
+			}
+			if want := 77 + int64(done.CompletedAt.Sub(start).Seconds()); done.TimeSpent != want {
+				t.Fatalf("recorded %d seconds, want %d", done.TimeSpent, want)
+			}
+			if err := complete(); err != nil {
+				t.Fatal(err)
+			}
+			retried, err := st.GetTask(id)
+			if err != nil || retried.TimeSpent != done.TimeSpent || !retried.CompletedAt.Equal(*done.CompletedAt) {
+				t.Fatalf("retry changed completion accounting: %+v, %v", retried, err)
+			}
+			var count int
+			if err := conn.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&count); err != nil || count != 2 {
+				t.Fatalf("completion/retry left %d task rows, want 2: %v", count, err)
+			}
+			var nextID int64
+			if err := conn.QueryRow("SELECT id FROM tasks WHERE id != ?", id).Scan(&nextID); err != nil {
+				t.Fatal(err)
+			}
+			next, err := st.GetTask(nextID)
+			if err != nil || next.Recurrence != "daily" || next.ScheduleBlock != "morning" || next.Description != "Preserve the body" ||
+				next.Estimate != "30m" || next.Project != "InterfaceSeries" || next.DueAt == nil || !next.DueAt.Equal(due.AddDate(0, 0, 1)) || next.TimeSpent != 0 {
+				t.Fatalf("successor metadata: %+v, %v", next, err)
+			}
+		})
+	}
+}
+
+func TestRecurringCompletionUndoAndFailure(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "completion-undo.db")
+	for _, args := range [][]string{{"add", "Undo recurring completion", "--recurrence", "daily", "--block", "morning"}, {"start", "1"}} {
+		if out, err := runTasc(t, dbPath, args...); err != nil {
+			t.Fatalf("%v: %v\n%s", args, err, out)
+		}
+	}
+	conn, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	st := sqlite.NewSQLiteStore(conn)
+	for _, ids := range [][]string{{"1", "999999"}, {"1", "bad-id"}} {
+		out, err := runTasc(t, dbPath, append([]string{"done"}, ids...)...)
+		if err == nil {
+			t.Fatalf("invalid completion succeeded: %s", out)
+		}
+		active, err := st.GetActiveTask()
+		if err != nil || active == nil || active.Title != "Undo recurring completion" {
+			t.Fatalf("failed batch changed active timer: %+v, %v", active, err)
+		}
+	}
+	for _, args := range [][]string{{"done", "1"}, {"done", "1"}, {"undo", "--yes"}} {
+		if out, err := runTasc(t, dbPath, args...); err != nil {
+			t.Fatalf("%v: %v\n%s", args, err, out)
+		}
+	}
+	active, err := st.GetActiveTask()
+	if err != nil || active == nil || active.CompletedAt != nil || active.ScheduleBlock != "morning" {
+		t.Fatalf("undo did not restore original timer and metadata: %+v, %v", active, err)
+	}
+	var count int
+	if err := conn.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("undo left %d tasks, want the original only: %v", count, err)
+	}
+}
+
 func TestTaskLifecycle(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")

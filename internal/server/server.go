@@ -200,6 +200,12 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	t.ID = id // Ensure ID matches URL
 
 	if err := s.store.UpdateTask(t); err != nil {
+		respondTaskMutationError(w, err)
+		return
+	}
+	// Completion owns timestamps and timer state; return the persisted result.
+	t, err = s.store.GetTask(id)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -230,7 +236,7 @@ func (s *Server) handleTaskDone(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.MarkDone(id); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		respondTaskMutationError(w, err)
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]string{"status": "done"})
@@ -403,10 +409,20 @@ func (s *Server) handleBatchUpdateTasks(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := s.store.BatchUpdateTasks(req.IDs, req.Updates); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		respondTaskMutationError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+func respondTaskMutationError(w http.ResponseWriter, err error) {
+	status := http.StatusInternalServerError
+	if errors.Is(err, sql.ErrNoRows) {
+		status = http.StatusNotFound
+	} else if errors.Is(err, store.ErrInvalidCompletion) {
+		status = http.StatusBadRequest
+	}
+	http.Error(w, err.Error(), status)
 }
 
 func respondJSON(w http.ResponseWriter, status int, payload interface{}) {

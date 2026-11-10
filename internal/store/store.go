@@ -10,6 +10,9 @@ import (
 // ErrInvalidDependency identifies a link that would violate the task graph rules.
 var ErrInvalidDependency = errors.New("invalid dependency")
 
+// ErrInvalidCompletion identifies a deleted task or a recurrence that cannot advance.
+var ErrInvalidCompletion = errors.New("invalid completion")
+
 type TaskFilter struct {
 	// Status matches the displayed status: open dependencies override it with blocked.
 	Status         []models.TaskStatus
@@ -29,9 +32,12 @@ type Store interface {
 	ListTasks(filter TaskFilter) ([]models.Task, error)
 
 	// Task Actions (Specific updates)
+	// MarkDone atomically finalizes the timer and recurrence. Already-done tasks
+	// are a no-op; missing tasks return sql.ErrNoRows.
 	MarkDone(id int64) error
 	StartTask(id int64) error
 	StopTask(id int64) error
+	// Setting status to done uses the same completion rules, atomically for all IDs.
 	BatchUpdateTasks(ids []int64, updates map[string]interface{}) error
 	GetActiveTask() (*models.Task, error)
 

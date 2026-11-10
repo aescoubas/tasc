@@ -8,6 +8,7 @@ import (
 	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/priority"
+	"github.com/aescoubas/tasc/internal/store/sqlite"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -95,12 +96,8 @@ func loadTasks() []models.Task {
 	return tasks
 }
 
-func markTaskDone(id int64) {
-	query := `UPDATE tasks SET status = 'done', completed_at = CURRENT_TIMESTAMP WHERE id = ?`
-	_, err := db.DB.Exec(query, id)
-	if err != nil {
-		log.Printf("Error marking task done: %v", err)
-	}
+func markTaskDone(id int64) error {
+	return sqlite.NewSQLiteStore(db.DB).MarkDone(id)
 }
 
 func (m Model) Init() tea.Cmd {
@@ -118,11 +115,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "d":
 			if i, ok := m.list.SelectedItem().(item); ok {
-				markTaskDone(i.task.ID)
-				index := m.list.Index()
-				m.list.RemoveItem(index)
+				if err := markTaskDone(i.task.ID); err != nil {
+					return m, m.list.NewStatusMessage("Error completing task: " + err.Error())
+				}
+				var items []list.Item
+				for _, task := range loadTasks() {
+					items = append(items, item{task: task})
+				}
+				refresh := m.list.SetItems(items)
 				cmd := m.list.NewStatusMessage(docStyle.Foreground(lipgloss.Color("#04B575")).Render("Task completed!"))
-				return m, cmd
+				return m, tea.Batch(refresh, cmd)
 			}
 		}
 	case tea.WindowSizeMsg:

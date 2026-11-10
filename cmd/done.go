@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -13,39 +12,26 @@ var doneCmd = &cobra.Command{
 	Short:             "Mark task(s) as completed",
 	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: pendingTaskIDCompletionFunc,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		var ids []int64
+		seen := make(map[int64]bool)
 		for _, arg := range args {
-			id, err := strconv.Atoi(arg)
+			id, err := strconv.ParseInt(arg, 10, 64)
 			if err != nil {
-				fmt.Printf("Invalid task ID: %s\n", arg)
-				continue
+				return fmt.Errorf("invalid task ID: %s", arg)
 			}
-			ids = append(ids, int64(id))
-		}
-
-		if len(ids) == 0 {
-			return
-		}
-
-		// handle recurrence for each task individually before batch update
-		// because recurrence logic (spawning new tasks) is complex and per-task
-		for _, id := range ids {
-			t, err := CurrentStore.GetTask(id)
-			if err == nil && t.Recurrence != "" {
-				spawnNextTask(t)
+			if !seen[id] {
+				ids = append(ids, id)
+				seen[id] = true
 			}
 		}
 
 		updates := map[string]interface{}{
-			"status":       "done",
-			"completed_at": time.Now(),
+			"status": "done",
 		}
 
-		err := CurrentStore.BatchUpdateTasks(ids, updates)
-		if err != nil {
-			fmt.Printf("Error updating tasks: %v\n", err)
-			return
+		if err := CurrentStore.BatchUpdateTasks(ids, updates); err != nil {
+			return fmt.Errorf("error completing tasks: %w", err)
 		}
 
 		if len(ids) == 1 {
@@ -53,6 +39,7 @@ var doneCmd = &cobra.Command{
 		} else {
 			fmt.Printf("Marked %d tasks as done.\n", len(ids))
 		}
+		return nil
 	},
 }
 

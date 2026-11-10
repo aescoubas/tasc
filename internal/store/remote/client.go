@@ -95,7 +95,7 @@ func (c *Client) UpdateTask(t models.Task) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server error: %s", resp.Status)
+		return taskMutationError(resp)
 	}
 	return nil
 }
@@ -117,7 +117,7 @@ func (c *Client) BatchUpdateTasks(ids []int64, updates map[string]interface{}) e
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server error: %s", resp.Status)
+		return taskMutationError(resp)
 	}
 	return nil
 }
@@ -199,9 +199,25 @@ func (c *Client) MarkDone(id int64) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to mark done: %s", resp.Status)
+		return taskMutationError(resp)
 	}
 	return nil
+}
+
+func taskMutationError(resp *http.Response) error {
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if err != nil {
+		return fmt.Errorf("server error: %s (reading error: %w)", resp.Status, err)
+	}
+	message := strings.TrimSpace(string(body))
+	switch resp.StatusCode {
+	case http.StatusNotFound:
+		return fmt.Errorf("%w: %s", sql.ErrNoRows, message)
+	case http.StatusBadRequest:
+		return fmt.Errorf("%w: %s", store.ErrInvalidCompletion, message)
+	default:
+		return fmt.Errorf("server error: %s: %s", resp.Status, message)
+	}
 }
 
 func (c *Client) StartTask(id int64) error {

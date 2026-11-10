@@ -369,7 +369,7 @@ semantics and migrations still require the approval specified in `AGENTS.md`.
 
 **Tasks:**
 - [ ] **1451 — Complete remote CLI support and eliminate local-database panics.**
-- [ ] **1452 — Unify task completion, recurrence, and timer finalization.**
+- [x] **1452 — Unify task completion, recurrence, and timer finalization.**
 - [ ] **1453 — Restrict REST server exposure and add access controls.**
 - [ ] **1454 — Make time blocks effective and enforce scheduling capacity.**
 - [ ] **1455 — Return truthful errors for invalid and missing task operations.**
@@ -387,11 +387,12 @@ semantics and migrations still require the approval specified in `AGENTS.md`.
 
 Real-binary regressions cover local/remote read parity, unchanged client database
 contents, timer start/stop failures, local timer undo, and local-only rejection.
-The broader remote-support task remains open. This batch is not deployed.
+The broader remote-support task remains open. This first batch was verified locally;
+deployment details are tracked in the Tasc tasks.
 
-**Next: 1452 — Unify task completion, recurrence, and timer finalization.**
+**1452 — Unify task completion, recurrence, and timer finalization.**
 
-Proposed stored-data behavior, pending owner approval under `AGENTS.md`:
+Stored-data behavior approved by the owner on 2026-11-10 and now implemented:
 - Complete an open task, finalize its active timer, and create its next recurring
   occurrence in one transaction. Preserve the existing recurrence date rule: advance
   from the prior due date, or from completion time when there is no due date.
@@ -418,8 +419,33 @@ Store completion: timer_active=true; proposed=false
 Invalid recurrence: error=<nil> status="done"; proposed=error with status "backlog"
 Bulk missing target: error=<nil> valid_status="done"; proposed=error with status "backlog"
 ```
-These are confirmed defects and proposed expectations, not passing verification of
-an implementation. Completion behavior has not yet been changed.
+This is the pre-change baseline, not verification of the new implementation. The
+implementation uses `BEGIN IMMEDIATE` on a dedicated connection before reading any
+target; all completion writes and affected project updates share that transaction.
+Metadata edits of completed tasks remain supported without replaying completion.
+
+Regression coverage now includes ten CLI/editor/MCP/REST paths with retries, Store
+rollback under missing/deleted/invalid targets and injected failures, duplicate IDs,
+two independent concurrent database connections, timer accounting, local undo after
+a retry, and TUI success/failure key handling. An actual TUI run against a temporary
+database also finalized its timer and produced exactly one morning successor.
+
+Verification for **1452 — Unify task completion, recurrence, and timer finalization**:
+- [x] `nix develop --command make check` passed; integration:
+  `ok github.com/aescoubas/tasc/tests/integration 15.387s`.
+- [x] `nix develop --command make test-race` passed; integration:
+  `ok github.com/aescoubas/tasc/tests/integration 17.297s`.
+- [x] `nix develop --command make fmt-check 'GO_FILES=internal/store/sqlite/completion.go internal/ui/model_test.go'`
+  passed for the new files, which the tracked-file formatting gate does not yet list.
+- [x] `nix develop --command make build` produced the local binary.
+- [x] The baseline probe now reports one successor on retry, preserved morning
+  block, one successor through Store completion, no active timer, and unchanged
+  backlog state after invalid recurrence or a missing bulk target.
+- [x] Actual TUI input completed the temporary task: original timer cleared with
+  172 seconds recorded; exactly one morning backlog successor with zero seconds.
+
+No migration or historical-data repair was made. Deployment details are tracked in
+**1452 — Unify task completion, recurrence, and timer finalization**.
 
 **Verification:**
 - [ ] `nix develop --command make check` passes with regressions for every resolved gap.
