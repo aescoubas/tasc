@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +16,12 @@ import (
 	"testing"
 	"time"
 
+	dbpkg "github.com/aescoubas/tasc/internal/db"
+	"github.com/aescoubas/tasc/internal/models"
+	"github.com/aescoubas/tasc/internal/server"
+	"github.com/aescoubas/tasc/internal/store"
+	"github.com/aescoubas/tasc/internal/store/remote"
+	"github.com/aescoubas/tasc/internal/store/sqlite"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	_ "github.com/mattn/go-sqlite3"
@@ -797,6 +805,157 @@ func countDependencies(t *testing.T, dbPath string) int {
 		t.Fatalf("count dependencies: %v", err)
 	}
 	return count
+}
+
+func TestRemoteListTaskFiltersMatchLocal(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "remote-filters.db")
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := dbpkg.RunMigrations(db); err != nil {
+		t.Fatal(err)
+	}
+	local := sqlite.NewSQLiteStore(db)
+	due := time.Date(2030, 1, 10, 0, 0, 0, 0, time.UTC)
+	create := func(title, project string, status models.TaskStatus) int64 {
+		t.Helper()
+		id, err := local.CreateTask(models.Task{Title: title, Project: project, DueAt: &due})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := local.BatchUpdateTasks([]int64{id}, map[string]interface{}{"status": status}); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	blocker := create("Remote blocker", "Blockers", models.StatusBacklog)
+	backlog := create("Remote backlog", "Filtered", models.StatusBacklog)
+	ongoing := create("Remote ongoing", "Filtered", models.StatusOngoing)
+	blocked := create("Remote dependent", "Filtered", models.StatusBacklog)
+	manual := create("Remote manually blocked", "Other", models.StatusBlocked)
+	done := create("Remote done", "Filtered", models.StatusDone)
+	deleted := create("Remote deleted", "Filtered", models.StatusDeleted)
+	undefined := create("Remote undefined", "Filtered", models.StatusUndefined)
+	if err := local.AddDependency(blocker, blocked); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(server.NewServer(local))
+	defer srv.Close()
+	remoteClient := remote.NewClient(srv.URL)
+	before, after := due.Add(time.Hour), due.Add(-time.Hour)
+
+	check := func(t *testing.T, tasks []models.Task, want []int64) {
+		t.Helper()
+		if len(tasks) != len(want) {
+			t.Fatalf("got %d tasks, want %d: %+v", len(tasks), len(want), tasks)
+		}
+		expected := make(map[int64]bool, len(want))
+		for _, id := range want {
+			expected[id] = true
+		}
+		for _, task := range tasks {
+			if !expected[task.ID] {
+				t.Errorf("unexpected task %d — %s", task.ID, task.Title)
+			}
+			delete(expected, task.ID)
+			if task.IsBlocked != (task.ID == blocked) {
+				t.Errorf("task %d — %s: is_blocked=%v", task.ID, task.Title, task.IsBlocked)
+			}
+		}
+		if len(expected) != 0 {
+			t.Errorf("missing task IDs: %v", expected)
+		}
+	}
+
+	for _, tt := range []struct {
+		name   string
+		query  string
+		filter store.TaskFilter
+		want   []int64
+	}{
+		{"default", "", store.TaskFilter{}, []int64{blocker, backlog, ongoing, blocked, manual}},
+		{"blocked", "?status=blocked", store.TaskFilter{Status: []models.TaskStatus{models.StatusBlocked}}, []int64{blocked, manual}},
+		{"backlog", "?status=backlog", store.TaskFilter{Status: []models.TaskStatus{models.StatusBacklog}}, []int64{blocker, backlog}},
+		{"ongoing", "?status=ongoing", store.TaskFilter{Status: []models.TaskStatus{models.StatusOngoing}}, []int64{ongoing}},
+		{"done", "?status=done", store.TaskFilter{Status: []models.TaskStatus{models.StatusDone}}, []int64{done}},
+		{"deleted", "?status=deleted", store.TaskFilter{Status: []models.TaskStatus{models.StatusDeleted}}, []int64{deleted}},
+		{"undefined", "?status=undefined", store.TaskFilter{Status: []models.TaskStatus{models.StatusUndefined}}, []int64{undefined}},
+		{"mixed and whitespace", "?status=blocked,%20done", store.TaskFilter{Status: []models.TaskStatus{models.StatusBlocked, models.StatusDone}}, []int64{blocked, manual, done}},
+		{"include finished", "?include_deleted=true", store.TaskFilter{IncludeDeleted: true}, []int64{blocker, backlog, ongoing, blocked, manual, done, deleted, undefined}},
+		{"exclude finished", "?include_deleted=false", store.TaskFilter{}, []int64{blocker, backlog, ongoing, blocked, manual}},
+		{"explicit status with include finished", "?status=done&include_deleted=true", store.TaskFilter{Status: []models.TaskStatus{models.StatusDone}, IncludeDeleted: true}, []int64{done}},
+		{"unknown status", "?status=unknown", store.TaskFilter{Status: []models.TaskStatus{"unknown"}}, nil},
+		{"empty status tokens", "?status=%20,,", store.TaskFilter{}, []int64{blocker, backlog, ongoing, blocked, manual}},
+		{"combined filters", fmt.Sprintf("?status=blocked&projects=Filtered&ids=%d,%d&due_after=2030-01-09T23:00:00Z&due_before=2030-01-10T01:00:00Z", blocked, manual), store.TaskFilter{Status: []models.TaskStatus{models.StatusBlocked}, Projects: []string{"Filtered"}, IDs: []int64{blocked, manual}, DueBefore: &before, DueAfter: &after}, []int64{blocked}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for name, backend := range map[string]store.Store{"local": local, "remote": remoteClient} {
+				t.Run(name, func(t *testing.T) {
+					tasks, err := backend.ListTasks(tt.filter)
+					if err != nil {
+						t.Fatal(err)
+					}
+					check(t, tasks, tt.want)
+				})
+			}
+			t.Run("HTTP query", func(t *testing.T) {
+				response, err := srv.Client().Get(srv.URL + "/tasks" + tt.query)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer response.Body.Close()
+				if response.StatusCode != http.StatusOK {
+					t.Fatalf("GET /tasks returned %d", response.StatusCode)
+				}
+				var tasks []models.Task
+				if err := json.NewDecoder(response.Body).Decode(&tasks); err != nil {
+					t.Fatal(err)
+				}
+				check(t, tasks, tt.want)
+			})
+			// The CLI has no include_deleted flag; exercise its status filters.
+			if tt.filter.IncludeDeleted || tt.filter.DueBefore != nil {
+				return
+			}
+			t.Run("CLI", func(t *testing.T) {
+				args := []string{"list", "--output", "json"}
+				if len(tt.filter.Status) > 0 {
+					var statuses []string
+					for _, status := range tt.filter.Status {
+						statuses = append(statuses, string(status))
+					}
+					args = append(args, "--status", strings.Join(statuses, ","))
+				}
+				for _, prefix := range [][]string{nil, {"--remote", srv.URL}} {
+					out, err := runTasc(t, dbPath, append(prefix, args...)...)
+					if err != nil {
+						t.Fatalf("list %v: %v\n%s", prefix, err, out)
+					}
+					var rows []struct {
+						Task models.Task `json:"task"`
+					}
+					if err := json.Unmarshal([]byte(out), &rows); err != nil {
+						t.Fatalf("decode list: %v\n%s", err, out)
+					}
+					var tasks []models.Task
+					for _, row := range rows {
+						tasks = append(tasks, row.Task)
+					}
+					check(t, tasks, tt.want)
+				}
+			})
+		})
+	}
+	response, err := srv.Client().Get(srv.URL + "/tasks?include_deleted=maybe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid include_deleted returned %d, want 400", response.StatusCode)
+	}
 }
 
 func TestMCPBlockedStatusFilter(t *testing.T) {

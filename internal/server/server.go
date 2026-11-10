@@ -91,6 +91,22 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	filter := store.TaskFilter{}
 	q := r.URL.Query()
 
+	if statuses := q.Get("status"); statuses != "" {
+		for _, status := range strings.Split(statuses, ",") {
+			if status = strings.TrimSpace(status); status != "" {
+				filter.Status = append(filter.Status, models.TaskStatus(status))
+			}
+		}
+	}
+	if includeDeleted := q.Get("include_deleted"); includeDeleted != "" {
+		var err error
+		filter.IncludeDeleted, err = strconv.ParseBool(includeDeleted)
+		if err != nil {
+			http.Error(w, "Invalid include_deleted: expected a boolean", http.StatusBadRequest)
+			return
+		}
+	}
+
 	if projects := q.Get("projects"); projects != "" {
 		filter.Projects = strings.Split(projects, ",")
 	}

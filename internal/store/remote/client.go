@@ -145,6 +145,16 @@ func (c *Client) ListTasks(filter store.TaskFilter) ([]models.Task, error) {
 	}
 
 	q := u.Query()
+	if len(filter.Status) > 0 {
+		statuses := make([]string, len(filter.Status))
+		for i, status := range filter.Status {
+			statuses[i] = string(status)
+		}
+		q.Set("status", strings.Join(statuses, ","))
+	}
+	if filter.IncludeDeleted {
+		q.Set("include_deleted", "true")
+	}
 	if len(filter.Projects) > 0 {
 		q.Set("projects", strings.Join(filter.Projects, ","))
 	}
@@ -161,7 +171,6 @@ func (c *Client) ListTasks(filter store.TaskFilter) ([]models.Task, error) {
 	if filter.DueAfter != nil {
 		q.Set("due_after", filter.DueAfter.Format(time.RFC3339))
 	}
-	// Status handling simplified for now
 	u.RawQuery = q.Encode()
 
 	resp, err := c.http.Get(u.String())

@@ -9,6 +9,12 @@ Tasc can run as a standalone local CLI or as a distributed system.
   `RemoteClient` instead of `SQLiteStore`.
 - **Transparency**: the rest of the CLI is agnostic to the backend, since it only ever
   touches the `Store` interface.
+- **Task filters**: `GET /tasks` accepts comma-separated `status` values and
+  `include_deleted=true`, alongside project, ID and due-date filters. Status matches
+  the displayed dependency state (`blocked` for unfinished tasks with open blockers).
+  With no explicit status, the default excludes `done`, `deleted` and `undefined`;
+  `include_deleted=true` includes all three. An explicit status still restricts the
+  results when that flag is set. Invalid boolean values return HTTP 400.
 
 ## Model Context Protocol (MCP)
 `internal/mcp/server.go` implements an MCP server over `mark3labs/mcp-go`.
