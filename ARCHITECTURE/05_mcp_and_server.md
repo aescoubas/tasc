@@ -7,6 +7,18 @@ Tasc can run as a standalone local CLI or as a distributed system.
   `~/.tasc.db` open** — hence `PRAGMA busy_timeout = 10000` in `internal/db/db.go`.
 - **Client**: `cmd/root.go` detects `TASC_REMOTE`. If set, `CurrentStore` becomes
   `RemoteClient` instead of `SQLiteStore`.
+- **REST boundary**: `serve` defaults to IPv4 loopback. Without a credential,
+  the handler also requires a loopback peer and localhost/loopback Host, preventing
+  access through DNS rebinding. `--api-token-file` enables one owner bearer token
+  across every API route; non-loopback serving requires that token and a TLS
+  certificate/key pair. Cross-origin browser requests require exact explicit
+  `--allow-origin` entries; valid preflights disclose no API data and do not
+  bypass authentication on actual requests. Request gates run before routing,
+  redirects or store access. API responses use `no-store`.
+- **Remote credentials**: `TASC_API_TOKEN_FILE` supplies the runtime-only token
+  through a mode0600/0400 regular file. Authenticated clients require HTTPS or
+  loopback HTTP and do not follow redirects. Existing local CLI and MCP authority
+  is unchanged; this is a network boundary, not per-task authorization.
 - **Store-backed commands**: task commands, timer start/stop, calendar, statistics,
   project listing, and project editing use `Store` in both modes. Statistics aggregate
   a single task snapshot; listing includes completion timestamps for closure rates and

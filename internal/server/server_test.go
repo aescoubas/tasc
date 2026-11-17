@@ -42,9 +42,10 @@ func TestServer_CreateAndListTasks(t *testing.T) {
 		Project: "API",
 	}
 	body, _ := json.Marshal(task)
-	req, _ := http.NewRequest("POST", "/tasks", bytes.NewBuffer(body))
+	req, _ := http.NewRequest("POST", "http://localhost/tasks", bytes.NewBuffer(body))
 	rr := httptest.NewRecorder()
 
+	req.RemoteAddr = "127.0.0.1:1234"
 	srv.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusCreated {
@@ -58,9 +59,10 @@ func TestServer_CreateAndListTasks(t *testing.T) {
 	}
 
 	// 2. List Tasks
-	req, _ = http.NewRequest("GET", "/tasks", nil)
+	req, _ = http.NewRequest("GET", "http://localhost/tasks", nil)
 	rr = httptest.NewRecorder()
 
+	req.RemoteAddr = "127.0.0.1:1234"
 	srv.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
@@ -84,8 +86,9 @@ func TestServer_GetActiveTask(t *testing.T) {
 	srv := NewServer(st)
 
 	// No active task initially
-	req, _ := http.NewRequest("GET", "/tasks/active", nil)
+	req, _ := http.NewRequest("GET", "http://localhost/tasks/active", nil)
 	rr := httptest.NewRecorder()
+	req.RemoteAddr = "127.0.0.1:1234"
 	srv.ServeHTTP(rr, req)
 	if rr.Code != http.StatusNotFound {
 		t.Errorf("Expected 404 for no active task, got %v", rr.Code)
@@ -97,8 +100,9 @@ func TestServer_GetActiveTask(t *testing.T) {
 	st.StartTask(id)
 
 	// Check again
-	req, _ = http.NewRequest("GET", "/tasks/active", nil)
+	req, _ = http.NewRequest("GET", "http://localhost/tasks/active", nil)
 	rr = httptest.NewRecorder()
+	req.RemoteAddr = "127.0.0.1:1234"
 	srv.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Errorf("Expected 200 for active task, got %v", rr.Code)
@@ -249,22 +253,25 @@ func TestServer_AddAndRemoveDependency(t *testing.T) {
 	blocked, _ := st.CreateTask(models.Task{Title: "Blocked"})
 
 	body, _ := json.Marshal(map[string]int64{"blocker_id": blocker, "blocked_id": blocked})
-	req, _ := http.NewRequest("POST", "/dependencies", bytes.NewBuffer(body))
+	req, _ := http.NewRequest("POST", "http://localhost/dependencies", bytes.NewBuffer(body))
 	rr := httptest.NewRecorder()
+	req.RemoteAddr = "127.0.0.1:1234"
 	srv.ServeHTTP(rr, req)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("POST /dependencies returned status %v", rr.Code)
 	}
 
-	req, _ = http.NewRequest("DELETE", fmt.Sprintf("/dependencies/%d/%d", blocker, blocked), nil)
+	req, _ = http.NewRequest("DELETE", fmt.Sprintf("http://localhost/dependencies/%d/%d", blocker, blocked), nil)
 	rr = httptest.NewRecorder()
+	req.RemoteAddr = "127.0.0.1:1234"
 	srv.ServeHTTP(rr, req)
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("DELETE /dependencies returned status %v", rr.Code)
 	}
 
-	req, _ = http.NewRequest("GET", "/dependencies", nil)
+	req, _ = http.NewRequest("GET", "http://localhost/dependencies", nil)
 	rr = httptest.NewRecorder()
+	req.RemoteAddr = "127.0.0.1:1234"
 	srv.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("GET /dependencies returned status %v", rr.Code)
@@ -278,8 +285,9 @@ func TestServer_AddAndRemoveDependency(t *testing.T) {
 		t.Fatalf("GET /dependencies returned %d rows after delete, want 0", len(deps))
 	}
 
-	req, _ = http.NewRequest("DELETE", "/dependencies/not-an-id/3", nil)
+	req, _ = http.NewRequest("DELETE", "http://localhost/dependencies/not-an-id/3", nil)
 	rr = httptest.NewRecorder()
+	req.RemoteAddr = "127.0.0.1:1234"
 	srv.ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("DELETE /dependencies with a bad ID returned status %v, want 400", rr.Code)

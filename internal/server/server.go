@@ -15,27 +15,32 @@ import (
 )
 
 type Server struct {
-	store store.Store
-	mux   *http.ServeMux
+	store   store.Store
+	mux     *http.ServeMux
+	options Options
 }
 
 func NewServer(s store.Store) *Server {
-	srv := &Server{
-		store: s,
-		mux:   http.NewServeMux(),
-	}
-	srv.routes()
+	srv, _ := NewServerWithOptions(s, Options{})
 	return srv
 }
 
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// CORS Middleware
-	w.Header().Set("Access-Control-Allow-Origin", "*") // Allow all for local dev convenience
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+func NewServerWithOptions(s store.Store, options Options) (*Server, error) {
+	if err := validateOptions(options); err != nil {
+		return nil, err
+	}
+	options.AllowedOrigins = append([]string(nil), options.AllowedOrigins...)
+	srv := &Server{
+		store:   s,
+		mux:     http.NewServeMux(),
+		options: options,
+	}
+	srv.routes()
+	return srv, nil
+}
 
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !s.allowRequest(w, r) {
 		return
 	}
 

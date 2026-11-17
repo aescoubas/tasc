@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/aescoubas/tasc/internal/auth"
 	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/store"
 	"github.com/aescoubas/tasc/internal/store/remote"
@@ -89,7 +90,19 @@ func initConfig() {
 	}
 
 	if remoteURL != "" {
-		CurrentStore = remote.NewClient(remoteURL)
+		if path := os.Getenv("TASC_API_TOKEN_FILE"); path != "" {
+			token, err := auth.ReadToken(path)
+			if err != nil {
+				log.Fatal(err)
+			}
+			client, err := remote.NewAuthenticatedClient(remoteURL, token)
+			if err != nil {
+				log.Fatal(err)
+			}
+			CurrentStore = client
+		} else {
+			CurrentStore = remote.NewClient(remoteURL)
+		}
 	} else {
 		db.InitDB()
 		if db.DB == nil {

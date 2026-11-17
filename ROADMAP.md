@@ -370,7 +370,7 @@ semantics and migrations still require the approval specified in `AGENTS.md`.
 **Tasks:**
 - [ ] **1451 — Complete remote CLI support and eliminate local-database panics.**
 - [x] **1452 — Unify task completion, recurrence, and timer finalization.**
-- [ ] **1453 — Restrict REST server exposure and add access controls.**
+- [x] **1453 — Restrict REST server exposure and add access controls.**
 - [ ] **1454 — Make time blocks effective and enforce scheduling capacity.**
 - [ ] **1455 — Return truthful errors for invalid and missing task operations.**
 
@@ -446,6 +446,37 @@ Verification for **1452 — Unify task completion, recurrence, and timer finaliz
 
 No migration or historical-data repair was made. Deployment details are tracked in
 **1452 — Unify task completion, recurrence, and timer finalization**.
+
+**Progress (2026-11-17) — 1453 — Restrict REST server exposure and add access controls:**
+The local implementation is complete. `serve` defaults to IPv4 loopback; without
+a credential, peer and Host checks also require loopback/localhost. All actual
+API routes enforce an optional runtime owner bearer token, with direct remote
+serving requiring both authentication and TLS. Browser origins are exact opt-in
+values; preflights grant no API access. Runtime token files are bounded regular
+files with mode0600/0400. The remote CLI supports `TASC_API_TOKEN_FILE`, refuses
+plaintext credential transport beyond loopback and does not follow redirects.
+All responses use `no-store`. Local same-user SQLite/MCP authority is unchanged.
+
+Verification for **1453 — Restrict REST server exposure and add access controls**:
+- [x] `nix develop --command make check` passed; integration:
+  `ok github.com/aescoubas/tasc/tests/integration 10.560s`.
+- [x] `nix develop --command make test-race` passed; integration:
+  `ok github.com/aescoubas/tasc/tests/integration 25.403s`.
+- [x] Explicit `make fmt-check` in the dev shell covered all eight new Go files,
+  which are not yet included by the tracked-file formatting gate.
+- [x] `nix develop --command make build` produced the local binary.
+- [x] Four real-binary integration tests cover actual ephemeral loopback binds,
+  Host/origin rejection, authenticated CLI create/read/update/delete and persisted
+  results, absent client-local DB, TLS401/200 and startup refusal before an
+  unprotected non-loopback listener. All fixtures use temporary DB/HOME and
+  synthetic credentials/certificates. No skipped tests were reported.
+
+The dashboard, schema, stored-data semantics and module dependencies were not
+changed. The installed service and Home Manager pin were not deployed: laptop
+PID1933 still listens on wildcard8081. The live exposure remains tracked under
+**1517 — P2 Reduce container and monitoring service privileges and exposure**.
+The existing CLI401/exit0 behavior remains separately tracked under
+**1455 — Return truthful errors for invalid and missing task operations**.
 
 **Verification:**
 - [ ] `nix develop --command make check` passes with regressions for every resolved gap.

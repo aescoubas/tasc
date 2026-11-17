@@ -319,6 +319,27 @@ Or manually:
 tasc serve --port 8081
 ```
 
+The listener defaults to `127.0.0.1`. Without an API token it accepts only
+loopback peers and loopback/localhost Host headers. Browser requests from other
+origins are denied before the API runs; an existing browser client needs an
+explicit `--allow-origin http://localhost:5173`. Origins are exact, repeatable
+HTTP(S) origins, with no wildcard. This does not reopen dashboard development.
+
+For authenticated access, provision a random owner token of at least 32 printable
+non-space ASCII characters in a runtime file with mode 0600 or 0400, outside the
+repository and Nix store. Start with `--api-token-file /run/secrets/tasc-token`.
+The bearer token grants the whole REST API, including writes. It is independent
+of the browser-origin allow list. All API requests need `Authorization: Bearer …`;
+query parameters and cookies are not credentials. CORS preflights carry no token
+and authorize no API operation. Local CLI/SQLite and stdio MCP are unaffected.
+
+Direct non-loopback serving additionally requires both `--tls-cert` and
+`--tls-key`. Unauthenticated or plaintext non-loopback startup is refused before
+opening a listener. An SSH tunnel to a loopback-only server is another option.
+Authentication is optional for local-only use; other local processes retain that
+access unless a token is configured. Same-user compromise remains outside this
+REST boundary. API responses are marked `Cache-Control: no-store`.
+
 **2. Configure the Client:**
 
 Set the `TASC_REMOTE` environment variable to point to your server:
@@ -326,6 +347,13 @@ Set the `TASC_REMOTE` environment variable to point to your server:
 ```bash
 export TASC_REMOTE=http://localhost:8081
 ```
+
+For a token-protected server, set `TASC_API_TOKEN_FILE` to the client's protected
+runtime token file. The CLI adds the bearer header to every remote operation.
+It requires HTTPS for authenticated remote URLs, except HTTP loopback endpoints
+(including an SSH tunnel), and refuses redirects rather than forwarding a token.
+TLS certificates must pass normal certificate verification. Token contents are
+never passed as command-line arguments or placed in YAML configuration.
 
 Task commands using the Store interface (`add`, `list`, `show`, `modify`, `delete`,
 `done`, `start`, `stop`, `search`, `reschedule`, `dep`, `undep`, and `graph`) operate
