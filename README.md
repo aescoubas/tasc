@@ -365,7 +365,7 @@ Commands that still require local SQLite access reject remote mode with a nonzer
 error: `ask`, `backup` (including `backup list`), `edit`, `import-tw`, `log`,
 `project create`, `project archive`, `project delete`, `renumber`, `restore`, `seed`,
 `serve`, `ui`, `undo`, and `vague`. Use `modify` for remote task edits. Broader remote
-support remains tracked in the roadmap.
+support is tracked in the `tasc` project in Tasc.
 
 You can also specify the remote URL per command using the `--remote` flag:
 ```bash

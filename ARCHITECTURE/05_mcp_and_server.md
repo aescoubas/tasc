@@ -23,7 +23,7 @@ Tasc can run as a standalone local CLI or as a distributed system.
   project listing, and project editing use `Store` in both modes. Statistics aggregate
   a single task snapshot; listing includes completion timestamps for closure rates and
   burndown. Remaining commands that access SQLite directly reject remote mode in the
-  root pre-run hook; the README lists them and Phase 20 tracks the remaining work.
+  root pre-run hook; the README lists them and the `tasc` project tracks the remaining work.
 - **Timer stop**: `POST /tasks/stop?id=<id>` stops only the requested active task.
   Omitting `id` stops the current timer. Invalid IDs return HTTP 400. The remote Store
   client preserves the ID instead of silently stopping whichever task is active.

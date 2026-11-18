@@ -2,7 +2,7 @@
 
 A terminal task manager: a Cobra CLI and a Bubble Tea TUI over SQLite, with a REST
 server, an MCP surface, and a frozen React dashboard in `web/`. Active work addresses
-the core implementation gaps tracked in Phase 20.
+the core implementation gaps tracked in the Tasc project `tasc`.
 
 `~/.claude/CLAUDE.md` holds the standing rules (gates, evidence, git, shell hygiene) and
 is not repeated here. `CLAUDE.md` and `GEMINI.md` are symlinks to this file.
@@ -113,14 +113,13 @@ clean as of 2026-11-05.
 drive both through the real binary and HTTP server. The first is the agent-facing
 surface, so a change there is verified by driving the tool, not by reasoning about it.
 
-## The roadmap
+## Project work
 
-`ROADMAP.md` uses Technomancer Standard v1.0 and retains historical phase numbers.
-Mobile applications and external integrations were removed from scope on 2026-11-10.
-Phase 10 (Web Dashboard) is frozen and off limits: do not change or iterate on the
-dashboard unless the owner explicitly reopens it. Phase 20 tracks the active core
-implementation gaps. Finishing work means ticking the phase checklist and its
-Verification block, and a verification line is ticked against a command that was run.
+Use the live `tasc` project for scope, ordering, acceptance and completion.
+Record the local gate and interface-specific verification on the owning task.
+`ROADMAP.md` preserves the original phase evidence. The web dashboard remains
+frozen unless the owner explicitly reopens it. Mobile and external integrations
+remain outside the project scope.
 
 ## Deliberate gaps
 

@@ -1,8 +1,9 @@
-# Tasc Project Roadmap
-*Technomancer Standard v1.0*
+# Tasc phase archive
+
+Use the `tasc` project in Tasc for the live roadmap. This archive preserves phase scopes, historical checklists and dated verification. Record new work and acceptance on the owning task.
 
 ## 1. Context Profile
-*The Agent MUST read these files at the start of every session to understand the project state.*
+The following files provided context for the original phases.
 
 ### Static Context
 *   `README.md`
