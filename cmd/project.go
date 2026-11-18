@@ -78,6 +78,7 @@ var projectListCmd = &cobra.Command{
 		}
 		headers := []string{"Name", "Status", "Created", "Due", "Progress", "Tasks", "Description"}
 		rows := [][]string{headers}
+		singleLine := strings.NewReplacer("\r\n", " ", "\r", " ", "\n", " ", "\t", "    ")
 		var addRows func(projects []models.Project, level int)
 		addRows = func(projects []models.Project, level int) {
 			for _, p := range projects {
@@ -86,7 +87,7 @@ var projectListCmd = &cobra.Command{
 					continue
 				}
 
-				name := p.Name
+				name := singleLine.Replace(p.Name)
 				if level > 0 {
 					name = strings.Repeat("  ", level) + "└─ " + name
 				}
@@ -102,8 +103,12 @@ var projectListCmd = &cobra.Command{
 				if totals[p.Name] > 0 {
 					progress = completed[p.Name] * 100 / totals[p.Name]
 				}
-				rows = append(rows, []string{name, string(status), p.CreatedAt.Format(time.DateOnly), due,
-					fmt.Sprintf("%d%%", progress), fmt.Sprint(totals[p.Name]), strings.ReplaceAll(p.Description, "\t", "    ")})
+				description := p.Description
+				if end := strings.IndexAny(description, "\r\n"); end >= 0 {
+					description = strings.TrimRight(description[:end], " \t") + "..."
+				}
+				rows = append(rows, []string{name, singleLine.Replace(string(status)), p.CreatedAt.Format(time.DateOnly), due,
+					fmt.Sprintf("%d%%", progress), fmt.Sprint(totals[p.Name]), singleLine.Replace(description)})
 				addRows(children[p.Name], level+1)
 			}
 		}
@@ -117,8 +122,7 @@ var projectListCmd = &cobra.Command{
 	},
 }
 
-// printProjectTable measures terminal cells so wide characters and continuation
-// lines occupy the same columns as the header.
+// printProjectTable measures terminal cells so wide characters align with the headers.
 func printProjectTable(rows [][]string, width int) {
 	headers := rows[0]
 	widths := make([]int, len(headers))
@@ -142,16 +146,12 @@ func printProjectTable(rows [][]string, width int) {
 	}
 
 	printRow := func(row []string) {
-		cells := make([]string, 0, len(row)*2-1)
+		cells := make([]string, len(row))
 		for i, value := range row {
-			if i > 0 {
-				cells = append(cells, gap)
-			}
-			cells = append(cells, lipgloss.NewStyle().Width(widths[i]).Render(value))
+			columnWidth := widths[i]
+			cells[i] = lipgloss.NewStyle().Width(columnWidth).Render(truncateProjectCell(value, columnWidth))
 		}
-		for _, line := range strings.Split(lipgloss.JoinHorizontal(lipgloss.Top, cells...), "\n") {
-			fmt.Println(strings.TrimRight(line, " "))
-		}
+		fmt.Println(strings.TrimRight(strings.Join(cells, gap), " "))
 	}
 	printRow(headers)
 	rule := make([]string, len(headers))
@@ -162,6 +162,18 @@ func printProjectTable(rows [][]string, width int) {
 	for _, row := range rows[1:] {
 		printRow(row)
 	}
+}
+
+func truncateProjectCell(value string, width int) string {
+	if lipgloss.Width(value) <= width {
+		return value
+	}
+	const ellipsis = "..."
+	if width <= len(ellipsis) {
+		return ellipsis[:width]
+	}
+	cropped := lipgloss.NewStyle().MaxWidth(width - len(ellipsis)).Render(value)
+	return strings.TrimRight(cropped, " ") + ellipsis
 }
 
 var projectCreateCmd = &cobra.Command{

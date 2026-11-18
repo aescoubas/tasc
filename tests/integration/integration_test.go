@@ -380,10 +380,13 @@ func TestProjectListColumnsAndArchives(t *testing.T) {
 	if err := dbpkg.RunMigrations(conn); err != nil {
 		t.Fatal(err)
 	}
-	description := "Review the survey results and prepare the field notes for the next planning meeting.\nFollow up with the team."
 	_, err = conn.Exec(`INSERT INTO projects (name, parent, status, created_at, description) VALUES
 		('Archive', NULL, 'archived', '2018-05-04', ''),
-		('Field', 'Archive', 'active', '2021-02-03', ?)`, description)
+		('Field', 'Archive', 'active', '2021-02-03', ?),
+		('Notes', NULL, 'active', '2021-02-03', ?),
+		('Work', NULL, 'active', '2021-02-03', 'Short description')`,
+		"Review the survey results and prepare the field notes for the next planning meeting.",
+		"First line\r\nFollow up with the team.")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,27 +404,28 @@ func TestProjectListColumnsAndArchives(t *testing.T) {
 				t.Fatalf("project list: %v\n%s", err, out)
 			}
 			lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
-			if len(lines) < 5 || strings.Join(strings.Fields(lines[0]), " ") != "Name Status Created Due Progress Tasks Description" {
+			if len(lines) != 5 || strings.Join(strings.Fields(lines[0]), " ") != "Name Status Created Due Progress Tasks Description" {
 				t.Fatalf("unexpected project table:\n%s", out)
 			}
 			column := strings.Index(lines[0], "Description")
-			var parts []string
-			for i, line := range lines[2:] {
+			for _, line := range lines[2:] {
 				if len(line) > 80 || len(line) <= column {
 					t.Fatalf("unexpected line width: %q", line)
 				}
-				prefix := strings.Join(strings.Fields(line[:column]), " ")
-				if (i == 0 && prefix != "Field active 2021-02-03 - 0% 0") || (i > 0 && prefix != "") {
-					t.Fatalf("unexpected project columns: %q", line)
-				}
-				parts = append(parts, line[column:])
 			}
-			if strings.Join(parts, " ") != strings.ReplaceAll(description, "\n", " ") {
-				t.Fatalf("description wrapped incorrectly:\n%s", out)
+			if strings.Join(strings.Fields(lines[2][:column]), " ") != "Field active 2021-02-03 - 0% 0" {
+				t.Fatalf("unexpected project columns: %q", lines[2])
+			}
+			if description := lines[2][column:]; !strings.HasPrefix(description, "Review the survey") || !strings.HasSuffix(description, "...") {
+				t.Fatalf("long description preview: %q", description)
+			}
+			if lines[3][column:] != "First line..." || lines[4][column:] != "Short description" {
+				t.Fatalf("unexpected description previews:\n%s", out)
 			}
 
 			out, err = runTasc(t, dbPath, append(args, "--archived")...)
-			if err != nil || !strings.Contains(out, "Archive") || !strings.Contains(out, "2018-05-04") || !strings.Contains(out, "└─ Field") {
+			if err != nil || strings.Count(out, "\n") != 6 || !strings.Contains(out, "Archive") ||
+				!strings.Contains(out, "2018-05-04") || !strings.Contains(out, "└─ Field") {
 				t.Fatalf("project list --archived: %v\n%s", err, out)
 			}
 		})
