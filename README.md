@@ -264,6 +264,7 @@ nix build .#web
     Manage project metadata (descriptions, goals):
     ```bash
     tasc project list
+    tasc project list --archived   # Include archived projects
     tasc project add "Work" --desc "Professional tasks"
     tasc project show "Work"
     ```

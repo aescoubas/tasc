@@ -370,6 +370,64 @@ func TestProjectWorkflow(t *testing.T) {
 	}
 }
 
+func TestProjectListColumnsAndArchives(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "projects.db")
+	conn, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if err := dbpkg.RunMigrations(conn); err != nil {
+		t.Fatal(err)
+	}
+	description := "Review the survey results and prepare the field notes for the next planning meeting.\nFollow up with the team."
+	_, err = conn.Exec(`INSERT INTO projects (name, parent, status, created_at, description) VALUES
+		('Archive', NULL, 'archived', '2018-05-04', ''),
+		('Field', 'Archive', 'active', '2021-02-03', ?)`, description)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(server.NewServer(sqlite.NewSQLiteStore(conn)))
+	defer srv.Close()
+
+	for _, mode := range []string{"local", "remote"} {
+		t.Run(mode, func(t *testing.T) {
+			args := []string{"project", "list"}
+			if mode == "remote" {
+				args = append([]string{"--remote", srv.URL}, args...)
+			}
+			out, err := runTasc(t, dbPath, args...)
+			if err != nil {
+				t.Fatalf("project list: %v\n%s", err, out)
+			}
+			lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
+			if len(lines) < 5 || strings.Join(strings.Fields(lines[0]), " ") != "Name Status Created Due Progress Tasks Description" {
+				t.Fatalf("unexpected project table:\n%s", out)
+			}
+			column := strings.Index(lines[0], "Description")
+			var parts []string
+			for i, line := range lines[2:] {
+				if len(line) > 80 || len(line) <= column {
+					t.Fatalf("unexpected line width: %q", line)
+				}
+				prefix := strings.Join(strings.Fields(line[:column]), " ")
+				if (i == 0 && prefix != "Field active 2021-02-03 - 0% 0") || (i > 0 && prefix != "") {
+					t.Fatalf("unexpected project columns: %q", line)
+				}
+				parts = append(parts, line[column:])
+			}
+			if strings.Join(parts, " ") != strings.ReplaceAll(description, "\n", " ") {
+				t.Fatalf("description wrapped incorrectly:\n%s", out)
+			}
+
+			out, err = runTasc(t, dbPath, append(args, "--archived")...)
+			if err != nil || !strings.Contains(out, "Archive") || !strings.Contains(out, "2018-05-04") || !strings.Contains(out, "└─ Field") {
+				t.Fatalf("project list --archived: %v\n%s", err, out)
+			}
+		})
+	}
+}
+
 func TestListOverdueFilter(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "overdue.db")

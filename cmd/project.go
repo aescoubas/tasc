@@ -5,8 +5,8 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/aescoubas/tasc/internal/config"
@@ -14,20 +14,23 @@ import (
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/parse"
 	"github.com/aescoubas/tasc/internal/store"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 )
 
 // Flags
 var (
-	projDesc    string
-	projNewName string
-	projUnlink  bool
-	projCascade bool
-	projParent  string
-	projDue     string
-	projStatus  string
+	projDesc     string
+	projNewName  string
+	projUnlink   bool
+	projCascade  bool
+	projArchived bool
+	projParent   string
+	projDue      string
+	projStatus   string
 )
 
 var projectCmd = &cobra.Command{
@@ -38,7 +41,7 @@ var projectCmd = &cobra.Command{
 
 var projectListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List all projects",
+	Short: "List projects",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		allProjects, err := CurrentStore.ListProjects()
 		if err != nil {
@@ -47,16 +50,6 @@ var projectListCmd = &cobra.Command{
 		tasks, err := CurrentStore.ListTasks(store.TaskFilter{IncludeDeleted: true})
 		if err != nil {
 			return fmt.Errorf("error loading project tasks: %w", err)
-		}
-
-		type proj struct {
-			name        string
-			description string
-			parent      string
-			status      string
-			due         *time.Time
-			totalTasks  int
-			doneTasks   int
 		}
 
 		totals := make(map[string]int)
@@ -69,72 +62,106 @@ var projectListCmd = &cobra.Command{
 				}
 			}
 		}
-		var projects []proj
+		children := make(map[string][]models.Project)
+		var roots []models.Project
 		for _, project := range allProjects {
-			p := proj{name: project.Name, description: project.Description,
-				parent: project.Parent, status: string(project.Status), due: project.DueAt,
-				totalTasks: totals[project.Name], doneTasks: completed[project.Name]}
-			projects = append(projects, p)
+			if project.Parent == "" {
+				roots = append(roots, project)
+				continue
+			}
+			children[project.Parent] = append(children[project.Parent], project)
 		}
 
-		// Build tree
-		tree := make(map[string][]proj)
-		var roots []proj
+		width, _, err := term.GetSize(int(os.Stdout.Fd()))
+		if err != nil || width <= 0 {
+			width = 80
+		}
+		headers := []string{"Name", "Status", "Created", "Due", "Progress", "Tasks", "Description"}
+		rows := [][]string{headers}
+		var addRows func(projects []models.Project, level int)
+		addRows = func(projects []models.Project, level int) {
+			for _, p := range projects {
+				if p.Status == models.ProjectStatusArchived && !projArchived {
+					addRows(children[p.Name], level)
+					continue
+				}
 
-		for _, p := range projects {
-			if p.parent == "" {
-				roots = append(roots, p)
-			} else {
-				tree[p.parent] = append(tree[p.parent], p)
+				name := p.Name
+				if level > 0 {
+					name = strings.Repeat("  ", level) + "└─ " + name
+				}
+				status := p.Status
+				if status == "" {
+					status = models.ProjectStatusActive
+				}
+				due := "-"
+				if p.DueAt != nil {
+					due = p.DueAt.Format(time.DateOnly)
+				}
+				progress := 0
+				if totals[p.Name] > 0 {
+					progress = completed[p.Name] * 100 / totals[p.Name]
+				}
+				rows = append(rows, []string{name, string(status), p.CreatedAt.Format(time.DateOnly), due,
+					fmt.Sprintf("%d%%", progress), fmt.Sprint(totals[p.Name]), strings.ReplaceAll(p.Description, "\t", "    ")})
+				addRows(children[p.Name], level+1)
 			}
 		}
-
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-		fmt.Fprintln(w, "Name\tStatus\tDue\tProgress\tTasks\tDescription")
-		fmt.Fprintln(w, "----\t------\t---\t--------\t-----\t-----------")
-
-		var printTree func(p proj, level int)
-		printTree = func(p proj, level int) {
-			indent := strings.Repeat("  ", level)
-			prefix := ""
-			if level > 0 {
-				prefix = "└─ "
-			}
-
-			dueStr := "-"
-			if p.due != nil {
-				dueStr = p.due.Format("2006-01-02")
-			}
-
-			status := p.status
-			if status == "" {
-				status = "active"
-			}
-
-			pct := 0
-			if p.totalTasks > 0 {
-				pct = (p.doneTasks * 100) / p.totalTasks
-			}
-			progStr := fmt.Sprintf("%d%%", pct)
-
-			fmt.Fprintf(w, "%s%s%s\t%s\t%s\t%s\t%d\t%s\n", indent, prefix, p.name, status, dueStr, progStr, p.totalTasks, p.description)
-
-			children := tree[p.name]
-			for _, child := range children {
-				printTree(child, level+1)
-			}
-		}
-
-		for _, root := range roots {
-			printTree(root, 0)
-		}
-		w.Flush()
-
-		if len(projects) == 0 {
+		addRows(roots, 0)
+		if len(rows) == 1 {
 			fmt.Println("No projects found.")
+			return nil
 		}
+		printProjectTable(rows, width)
 		return nil
 	},
+}
+
+// printProjectTable measures terminal cells so wide characters and continuation
+// lines occupy the same columns as the header.
+func printProjectTable(rows [][]string, width int) {
+	headers := rows[0]
+	widths := make([]int, len(headers))
+	for _, row := range rows {
+		for i, value := range row {
+			widths[i] = max(widths[i], min(lipgloss.Width(value), width))
+		}
+	}
+	const gap = "  "
+	total := len(gap) * (len(widths) - 1)
+	for _, w := range widths {
+		total += w
+	}
+	for total > width {
+		widest := slices.Index(widths, slices.Max(widths))
+		if widths[widest] <= 1 {
+			break
+		}
+		widths[widest]--
+		total--
+	}
+
+	printRow := func(row []string) {
+		cells := make([]string, 0, len(row)*2-1)
+		for i, value := range row {
+			if i > 0 {
+				cells = append(cells, gap)
+			}
+			cells = append(cells, lipgloss.NewStyle().Width(widths[i]).Render(value))
+		}
+		for _, line := range strings.Split(lipgloss.JoinHorizontal(lipgloss.Top, cells...), "\n") {
+			fmt.Println(strings.TrimRight(line, " "))
+		}
+	}
+	printRow(headers)
+	rule := make([]string, len(headers))
+	for i, name := range headers {
+		rule[i] = strings.Repeat("-", min(len(name), widths[i]))
+	}
+	printRow(rule)
+	for _, row := range rows[1:] {
+		printRow(row)
+	}
 }
 
 var projectCreateCmd = &cobra.Command{
@@ -470,6 +497,7 @@ func init() {
 	rootCmd.AddCommand(projectCmd)
 
 	projectCmd.AddCommand(projectListCmd)
+	projectListCmd.Flags().BoolVar(&projArchived, "archived", false, "Include archived projects")
 
 	projectCmd.AddCommand(projectCreateCmd)
 	projectCreateCmd.Flags().StringVarP(&projDesc, "desc", "d", "", "Project description")
