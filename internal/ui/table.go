@@ -14,7 +14,8 @@ import (
 
 // TableOptions controls how the task table is rendered.
 type TableOptions struct {
-	ShowAll bool // If true, do not truncate to screen height
+	ShowAll       bool // If true, do not truncate to screen height
+	MarkRecurring bool
 }
 
 // RenderTaskTable prints a formatted table of tasks to stdout.
@@ -77,13 +78,16 @@ func RenderTaskTable(tasks []models.Task, scores map[int64]float64, cfg config.C
 		}
 
 		desc := strings.ReplaceAll(t.Title, "\n", " ")
-		if len(desc) > 50 {
-			desc = desc[:47] + "..."
+		if lipgloss.Width(desc) > 50 {
+			desc = lipgloss.NewStyle().MaxWidth(47).Render(desc) + "..."
 		}
 		duration := t.TimeSpent
 		if t.ActiveStart != nil {
 			desc = "ONGOING: " + desc
 			duration += int64(time.Since(*t.ActiveStart).Seconds())
+		}
+		if opts.MarkRecurring && t.Recurrence != "" {
+			desc = "↻ " + desc
 		}
 
 		durStr := "-"
@@ -153,9 +157,7 @@ func RenderTaskTable(tasks []models.Task, scores map[int64]float64, cfg config.C
 		if len(row.status) > widths[2] {
 			widths[2] = len(row.status)
 		}
-		if len(row.desc) > widths[3] {
-			widths[3] = len(row.desc)
-		}
+		widths[3] = max(widths[3], lipgloss.Width(row.desc))
 		if len(row.created) > widths[4] {
 			widths[4] = len(row.created)
 		}
@@ -197,15 +199,6 @@ func RenderTaskTable(tasks []models.Task, scores map[int64]float64, cfg config.C
 
 			if avail < widths[3] {
 				widths[3] = avail
-				for k, row := range rowsData {
-					if len(row.desc) > avail {
-						if avail > 3 {
-							rowsData[k].desc = row.desc[:avail-3] + "..."
-						} else {
-							rowsData[k].desc = row.desc[:avail]
-						}
-					}
-				}
 				totalWidth = fixed + avail
 			}
 		}
@@ -257,9 +250,12 @@ func RenderTaskTable(tasks []models.Task, scores map[int64]float64, cfg config.C
 	fmt.Println(headerStr.String())
 
 	for _, row := range rowsData {
+		if lipgloss.Width(row.desc) > widths[3] {
+			row.desc = lipgloss.NewStyle().MaxWidth(widths[3]-3).Render(row.desc) + "..."
+		}
 		style := styles[row.tier]
 		printCol := func(text string, width int, isLast bool) {
-			padded := fmt.Sprintf("%*s", width, text)
+			padded := strings.Repeat(" ", max(0, width-lipgloss.Width(text))) + text
 			fmt.Print(style.Render(padded))
 			if !isLast {
 				fmt.Print(style.Render("   "))

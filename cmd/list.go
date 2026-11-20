@@ -323,7 +323,8 @@ var listCmd = &cobra.Command{
 		}
 
 		opts := ui.TableOptions{
-			ShowAll: showAll,
+			ShowAll:       showAll,
+			MarkRecurring: true,
 		}
 
 		ui.RenderTaskTable(displayTasks, displayScores, cfg, allProjects, opts)

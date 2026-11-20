@@ -336,7 +336,7 @@ func (s *SQLiteStore) DeleteTask(id int64) error {
 func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) {
 	baseQuery := `
 		SELECT 
-			id, title, description, project, status, created_at, completed_at, due_at, schedule_block, estimate, active_start, time_spent, reschedule_count,
+			id, title, description, project, status, created_at, completed_at, due_at, schedule_block, estimate, recurrence, active_start, time_spent, reschedule_count,
 			is_blocked
 		FROM (
 			SELECT tasks.*, status NOT IN ('done', 'deleted') AND EXISTS(
@@ -403,17 +403,19 @@ func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) 
 		var dueAt sql.NullTime
 		var scheduleBlock sql.NullString
 		var estimate sql.NullString
+		var recurrence sql.NullString
 		var activeStart sql.NullTime
 		var timeSpent sql.NullInt64
 		var isBlocked bool
 
-		err := rows.Scan(&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt, &completedAt, &dueAt, &scheduleBlock, &estimate, &activeStart, &timeSpent, &t.RescheduleCount, &isBlocked)
+		err := rows.Scan(&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt, &completedAt, &dueAt, &scheduleBlock, &estimate, &recurrence, &activeStart, &timeSpent, &t.RescheduleCount, &isBlocked)
 		if err != nil {
 			return nil, err
 		}
 		t.Description = description.String
 		t.Project = project.String
 		t.ScheduleBlock = scheduleBlock.String
+		t.Recurrence = recurrence.String
 		t.IsBlocked = isBlocked
 		if completedAt.Valid {
 			t.CompletedAt = &completedAt.Time

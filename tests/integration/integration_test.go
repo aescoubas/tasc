@@ -633,11 +633,41 @@ func TestAddSupportsDayFirstDueDateFormats(t *testing.T) {
 	}
 }
 
+func TestListMarksRecurringTasks(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "list-recurrence.db")
+	for _, args := range [][]string{
+		{"add", "Review fleet CVE exposure", "--recurrence", "weekly"},
+		{"add", "One-time review"},
+	} {
+		if out, err := runTasc(t, dbPath, args...); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	conn, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	srv := httptest.NewServer(server.NewServer(sqlite.NewSQLiteStore(conn)))
+	defer srv.Close()
+	for _, args := range [][]string{{"list"}, {"--remote", srv.URL, "list"}} {
+		out, err := runTasc(t, dbPath, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		if !strings.Contains(out, "↻ Review fleet CVE exposure") ||
+			!strings.Contains(out, "One-time review") || strings.Count(out, "↻") != 1 {
+			t.Fatalf("%v: expected only the weekly task to be marked:\n%s", args, out)
+		}
+	}
+}
+
 func TestListOutputJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "list-json.db")
 
-	out, err := runTasc(t, dbPath, "add", "List JSON Task")
+	out, err := runTasc(t, dbPath, "add", "List JSON Task", "--recurrence", "weekly")
 	if err != nil {
 		t.Fatalf("Add failed: %v\nOutput: %s", err, out)
 	}
@@ -648,11 +678,8 @@ func TestListOutputJSON(t *testing.T) {
 	}
 
 	var payload []struct {
-		Task struct {
-			ID    int64  `json:"id"`
-			Title string `json:"title"`
-		} `json:"task"`
-		Score float64 `json:"score"`
+		Task  models.Task `json:"task"`
+		Score float64     `json:"score"`
 	}
 	if err := json.Unmarshal([]byte(out), &payload); err != nil {
 		t.Fatalf("List --output json returned invalid JSON: %v\nOutput: %s", err, out)
@@ -660,8 +687,8 @@ func TestListOutputJSON(t *testing.T) {
 	if len(payload) != 1 {
 		t.Fatalf("Expected 1 task in list JSON output, got %d", len(payload))
 	}
-	if payload[0].Task.Title != "List JSON Task" {
-		t.Fatalf("Unexpected title in JSON output: %q", payload[0].Task.Title)
+	if task := payload[0].Task; task.Title != "List JSON Task" || task.Recurrence != "weekly" {
+		t.Fatalf("Unexpected title or recurrence in JSON output: %q, %q", task.Title, task.Recurrence)
 	}
 }
 
