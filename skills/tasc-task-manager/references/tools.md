@@ -36,7 +36,7 @@ Use these MCP endpoints when working with Tasc.
 - `tasc_stop_task`
   - Stop the active task timer.
 - `tasc_get_active_task`
-  - Check current in-progress work.
+  - Identify the task whose timer is running.
 
 ## Project Tools
 

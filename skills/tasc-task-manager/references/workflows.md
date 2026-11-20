@@ -22,7 +22,7 @@
 
 ## Complete active work
 
-1. Use `tasc_get_active_task` if the request is about “what I’m working on now”.
+1. Identify the task from the request and current work. If the user refers to the timed task, use `tasc_get_active_task`.
 2. Confirm the task ID if needed.
 3. Complete it with `tasc_complete_task` or stop timing first with `tasc_stop_task` if the user asked for that explicitly.
 
