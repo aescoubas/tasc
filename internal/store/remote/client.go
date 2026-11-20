@@ -100,6 +100,31 @@ func (c *Client) UpdateTask(t models.Task) error {
 	return nil
 }
 
+func (c *Client) UpdateTaskDescription(id int64, expected, description string) error {
+	data, err := json.Marshal(map[string]string{"expected": expected, "description": description})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/tasks/%d/description", c.baseURL, id), bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusNoContent:
+		return nil
+	case http.StatusConflict:
+		return store.ErrTaskDescriptionConflict
+	default:
+		return fmt.Errorf("updating task description: server returned %s", resp.Status)
+	}
+}
+
 func (c *Client) BatchUpdateTasks(ids []int64, updates map[string]interface{}) error {
 	reqBody := map[string]interface{}{
 		"ids":     ids,

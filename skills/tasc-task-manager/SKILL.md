@@ -20,6 +20,7 @@ Use this skill when the session has access to the `tasc` MCP server and the user
 2. Resolve ambiguity before mutating data.
    - Use `tasc_search_tasks` when the user refers to tasks loosely.
    - Use `tasc_get_task` before changing, completing, or deleting a specific task.
+   - For handoff-only work, use `tasc_get_task_handoff` followed by `tasc_update_task_handoff`.
    - Use `tasc_list_projects` or `tasc_get_project` when a project name is uncertain.
 3. Mutate conservatively.
    - Use `tasc_add_task` for new tasks.

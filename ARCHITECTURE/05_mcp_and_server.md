@@ -45,15 +45,34 @@ Tasc can run as a standalone local CLI or as a distributed system.
 - **Transport**: stdio, via `server.ServeStdio`. **Stdout is the protocol** — diagnostics
   go through `log` (stderr by default) and never `fmt.Print`.
 - **Resource**: `tasc://tasks`, giving the model the current state in one read.
-- **Tools**: 19, covering the `Store` interface.
+- **Tools**: 21, covering the `Store` interface.
 
 | Area | Tools |
 |---|---|
 | Tasks | `tasc_add_task`, `tasc_get_task`, `tasc_update_task`, `tasc_delete_task`, `tasc_list_tasks`, `tasc_search_tasks` |
+| Handoffs | `tasc_get_task_handoff`, `tasc_update_task_handoff` |
 | Task actions | `tasc_complete_task`, `tasc_start_task`, `tasc_stop_task`, `tasc_get_active_task`, `tasc_batch_update_tasks` |
 | Dependencies | `tasc_add_dependency`, `tasc_remove_dependency`, `tasc_get_dependencies` |
 | Projects | `tasc_add_project`, `tasc_get_project`, `tasc_update_project`, `tasc_delete_project`, `tasc_list_projects` |
 
+- **Task handoffs**: agents lead a description with the next actor and action.
+  The handoff tools use the first nonblank paragraph of the existing description.
+  The read returns `id`, `handoff`, `truncated` and `revision` as structured content
+  and JSON text. The paragraph preview is capped at 512 UTF-8 bytes.
+  A legacy description may open with evidence or context. Use `prepend` to
+  preserve that entire body. Use
+  `replace` when the complete opening paragraph is already the handoff. Replacement
+  preserves the rest of the description, including its original separators.
+  The revision covers the entire description. An intervening description edit or
+  deletion rejects the write. Read again and reconsider the edit before retrying.
+  The remote Store uses `PUT /tasks/{id}/description` through the existing REST
+  access controls. SQLite checks the expected body and writes only the description
+  in one statement. The full-task tools keep their original contracts, including
+  the ability to replace the entire description.
+  The local and remote MCP integration fixture returned 1,326 bytes for the
+  bounded legacy read versus 7,546 for the full tool result. Two concurrent
+  edits from the same snapshot yielded one success and one conflict in each
+  mode, with the original evidence preserved byte for byte.
 - **Workflow**: the model reads state, then acts. A bulk request ("reschedule
   everything") is a `tasc_list_tasks` to collect ids followed by one
   `tasc_batch_update_tasks`, not a call per task.
@@ -62,4 +81,4 @@ Tasc can run as a standalone local CLI or as a distributed system.
   binary, not the local build. A new tool is invisible to them until homelab's
   `pkgs/tasc/default.nix` rev moves.
 
-This package has **no tests**. Verify a change by driving the tool.
+Verify tool changes through the real MCP binary in `tests/integration`.

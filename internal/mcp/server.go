@@ -37,6 +37,7 @@ func NewServer(s store.Store) *MCPServer {
 	}
 
 	ms.registerTools()
+	ms.registerHandoffTools()
 	ms.registerResources()
 
 	return ms

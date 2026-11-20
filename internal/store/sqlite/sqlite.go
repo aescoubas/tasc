@@ -236,6 +236,22 @@ func (s *SQLiteStore) UpdateTask(t models.Task) error {
 	return nil
 }
 
+func (s *SQLiteStore) UpdateTaskDescription(id int64, expected, description string) error {
+	// Check and edit in one statement so writers on other connections cannot
+	// slip in between them. Legacy NULL descriptions read back as empty text.
+	result, err := s.db.Exec(`UPDATE tasks SET description = ?
+		WHERE id = ? AND status <> 'deleted' AND COALESCE(description, '') = ?`, description, id, expected)
+	if err != nil {
+		return err
+	}
+	if changed, err := result.RowsAffected(); err != nil {
+		return err
+	} else if changed == 0 {
+		return store.ErrTaskDescriptionConflict
+	}
+	return nil
+}
+
 func (s *SQLiteStore) BatchUpdateTasks(ids []int64, updates map[string]interface{}) error {
 	if len(ids) == 0 {
 		return nil

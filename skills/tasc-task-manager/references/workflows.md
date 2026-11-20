@@ -13,6 +13,16 @@
 3. Fetch the final target with `tasc_get_task`.
 4. Apply the change with `tasc_update_task`.
 
+## Update a task handoff
+
+1. Call `tasc_get_task_handoff` with the task ID.
+2. Write a short paragraph naming the next actor and concrete action.
+3. Use `tasc_update_task_handoff` with the returned revision. Choose `replace`
+   when the full opening paragraph is already the handoff. Choose `prepend`
+   for an empty description, a truncated preview or an opening paragraph that
+   should be kept.
+4. If the revision is stale, read again and reconcile your edit with the latest text.
+
 ## Bulk reschedule or move work
 
 1. Inspect the current scope with `tasc_list_tasks`.

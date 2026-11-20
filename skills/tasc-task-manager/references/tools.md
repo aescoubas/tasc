@@ -21,6 +21,14 @@ Use these MCP endpoints when working with Tasc.
   - Use for fuzzy lookup when the request refers to titles loosely.
 - `tasc_get_task`
   - Fetch one task before editing, completing, or deleting it.
+- `tasc_get_task_handoff`
+  - Fetch the opening paragraph by ID as JSON with `handoff`, `truncated` and
+    `revision`. The preview contains at most 512 UTF-8 bytes.
+- `tasc_update_task_handoff`
+  - Send `id`, `revision`, `mode` and one short `handoff` paragraph.
+  - Use `prepend` to preserve the entire description, or `replace` to update a
+    complete opening paragraph already used as the handoff.
+  - A stale revision rejects the edit. Read the latest handoff before retrying.
 - `tasc_update_task`
   - Edit one task.
 - `tasc_batch_update_tasks`

@@ -66,7 +66,7 @@ degrades a real database in place, and it is why the tag is on every Makefile ta
 
 ## Storage Abstraction
 The application interacts with data through the `Store` interface
-(`internal/store/store.go`), 18 methods over tasks, task actions, dependencies,
+(`internal/store/store.go`) for tasks, task actions, dependencies,
 projects and search.
 - **`SQLiteStore`** (`internal/store/sqlite`): direct database access.
 - **`RemoteClient`** (`internal/store/remote`): HTTP client against the `tasc serve`

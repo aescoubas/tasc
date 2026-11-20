@@ -14,7 +14,10 @@ type mockStore struct{}
 func (m *mockStore) CreateTask(t models.Task) (int64, error) { return 0, nil }
 func (m *mockStore) GetTask(id int64) (models.Task, error)   { return models.Task{}, nil }
 func (m *mockStore) UpdateTask(t models.Task) error          { return nil }
-func (m *mockStore) DeleteTask(id int64) error               { return nil }
+func (m *mockStore) UpdateTaskDescription(id int64, expected, description string) error {
+	return nil
+}
+func (m *mockStore) DeleteTask(id int64) error { return nil }
 func (m *mockStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) {
 	tNow := time.Now()
 	return []models.Task{

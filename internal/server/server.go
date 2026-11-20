@@ -56,6 +56,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /tasks", s.handleCreateTask)
 	s.mux.HandleFunc("GET /tasks/{id}", s.handleGetTask)
 	s.mux.HandleFunc("PUT /tasks/{id}", s.handleUpdateTask)
+	s.mux.HandleFunc("PUT /tasks/{id}/description", s.handleUpdateTaskDescription)
 	s.mux.HandleFunc("DELETE /tasks/{id}", s.handleDeleteTask)
 
 	s.mux.HandleFunc("POST /tasks/{id}/done", s.handleTaskDone)
@@ -223,6 +224,31 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, t)
+}
+
+func (s *Server) handleUpdateTaskDescription(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+	var edit struct {
+		Expected    *string `json:"expected"`
+		Description *string `json:"description"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&edit); err != nil || edit.Expected == nil || edit.Description == nil {
+		http.Error(w, "expected and description must be strings", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.UpdateTaskDescription(id, *edit.Expected, *edit.Description); err != nil {
+		if errors.Is(err, store.ErrTaskDescriptionConflict) {
+			http.Error(w, err.Error(), http.StatusConflict)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {

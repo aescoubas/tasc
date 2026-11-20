@@ -13,6 +13,9 @@ var ErrInvalidDependency = errors.New("invalid dependency")
 // ErrInvalidCompletion identifies a deleted task or a recurrence that cannot advance.
 var ErrInvalidCompletion = errors.New("invalid completion")
 
+// ErrTaskDescriptionConflict identifies a stale description edit.
+var ErrTaskDescriptionConflict = errors.New("task description changed or is unavailable")
+
 type TaskFilter struct {
 	// Status matches the displayed status: open dependencies override it with blocked.
 	Status         []models.TaskStatus
@@ -31,6 +34,7 @@ type Store interface {
 	CreateTask(t models.Task) (int64, error)
 	GetTask(id int64) (models.Task, error)
 	UpdateTask(t models.Task) error
+	UpdateTaskDescription(id int64, expected, description string) error
 	DeleteTask(id int64) error // Soft delete usually
 	ListTasks(filter TaskFilter) ([]models.Task, error)
 
