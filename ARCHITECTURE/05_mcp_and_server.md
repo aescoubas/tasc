@@ -33,6 +33,12 @@ Tasc can run as a standalone local CLI or as a distributed system.
   With no explicit status, the default excludes `done`, `deleted` and `undefined`;
   `include_deleted=true` includes all three. An explicit status still restricts the
   results when that flag is set. Invalid boolean values return HTTP 400.
+- Set `exclude_archived_projects=true` on `GET /tasks` or pass
+  `exclude_archived_projects: true` to `tasc_list_tasks` to omit tasks assigned
+  directly to archived projects. The filter keeps unassigned tasks, tasks whose
+  project record is missing, and tasks in active subprojects of archived parents.
+  It combines with other filters. To review an archived project's history,
+  specify the project and omit the exclusion.
 
 ## Model Context Protocol (MCP)
 `internal/mcp/server.go` implements an MCP server over `mark3labs/mcp-go`.

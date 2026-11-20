@@ -64,6 +64,7 @@ func (ms *MCPServer) registerTools() {
 		mcp.WithString("project", mcp.Description("Filter by project")),
 		mcp.WithString("status", mcp.Description("Filter by status (comma separated: backlog, ongoing, done, blocked)")),
 		mcp.WithBoolean("include_deleted", mcp.Description("Include deleted tasks")),
+		mcp.WithBoolean("exclude_archived_projects", mcp.Description("Exclude tasks assigned to archived projects. Unassigned tasks are still included.")),
 	), ms.handleList)
 
 	// 3. Complete Task
@@ -236,7 +237,8 @@ func (ms *MCPServer) handleList(ctx context.Context, request mcp.CallToolRequest
 	incDel := request.GetBool("include_deleted", false)
 
 	filter := store.TaskFilter{
-		IncludeDeleted: incDel,
+		IncludeDeleted:          incDel,
+		ExcludeArchivedProjects: request.GetBool("exclude_archived_projects", false),
 	}
 	if proj != "" {
 		filter.Projects = []string{proj}

@@ -157,6 +157,9 @@ func (c *Client) ListTasks(filter store.TaskFilter) ([]models.Task, error) {
 	if filter.IncludeDeleted {
 		q.Set("include_deleted", "true")
 	}
+	if filter.ExcludeArchivedProjects {
+		q.Set("exclude_archived_projects", "true")
+	}
 	if len(filter.Projects) > 0 {
 		q.Set("projects", strings.Join(filter.Projects, ","))
 	}

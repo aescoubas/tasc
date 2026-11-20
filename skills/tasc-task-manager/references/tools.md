@@ -14,6 +14,9 @@ Use these MCP endpoints when working with Tasc.
   - Create a task with title, optional description, project, due date, estimate, or recurrence.
 - `tasc_list_tasks`
   - Filter by project or status when the user already knows the scope.
+  - Set `exclude_archived_projects: true` for cross-project reviews that should
+    omit archived work. Unassigned tasks stay visible. To review an archived
+    project's history, set `project` and omit the exclusion.
 - `tasc_search_tasks`
   - Use for fuzzy lookup when the request refers to titles loosely.
 - `tasc_get_task`

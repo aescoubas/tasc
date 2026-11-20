@@ -1499,13 +1499,121 @@ func TestRemoteListTaskFiltersMatchLocal(t *testing.T) {
 			})
 		})
 	}
-	response, err := srv.Client().Get(srv.URL + "/tasks?include_deleted=maybe")
+	for _, name := range []string{"include_deleted", "exclude_archived_projects"} {
+		response, err := srv.Client().Get(srv.URL + "/tasks?" + name + "=maybe")
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusBadRequest {
+			t.Fatalf("invalid %s returned %d, want 400", name, response.StatusCode)
+		}
+	}
+}
+
+func TestMCPArchivedProjectFilter(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "mcp-archived-projects.db")
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusBadRequest {
-		t.Fatalf("invalid include_deleted returned %d, want 400", response.StatusCode)
+	defer db.Close()
+	if err := dbpkg.RunMigrations(db); err != nil {
+		t.Fatal(err)
+	}
+	st := sqlite.NewSQLiteStore(db)
+	for _, project := range []models.Project{
+		{Name: "Active", Status: models.ProjectStatusActive},
+		{Name: "Archived", Status: models.ProjectStatusActive},
+		{Name: "Active child", Parent: "Archived", Status: models.ProjectStatusActive},
+	} {
+		if err := st.CreateProject(project); err != nil {
+			t.Fatal(err)
+		}
+	}
+	create := func(title, project string, status models.TaskStatus) string {
+		t.Helper()
+		id, err := st.CreateTask(models.Task{Title: title, Project: project})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status == models.StatusDone {
+			if err := st.MarkDone(id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return fmt.Sprintf("- [%d] %s (Project: %s, Status: %s)\n", id, title, project, status)
+	}
+	visible := []string{
+		create("Active task", "Active", models.StatusBacklog),
+		create("Active subproject task", "Active child", models.StatusBacklog),
+		create("Unassigned task", "", models.StatusBacklog),
+		create("Missing project task", "Missing", models.StatusBacklog),
+	}
+	archived := create("Archived backlog", "Archived", models.StatusBacklog)
+	history := create("Archived completed task", "Archived", models.StatusDone)
+	// Creating a task activates its project. Archive after seeding the tasks
+	// and remove the legacy task's project record to exercise both states.
+	project, err := st.GetProject("Archived")
+	if err != nil {
+		t.Fatal(err)
+	}
+	project.Status = models.ProjectStatusArchived
+	if err := st.UpdateProject(project.Name, project); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeleteProject("Missing"); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(server.NewServer(st))
+	defer srv.Close()
+
+	for mode, command := range map[string][]string{"local": {"mcp"}, "remote": {"--remote", srv.URL, "mcp"}} {
+		t.Run(mode, func(t *testing.T) {
+			c, err := client.NewStdioMCPClient(binaryPath, []string{"TASC_DB_PATH=" + dbPath, "HOME=" + tmpDir, "TASC_REMOTE="}, command...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if _, err := c.Initialize(ctx, mcp.InitializeRequest{Params: mcp.InitializeParams{
+				ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+				ClientInfo:      mcp.Implementation{Name: "project-filter-regression", Version: "1"},
+			}}); err != nil {
+				t.Fatal(err)
+			}
+
+			for _, tc := range []struct {
+				name string
+				args map[string]any
+				want []string
+			}{
+				{"default backlog", nil, append(visible, archived)},
+				{"cross-project review", map[string]any{"exclude_archived_projects": true, "status": "backlog"}, visible},
+				{"archived history", map[string]any{"project": "Archived", "status": "backlog,done"}, []string{archived, history}},
+				{"intersect with project", map[string]any{"project": "Archived", "exclude_archived_projects": true}, nil},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					result, err := c.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{
+						Name: "tasc_list_tasks", Arguments: tc.args,
+					}})
+					if err != nil || result.IsError || len(result.Content) != 1 {
+						t.Fatalf("list %v: %v, %+v", tc.args, err, result)
+					}
+					got, ok := result.Content[0].(mcp.TextContent)
+					if !ok || strings.Count(got.Text, "\n") != len(tc.want) || (len(tc.want) == 0 && got.Text != "No tasks found.") {
+						t.Fatalf("list %v: expected %d tasks, got %q", tc.args, len(tc.want), got.Text)
+					}
+					for _, row := range tc.want {
+						if !strings.Contains(got.Text, row) {
+							t.Fatalf("list %v: missing %q in %q", tc.args, row, got.Text)
+						}
+					}
+				})
+			}
+		})
 	}
 }
 

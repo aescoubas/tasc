@@ -370,6 +370,13 @@ func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) 
 		}
 		baseQuery += fmt.Sprintf(" AND project IN (%s)", strings.Join(placeholders, ","))
 	}
+	if filter.ExcludeArchivedProjects {
+		baseQuery += ` AND NOT EXISTS (
+			SELECT 1 FROM projects
+			WHERE name = NULLIF(task_states.project, '') AND status = ?
+		)`
+		args = append(args, models.ProjectStatusArchived)
+	}
 
 	if len(filter.IDs) > 0 {
 		placeholders := make([]string, len(filter.IDs))

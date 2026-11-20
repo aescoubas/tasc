@@ -111,6 +111,14 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if excludeArchived := q.Get("exclude_archived_projects"); excludeArchived != "" {
+		var err error
+		filter.ExcludeArchivedProjects, err = strconv.ParseBool(excludeArchived)
+		if err != nil {
+			http.Error(w, "Invalid exclude_archived_projects: expected a boolean", http.StatusBadRequest)
+			return
+		}
+	}
 
 	if projects := q.Get("projects"); projects != "" {
 		filter.Projects = strings.Split(projects, ",")

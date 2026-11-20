@@ -21,6 +21,9 @@ type TaskFilter struct {
 	IncludeDeleted bool
 	DueBefore      *time.Time
 	DueAfter       *time.Time
+	// ExcludeArchivedProjects matches the task's assigned project. Unassigned
+	// tasks and tasks without a matching project record are kept.
+	ExcludeArchivedProjects bool
 }
 
 type Store interface {
