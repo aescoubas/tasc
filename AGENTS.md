@@ -54,21 +54,32 @@ clean as of 2026-11-05.
    non-fts5 binary against a real database degrades it**: the index is dropped on the way
    through.
 
-3. **The `tasc` on `PATH` is not your build.** It is
-   `/etc/profiles/per-user/alex/bin/tasc`, built by Home Manager from homelab's
-   `pkgs/tasc/default.nix`, which pins a GitHub `rev`. Check the distance with
-   `git rev-list --count <rev>..HEAD` before believing anything about the running
-   version — it was 4 on 2026-11-05. `make build` produces `./tasc` and changes nothing
-   the shell or the MCP client sees. Shipping is: commit here → push → bump `rev` and
-   `hash` in `homelab/pkgs/tasc/default.nix` → rebuild the **system**. Home Manager runs
-   as a NixOS module here (`nixos/hosts/thinkpad_perso/configuration.nix` imports
-   `home/alex-laptop.nix`), there is no `home-manager` CLI on `PATH`, and the deploy is
+3. **Home Manager owns the `tasc` on `PATH`.** The installed executable is
+   `/etc/profiles/per-user/alex/bin/tasc`, built from Homelab's
+   `pkgs/tasc/default.nix`. `make build` produces the development binary at `./tasc`.
+
+   **Every new laptop install must use a published Semantic Versioning release.**
+   Run the local gate on the release commit, create an annotated
+   `vMAJOR.MINOR.PATCH` Git tag at that exact commit, and push the commit and tag
+   before installing. Use the latest published tag as the baseline. Use a patch
+   bump for compatible fixes, a minor bump for compatible features, and a major
+   bump for incompatible changes to a stable public interface. During `0.x`
+   development, use a minor bump for incompatible changes. Treat published tags
+   as immutable and reuse the same tag when reinstalling that release.
+
+   Set the Homelab package `version` to the tag without the leading `v`, pin `rev`
+   to the commit the tag resolves to, and set the matching source `hash`.
+   Update the release assertion in Homelab's `Makefile` and rebuild the
+   **system**. Home Manager runs as a NixOS module here
+   (`nixos/hosts/thinkpad_perso/configuration.nix` imports `home/alex-laptop.nix`).
    ```sh
    sudo nixos-rebuild switch --flake "git+file:///home/alex/git_repos/github/aescoubas/homelab?rev=<sha>#thinkpad_perso"
    ```
-   Name the committed `rev` rather than using `path:`, which copies the working tree and
-   would deploy whatever else is uncommitted in homelab. A local change is invisible to
-   the agent skill and to the `serve` unit until that pin moves.
+   Use the committed Homelab revision in the flake URL to isolate the release
+   from working-tree edits. Verify the installed CLI path and running `tasc.service`
+   executable resolve to the tagged package. Record the tag, commit, and installed
+   verification on the owning Tasc task. Reserve `unstable-*` package versions for
+   development builds.
 
 4. **Migrations are append-only.** Six of them in `internal/db/migrate.go`; never edit a
    landed one, since every existing database has already run it. Migration 6 installs the
