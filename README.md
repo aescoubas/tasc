@@ -112,6 +112,8 @@ nix build .#web
     ```
 
 *   **List tasks:**
+    The default order puts ongoing tasks first, starting with the running timer.
+    Tasks within each group are ordered by descending priority score.
     ```bash
     tasc list
     tasc list --sort due      # Sort by due date

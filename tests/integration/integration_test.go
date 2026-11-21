@@ -663,6 +663,46 @@ func TestListMarksRecurringTasks(t *testing.T) {
 	}
 }
 
+func TestListPutsOngoingTasksFirstByDefault(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "list-order.db")
+	for _, args := range [][]string{
+		{"add", "Overdue task", "--due", "2000-01-01"},
+		{"add", "Paused task"},
+		{"add", "Timed task"},
+		{"start", "2"},
+		{"stop", "2"},
+		{"start", "3"},
+	} {
+		if out, err := runTasc(t, dbPath, args...); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	for _, tc := range []struct {
+		name  string
+		args  []string
+		order []string
+	}{
+		{"default", []string{"list"}, []string{"Timed task", "Paused task", "Overdue task"}},
+		{"explicit sort", []string{"list", "--sort", "id"}, []string{"Overdue task", "Paused task", "Timed task"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := runTasc(t, dbPath, tc.args...)
+			if err != nil {
+				t.Fatalf("%v failed: %v\n%s", tc.args, err, out)
+			}
+			previous := -1
+			for _, title := range tc.order {
+				position := strings.Index(out, title)
+				if position <= previous {
+					t.Fatalf("expected tasks in order %v:\n%s", tc.order, out)
+				}
+				previous = position
+			}
+		})
+	}
+}
+
 func TestListOutputJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "list-json.db")

@@ -230,21 +230,22 @@ var listCmd = &cobra.Command{
 
 		// Sort tasks
 		sort.Slice(tasks, func(i, j int) bool {
+			t1 := tasks[i].task
+			t2 := tasks[j].task
 			if sortBy == "" {
-				// Default: Sort by active status then score descending
-				activeI := tasks[i].task.ActiveStart != nil
-				activeJ := tasks[j].task.ActiveStart != nil
-				if activeI && !activeJ {
-					return true
+				ongoingI := t1.Status == models.StatusOngoing
+				ongoingJ := t2.Status == models.StatusOngoing
+				if ongoingI != ongoingJ {
+					return ongoingI
 				}
-				if !activeI && activeJ {
-					return false
+				activeI := t1.ActiveStart != nil
+				activeJ := t2.ActiveStart != nil
+				if activeI != activeJ {
+					return activeI
 				}
 				return tasks[i].score > tasks[j].score
 			}
 
-			t1 := tasks[i].task
-			t2 := tasks[j].task
 			var less bool
 
 			switch strings.ToLower(sortBy) {
