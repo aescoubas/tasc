@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/aescoubas/tasc/internal/config"
+	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/parse"
 	"github.com/aescoubas/tasc/internal/store"
 	"github.com/spf13/cobra"
@@ -15,6 +16,7 @@ var (
 	modifyAutoApprove   bool
 	modifyUserPriority  int
 	modifyClearPriority bool
+	modifyStatus        string
 )
 
 var modifyCmd = &cobra.Command{
@@ -24,6 +26,13 @@ var modifyCmd = &cobra.Command{
 	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: taskIDCompletionFunc,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
+		if cmd.Flags().Changed("status") {
+			switch models.TaskStatus(modifyStatus) {
+			case models.StatusBacklog, models.StatusOngoing, models.StatusBlocked:
+			default:
+				return fmt.Errorf("invalid status %q: expected backlog, ongoing, or blocked", modifyStatus)
+			}
+		}
 		if cmd.Flags().Changed("priority") {
 			return store.ValidateUserPriority(modifyUserPriority)
 		}
@@ -70,6 +79,9 @@ var modifyCmd = &cobra.Command{
 		}
 
 		updates := make(map[string]interface{})
+		if cmd.Flags().Changed("status") {
+			updates["status"] = modifyStatus
+		}
 		if modifyClearPriority {
 			updates["user_priority"] = nil
 		} else if cmd.Flags().Changed("priority") {
@@ -229,6 +241,7 @@ func init() {
 	modifyCmd.MarkFlagsMutuallyExclusive("priority", "clear-priority")
 	modifyCmd.Flags().StringVarP(&project, "project", "p", "", "Project name")
 	modifyCmd.Flags().StringVarP(&description, "description", "m", "", "Detailed description")
+	modifyCmd.Flags().StringVar(&modifyStatus, "status", "", "Set task status (backlog, ongoing, blocked)")
 	modifyCmd.Flags().StringVarP(&due, "due", "d", "", "Due date (YYYY-MM-DD, DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY, or natural language)")
 	modifyCmd.Flags().StringVarP(&estimate, "estimate", "e", "", "Time estimate")
 	modifyCmd.Flags().StringVarP(&recurrenceFlag, "recurrence", "r", "", "Recurrence rule")

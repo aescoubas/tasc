@@ -500,6 +500,53 @@ func TestModifyAndDeleteAutoApprove(t *testing.T) {
 	}
 }
 
+func TestModifyTaskStatus(t *testing.T) {
+	t.Setenv("TASC_REMOTE", "")
+	dbPath := filepath.Join(t.TempDir(), "modify-status.db")
+	run := func(args ...string) string {
+		t.Helper()
+		out, err := runTasc(t, dbPath, args...)
+		if err != nil {
+			t.Fatalf("tasc %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	checkStatus := func(want models.TaskStatus) {
+		t.Helper()
+		out := run("show", "1", "--output", "json")
+		var record struct {
+			Task models.Task `json:"task"`
+		}
+		if err := json.Unmarshal([]byte(out), &record); err != nil {
+			t.Fatalf("decode show output: %v\n%s", err, out)
+		}
+		if task := record.Task; task.Status != want || task.ActiveStart != nil {
+			t.Fatalf("task status = %q, active start = %v, want %q with no timer", task.Status, task.ActiveStart, want)
+		}
+	}
+
+	run("add", "Waiting for external approval")
+	run("modify", "1", "--status", "blocked", "--yes")
+	checkStatus(models.StatusBlocked)
+	if out := run("list", "--status", "blocked"); !strings.Contains(out, "Waiting for external approval") {
+		t.Fatalf("manually blocked task missing from filtered list:\n%s", out)
+	}
+	if got := countDependencies(t, dbPath); got != 0 {
+		t.Fatalf("status change added %d dependencies, want 0", got)
+	}
+	out, err := runTasc(t, dbPath, "modify", "1", "--status", "unknown", "--yes")
+	if err == nil || !strings.Contains(out, `invalid status "unknown"`) {
+		t.Fatalf("invalid status should fail: %v\n%s", err, out)
+	}
+	checkStatus(models.StatusBlocked)
+	run("modify", "1", "--status", "ongoing", "--yes")
+	checkStatus(models.StatusOngoing)
+	run("undo", "--yes")
+	checkStatus(models.StatusBlocked)
+	run("modify", "1", "--status", "backlog", "--yes")
+	checkStatus(models.StatusBacklog)
+}
+
 func TestRestoreFromBackupRestoresPreviousState(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "restore.db")
