@@ -16,6 +16,7 @@ import (
 type TableOptions struct {
 	ShowAll       bool // If true, do not truncate to screen height
 	MarkRecurring bool
+	ShowPriority  bool
 }
 
 // RenderTaskTable prints a formatted table of tasks to stdout.
@@ -44,12 +45,16 @@ func RenderTaskTable(tasks []models.Task, scores map[int64]float64, cfg config.C
 		est      string
 		score    string
 		duration string
+		priority string
 		tier     UrgencyTier
 	}
 
 	var rowsData []displayRow
-	widths := make([]int, 11)
 	headers := []string{"ID", "Project", "Status", "Title", "Created", "Age", "Due", "Rsch", "Est", "Score", "Duration"}
+	if opts.ShowPriority {
+		headers = append(headers, "Priority")
+	}
+	widths := make([]int, len(headers))
 
 	for i, h := range headers {
 		widths[i] = len(h)
@@ -143,7 +148,11 @@ func RenderTaskTable(tasks []models.Task, scores map[int64]float64, cfg config.C
 			est:      estStr,
 			score:    fmt.Sprintf("%.1f", scoreVal),
 			duration: durStr,
+			priority: "-",
 			tier:     finalTier,
+		}
+		if t.UserPriority != nil {
+			row.priority = fmt.Sprint(*t.UserPriority)
 		}
 
 		rowsData = append(rowsData, row)
@@ -272,7 +281,10 @@ func RenderTaskTable(tasks []models.Task, scores map[int64]float64, cfg config.C
 		printCol(row.rsch, widths[7], false)
 		printCol(row.est, widths[8], false)
 		printCol(row.score, widths[9], false)
-		printCol(row.duration, widths[10], true)
+		printCol(row.duration, widths[10], !opts.ShowPriority)
+		if opts.ShowPriority {
+			printCol(row.priority, widths[11], true)
+		}
 		fmt.Println()
 	}
 }

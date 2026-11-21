@@ -98,6 +98,9 @@ var showCmd = &cobra.Command{
 		}
 		fmt.Println("------------------------------------------------")
 		fmt.Printf("Project:       %s\n", t.Project)
+		if t.UserPriority != nil {
+			fmt.Printf("User priority: %d\n", *t.UserPriority)
+		}
 		fmt.Printf("Status:        %s\n", t.Status)
 		fmt.Printf("Created:       %s\n", ui.FormatTimestamp(t.CreatedAt))
 

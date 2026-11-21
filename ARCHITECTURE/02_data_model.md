@@ -1,6 +1,6 @@
 # Data Model Architecture
 
-Tasc uses SQLite as its primary persistence layer. The schema is managed by the six
+Tasc uses SQLite as its primary persistence layer. The schema is managed by the
 migrations in `internal/db/migrate.go`, which run on **every** command — see
 `AGENTS.md` rules 1 and 4 before changing anything here.
 
@@ -24,6 +24,9 @@ The core entity.
 - **`recurrence`**: `TEXT`. Rule string (e.g. "daily", "every 2 weeks").
 - **`reschedule_count`**: `INTEGER`. How often the task was pushed back; feeds the
   priority "friction" boost.
+- **`user_priority`**: Nullable integer, added by migration 7. Values 1–5 run from
+  highest to lowest priority. `NULL` sorts with 5 and represents an unset value.
+  The migration extends the task undo triggers and leaves existing rows unset.
 
 Migration 5 dropped `scheduled_at`. `schedule_block` is the only scheduling column.
 

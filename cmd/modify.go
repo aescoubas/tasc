@@ -7,10 +7,15 @@ import (
 
 	"github.com/aescoubas/tasc/internal/config"
 	"github.com/aescoubas/tasc/internal/parse"
+	"github.com/aescoubas/tasc/internal/store"
 	"github.com/spf13/cobra"
 )
 
-var modifyAutoApprove bool
+var (
+	modifyAutoApprove   bool
+	modifyUserPriority  int
+	modifyClearPriority bool
+)
 
 var modifyCmd = &cobra.Command{
 	Use:               "modify [id...] [title]",
@@ -18,6 +23,12 @@ var modifyCmd = &cobra.Command{
 	Long:              "Modify one or more tasks. If multiple IDs are provided, only flags (e.g. --due, --project) are applied. If a single ID is provided, you can also update the title.",
 	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: taskIDCompletionFunc,
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		if cmd.Flags().Changed("priority") {
+			return store.ValidateUserPriority(modifyUserPriority)
+		}
+		return nil
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, err := config.LoadConfig()
 		if err != nil {
@@ -59,6 +70,11 @@ var modifyCmd = &cobra.Command{
 		}
 
 		updates := make(map[string]interface{})
+		if modifyClearPriority {
+			updates["user_priority"] = nil
+		} else if cmd.Flags().Changed("priority") {
+			updates["user_priority"] = modifyUserPriority
+		}
 
 		// Title handling
 		if len(titleParts) > 0 {
@@ -208,6 +224,9 @@ var modifyCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(modifyCmd)
+	modifyCmd.Flags().IntVar(&modifyUserPriority, "priority", 0, "Set user priority (1 highest, 5 lowest)")
+	modifyCmd.Flags().BoolVar(&modifyClearPriority, "clear-priority", false, "Clear user priority (sorts like 5)")
+	modifyCmd.MarkFlagsMutuallyExclusive("priority", "clear-priority")
 	modifyCmd.Flags().StringVarP(&project, "project", "p", "", "Project name")
 	modifyCmd.Flags().StringVarP(&description, "description", "m", "", "Detailed description")
 	modifyCmd.Flags().StringVarP(&due, "due", "d", "", "Due date (YYYY-MM-DD, DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY, or natural language)")

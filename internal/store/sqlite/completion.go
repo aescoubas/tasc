@@ -93,9 +93,9 @@ func (s *SQLiteStore) completeTasks(ids []int64, updates map[string]interface{},
 				return err
 			}
 			_, err = q.Exec(`INSERT INTO tasks
-				(title, description, project, due_at, schedule_block, estimate, recurrence, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, task.Title, task.Description, task.Project,
-				next, task.ScheduleBlock, task.Estimate, task.Recurrence, now)
+				(title, description, project, due_at, schedule_block, estimate, recurrence, user_priority, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, task.Title, task.Description, task.Project,
+				next, task.ScheduleBlock, task.Estimate, task.Recurrence, task.UserPriority, now)
 			if err != nil {
 				return err
 			}
@@ -123,7 +123,7 @@ func applyCompletionEdits(q taskQueries, id int64, updates map[string]interface{
 	var fields []string
 	for field := range updates {
 		switch field {
-		case "title", "description", "project", "due_at", "schedule_block", "estimate", "recurrence", "reschedule_count":
+		case "title", "description", "project", "due_at", "schedule_block", "estimate", "recurrence", "reschedule_count", "user_priority":
 			fields = append(fields, field)
 		}
 	}

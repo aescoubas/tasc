@@ -19,6 +19,13 @@ Tasc uses a dynamic scoring system to calculate "Urgency". The `Calculator` appl
 ### Dependency Propagation
 In `cmd/list.go`, priority scores are propagated through the dependency graph. A task blocking a high-priority task inherits a portion of that priority (relaxation algorithm), ensuring blockers bubble up.
 
+### User Priority
+
+`user_priority` is an optional manual level from 1 (highest) to 5 (lowest).
+An explicit priority sort treats an unset value as 5 and breaks ties by ascending
+task ID. User priority is independent of urgency, dependency boosts and the
+default list order.
+
 ## Recurrence (`internal/recurrence`)
 Handles generating the next task instance.
 - **Trigger**: When a recurring task is marked `done` or `deleted` (with user choice).
@@ -36,7 +43,8 @@ and creates no successor. Missing/deleted targets and invalid or non-advancing
 recurrence rules fail; duplicate IDs are processed once. A successor keeps title,
 description, project, recurrence, estimate and time block, with a fresh backlog/timer
 state. Metadata edits of an already-completed task remain supported without replaying
-its completion. Existing completed rows are not backfilled or repaired.
+its completion. A successor also inherits the current user priority.
+Existing completed rows are not backfilled or repaired.
 
 CLI `done`, editor status changes, MCP completion/bulk updates, REST completion/full
 updates/bulk updates, and the TUI use this Store path. TUI failures keep the task visible;

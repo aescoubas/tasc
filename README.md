@@ -120,7 +120,10 @@ nix build .#web
     tasc list --sort age      # Sort by task age
     tasc list --sort duration # Sort by time spent
     tasc list --sort score -d # Sort by priority score descending
+    tasc list --project Work --sort priority --all
     ```
+    User priority runs from 1 (highest) to 5 (lowest). Unset tasks sort with
+    priority 5. Task ID breaks ties.
 
 *   **Mark as done:**
     ```bash
@@ -136,6 +139,8 @@ nix build .#web
     tasc edit <task_id>        # Opens task in your default $EDITOR
     tasc modify <task_id> "New description" --due "next friday"
     tasc modify <task_id> --depends-on 12 --blocks 42,43
+    tasc modify <task_id> --priority 2
+    tasc modify <task_id> --clear-priority
     ```
 
 *   **Delete a task:**

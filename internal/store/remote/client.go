@@ -134,6 +134,15 @@ func (c *Client) UpdateTaskDescription(id int64, expected, description string) e
 }
 
 func (c *Client) BatchUpdateTasks(ids []int64, updates map[string]interface{}) error {
+	path := "/tasks/batch-update"
+	if value, ok := updates["user_priority"]; ok {
+		if err := store.ValidateUserPriority(value); err != nil {
+			return err
+		}
+		// Older servers ignore unknown batch fields. Use a dedicated route
+		// so they reject the whole edit instead of silently dropping priority.
+		path += "/priority"
+	}
 	reqBody := map[string]interface{}{
 		"ids":     ids,
 		"updates": updates,
@@ -143,7 +152,7 @@ func (c *Client) BatchUpdateTasks(ids []int64, updates map[string]interface{}) e
 		return err
 	}
 
-	resp, err := c.http.Post(c.baseURL+"/tasks/batch-update", "application/json", bytes.NewBuffer(data))
+	resp, err := c.http.Post(c.baseURL+path, "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return err
 	}

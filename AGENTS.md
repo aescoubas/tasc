@@ -81,7 +81,7 @@ clean as of 2026-11-05.
    verification on the owning Tasc task. Reserve `unstable-*` package versions for
    development builds.
 
-4. **Migrations are append-only.** Six of them in `internal/db/migrate.go`; never edit a
+4. **Migrations are append-only.** See `internal/db/migrate.go`. Never edit a
    landed one, since every existing database has already run it. Migration 6 installs the
    audit triggers that `tasc undo` reads — a schema change that adds or renames a column
    on `tasks` or `projects` must extend those trigger bodies too, or undo silently
@@ -111,7 +111,7 @@ clean as of 2026-11-05.
 |---|---|---|
 | `cmd/` | one file per CLI subcommand | `root.go` wires config, store, and undo tracking |
 | `internal/store/store.go` | the `Store` interface | **the seam** — `sqlite` and `remote` both implement it, so a new operation goes here first or the remote backend silently lacks it |
-| `internal/db/` | connection, the six migrations, the FTS5 probe | rules 1, 2 and 4 live here |
+| `internal/db/` | connection, migrations, the FTS5 probe | rules 1, 2 and 4 live here |
 | `internal/priority/` | the urgency rules and their weights | calibrated against the owner's real task set; a weight change reorders every list — propose it |
 | `internal/recurrence/`, `parse/` | natural-language rules and dates | the richest unit tests in the repo; extend them rather than adding a new parser |
 | `internal/ui/` | Bubble Tea model, styles, tables | completion regressions; also verify by running the TUI against a temp DB |
@@ -146,6 +146,6 @@ Not oversights — don't quietly close them as a side effect:
 
 ## Stop and ask
 
-A seventh migration or any change to what is stored. A change to the priority weights.
+A new migration or any change to what is stored. A change to the priority weights.
 Anything that writes to `~/.tasc.db`, `~/.tasc.yaml`, or `~/.claude/skills/`. Bumping the
 homelab pin — that is a deploy to the machine the owner is working on.

@@ -49,6 +49,11 @@ Tasc can run as a standalone local CLI or as a distributed system.
   project record is missing, and tasks in active subprojects of archived parents.
   It combines with other filters. To review an archived project's history,
   specify the project and omit the exclusion.
+- **User priority**: `GET /tasks?sort=priority` orders matching tasks by user
+  priority, then ID. Use `POST /tasks/batch-update` with an
+  `updates.user_priority` integer from 1 to 5, or `null` to clear it. Full task
+  updates preserve the stored priority. Remote clients send priority-bearing
+  batches to `POST /tasks/batch-update/priority` so older servers reject the request.
 
 ## Model Context Protocol (MCP)
 `internal/mcp/server.go` implements an MCP server over `mark3labs/mcp-go`.
@@ -86,6 +91,9 @@ Tasc can run as a standalone local CLI or as a distributed system.
 - **Workflow**: the model reads state, then acts. A bulk request ("reschedule
   everything") is a `tasc_list_tasks` to collect ids followed by one
   `tasc_batch_update_tasks`, not a call per task.
+- **User priority**: `tasc_list_tasks` accepts `sort: "priority"`.
+  `tasc_update_task` and `tasc_batch_update_tasks` accept
+  `user_priority` or `clear_user_priority: true`.
 - **Consumers**: the bundled skill in `skills/tasc-task-manager`, and the `mcpServers.tasc`
   entry Home Manager writes for Claude Code and Gemini — both of which run the *pinned*
   binary, not the local build. A new tool is invisible to them until homelab's

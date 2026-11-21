@@ -127,18 +127,23 @@ func checkProjectCompletion(q taskQueries, name string) error {
 }
 
 func (s *SQLiteStore) CreateTask(t models.Task) (int64, error) {
+	if t.UserPriority != nil {
+		if err := store.ValidateUserPriority(*t.UserPriority); err != nil {
+			return 0, err
+		}
+	}
 	if err := s.ensureProjectExists(t.Project); err != nil {
 		return 0, err
 	}
 
-	query := `INSERT INTO tasks (title, description, project, due_at, schedule_block, estimate, recurrence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+	query := `INSERT INTO tasks (title, description, project, due_at, schedule_block, estimate, recurrence, user_priority, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
 	stmt, err := s.db.Prepare(query)
 	if err != nil {
 		return 0, err
 	}
 	defer stmt.Close()
 
-	res, err := stmt.Exec(t.Title, t.Description, t.Project, t.DueAt, t.ScheduleBlock, t.Estimate, t.Recurrence)
+	res, err := stmt.Exec(t.Title, t.Description, t.Project, t.DueAt, t.ScheduleBlock, t.Estimate, t.Recurrence, t.UserPriority)
 	if err != nil {
 		return 0, err
 	}
@@ -147,11 +152,16 @@ func (s *SQLiteStore) CreateTask(t models.Task) (int64, error) {
 }
 
 func (s *SQLiteStore) LogTask(t models.Task) (int64, error) {
+	if t.UserPriority != nil {
+		if err := store.ValidateUserPriority(*t.UserPriority); err != nil {
+			return 0, err
+		}
+	}
 	// Logging records past work without reopening or creating its project.
 	res, err := s.db.Exec(`INSERT INTO tasks
-		(title, project, due_at, estimate, status, created_at, completed_at)
-		VALUES (?, ?, ?, ?, 'done', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-		t.Title, t.Project, t.DueAt, t.Estimate)
+		(title, project, due_at, estimate, user_priority, status, created_at, completed_at)
+		VALUES (?, ?, ?, ?, ?, 'done', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+		t.Title, t.Project, t.DueAt, t.Estimate, t.UserPriority)
 	if err != nil {
 		return 0, err
 	}
@@ -192,14 +202,14 @@ func getTask(q taskQueries, id int64) (models.Task, error) {
 	query := `SELECT 
 		id, title, description, project, status, created_at, 
 		completed_at, due_at, schedule_block, estimate, 
-		recurrence, active_start, time_spent, reschedule_count 
+		recurrence, active_start, time_spent, reschedule_count, user_priority
 	FROM tasks WHERE id = ?`
 
 	row := q.QueryRow(query, id)
 	err := row.Scan(
 		&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt,
 		&completedAt, &dueAt, &scheduleBlock, &estimate,
-		&recurrence, &activeStart, &timeSpent, &t.RescheduleCount,
+		&recurrence, &activeStart, &timeSpent, &t.RescheduleCount, &t.UserPriority,
 	)
 
 	if err != nil {
@@ -287,6 +297,12 @@ func (s *SQLiteStore) BatchUpdateTasks(ids []int64, updates map[string]interface
 	if len(updates) == 0 {
 		return nil
 	}
+	userPriority, hasPriority := updates["user_priority"]
+	if hasPriority {
+		if err := store.ValidateUserPriority(userPriority); err != nil {
+			return err
+		}
+	}
 	if status, ok := updates["status"]; ok && fmt.Sprint(status) == string(models.StatusDone) {
 		return s.completeTasks(ids, updates, false)
 	}
@@ -300,6 +316,10 @@ func (s *SQLiteStore) BatchUpdateTasks(ids []int64, updates map[string]interface
 	for i, id := range ids {
 		placeholders[i] = "?"
 		queryArgs[i] = id
+	}
+	if hasPriority && len(updates) == 1 {
+		return requireUpdatedRow(s.db.Exec("UPDATE tasks SET user_priority = ? WHERE id IN ("+
+			strings.Join(placeholders, ",")+")", append([]interface{}{userPriority}, queryArgs...)...))
 	}
 
 	rows, err := s.db.Query(fmt.Sprintf("SELECT DISTINCT project FROM tasks WHERE id IN (%s)", strings.Join(placeholders, ",")), queryArgs...)
@@ -331,7 +351,7 @@ func (s *SQLiteStore) BatchUpdateTasks(ids []int64, updates map[string]interface
 	for k, v := range updates {
 		// Whitelist fields
 		switch k {
-		case "project", "status", "estimate", "recurrence", "title", "description", "schedule_block":
+		case "project", "status", "estimate", "recurrence", "title", "description", "schedule_block", "user_priority":
 			sets = append(sets, fmt.Sprintf("%s = ?", k))
 			args = append(args, v)
 		case "due_at", "completed_at":
@@ -381,7 +401,7 @@ func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) 
 	baseQuery := `
 		SELECT 
 			id, title, description, project, status, created_at, completed_at, due_at, schedule_block, estimate, recurrence, active_start, time_spent, reschedule_count,
-			is_blocked
+			user_priority, is_blocked
 		FROM (
 			SELECT tasks.*, status NOT IN ('done', 'deleted') AND EXISTS(
 				SELECT 1 FROM task_dependencies td
@@ -459,7 +479,7 @@ func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) 
 		var timeSpent sql.NullInt64
 		var isBlocked bool
 
-		err := rows.Scan(&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt, &completedAt, &dueAt, &scheduleBlock, &estimate, &recurrence, &activeStart, &timeSpent, &t.RescheduleCount, &isBlocked)
+		err := rows.Scan(&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt, &completedAt, &dueAt, &scheduleBlock, &estimate, &recurrence, &activeStart, &timeSpent, &t.RescheduleCount, &t.UserPriority, &isBlocked)
 		if err != nil {
 			return nil, err
 		}
@@ -755,7 +775,7 @@ func (s *SQLiteStore) GetActiveTask() (*models.Task, error) {
 	query := `SELECT 
 		id, title, description, project, status, created_at, 
 		completed_at, due_at, schedule_block, estimate, 
-		recurrence, active_start, time_spent, reschedule_count 
+		recurrence, active_start, time_spent, reschedule_count, user_priority
 	FROM tasks WHERE active_start IS NOT NULL LIMIT 1`
 
 	var t models.Task
@@ -773,7 +793,7 @@ func (s *SQLiteStore) GetActiveTask() (*models.Task, error) {
 	err := row.Scan(
 		&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt,
 		&completedAt, &dueAt, &scheduleBlock, &estimate,
-		&recurrence, &activeStart, &timeSpent, &t.RescheduleCount,
+		&recurrence, &activeStart, &timeSpent, &t.RescheduleCount, &t.UserPriority,
 	)
 
 	if err == sql.ErrNoRows {
@@ -999,7 +1019,7 @@ func (s *SQLiteStore) DeleteProject(name string) error {
 
 func (s *SQLiteStore) SearchTasks(queryStr string) ([]models.Task, error) {
 	ftsQuery := `
-		SELECT tasks.id, tasks.title, tasks.description, tasks.project, tasks.status, tasks.created_at
+		SELECT tasks.id, tasks.title, tasks.description, tasks.project, tasks.status, tasks.created_at, tasks.user_priority
 		FROM tasks JOIN tasks_fts ON tasks_fts.rowid = tasks.id
 		WHERE tasks_fts MATCH ? ORDER BY rank
 	`
@@ -1018,7 +1038,7 @@ func (s *SQLiteStore) SearchTasks(queryStr string) ([]models.Task, error) {
 func (s *SQLiteStore) searchTasksLike(queryStr string) ([]models.Task, error) {
 	pattern := "%" + strings.ToLower(strings.TrimSpace(queryStr)) + "%"
 	query := `
-		SELECT id, title, description, project, status, created_at
+		SELECT id, title, description, project, status, created_at, user_priority
 		FROM tasks
 		WHERE lower(COALESCE(title, '')) LIKE ?
 		   OR lower(COALESCE(description, '')) LIKE ?
@@ -1041,7 +1061,7 @@ func scanSearchTaskRows(rows *sql.Rows) []models.Task {
 		var t models.Task
 		var project sql.NullString
 		var description sql.NullString
-		err := rows.Scan(&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt)
+		err := rows.Scan(&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt, &t.UserPriority)
 		if err != nil {
 			continue
 		}

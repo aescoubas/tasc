@@ -30,6 +30,15 @@
 3. Apply the change with `tasc_batch_update_tasks`.
 4. Summarize the IDs or count of tasks that changed.
 
+## Prioritize a project
+
+1. Call `tasc_list_tasks` with the project name and `sort: "priority"`
+   to read its saved priorities.
+2. When asked to prioritize the work, propose levels using due dates, dependencies
+   and the user's stated goals.
+3. When asked to save priorities, use `tasc_update_task` for a single task or
+   `tasc_batch_update_tasks` for tasks sharing a level.
+
 ## Complete active work
 
 1. Identify the task from the request and current work. If the user refers to the timed task, use `tasc_get_active_task`.

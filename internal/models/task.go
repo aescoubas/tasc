@@ -1,6 +1,7 @@
 package models
 
 import (
+	"cmp"
 	"fmt"
 	"time"
 )
@@ -31,7 +32,31 @@ type Task struct {
 	ActiveStart     *time.Time `json:"active_start,omitempty" yaml:"active_start,omitempty"`
 	TimeSpent       int64      `json:"time_spent" yaml:"time_spent"` // in seconds
 	RescheduleCount int        `json:"reschedule_count" yaml:"reschedule_count"`
+	UserPriority    *int       `json:"user_priority,omitempty" yaml:"-"`
 	IsBlocked       bool       `json:"is_blocked" yaml:"is_blocked"`
+}
+
+const (
+	HighestUserPriority = 1
+	LowestUserPriority  = 5
+)
+
+func CompareTaskPriority(a, b Task, descending bool) int {
+	result := cmp.Compare(a.effectiveUserPriority(), b.effectiveUserPriority())
+	if result == 0 {
+		return cmp.Compare(a.ID, b.ID)
+	}
+	if descending {
+		return -result
+	}
+	return result
+}
+
+func (t Task) effectiveUserPriority() int {
+	if t.UserPriority == nil {
+		return LowestUserPriority
+	}
+	return *t.UserPriority
 }
 
 type TaskDependency struct {

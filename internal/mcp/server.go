@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -66,6 +67,7 @@ func (ms *MCPServer) registerTools() {
 		mcp.WithString("status", mcp.Description("Filter by status (comma separated: backlog, ongoing, done, blocked)")),
 		mcp.WithBoolean("include_deleted", mcp.Description("Include deleted tasks")),
 		mcp.WithBoolean("exclude_archived_projects", mcp.Description("Exclude tasks assigned to archived projects. Unassigned tasks are still included.")),
+		mcp.WithString("sort", mcp.Enum("priority"), mcp.Description("Order by user priority (1 highest, unset sorts like 5), then task ID")),
 	), ms.handleList)
 
 	// 3. Complete Task
@@ -84,6 +86,8 @@ func (ms *MCPServer) registerTools() {
 		mcp.WithString("due", mcp.Description("New due date")),
 		mcp.WithString("estimate", mcp.Description("New time estimate")),
 		mcp.WithString("recurrence", mcp.Description("New recurrence rule")),
+		mcp.WithNumber("user_priority", mcp.Min(1), mcp.Max(5), mcp.Description("Set user priority to an integer from 1 (highest) to 5 (lowest)")),
+		mcp.WithBoolean("clear_user_priority", mcp.Description("Clear user priority")),
 	), ms.handleUpdate)
 
 	// 5. List Projects
@@ -99,6 +103,8 @@ func (ms *MCPServer) registerTools() {
 		mcp.WithString("status", mcp.Description("New status")),
 		mcp.WithString("due", mcp.Description("New due date")),
 		mcp.WithBoolean("clear_due", mcp.Description("Clear due date")),
+		mcp.WithNumber("user_priority", mcp.Min(1), mcp.Max(5), mcp.Description("Set user priority to an integer from 1 (highest) to 5 (lowest)")),
+		mcp.WithBoolean("clear_user_priority", mcp.Description("Clear user priority")),
 	), ms.handleBatchUpdate)
 
 	// 7. Delete Task
@@ -236,6 +242,10 @@ func (ms *MCPServer) handleList(ctx context.Context, request mcp.CallToolRequest
 	proj := request.GetString("project", "")
 	statusStr := request.GetString("status", "")
 	incDel := request.GetBool("include_deleted", false)
+	sortBy, sortRequested := request.GetArguments()["sort"]
+	if sortRequested && sortBy != "priority" {
+		return mcp.NewToolResultError("sort must be priority"), nil
+	}
 
 	filter := store.TaskFilter{
 		IncludeDeleted:          incDel,
@@ -256,6 +266,9 @@ func (ms *MCPServer) handleList(ctx context.Context, request mcp.CallToolRequest
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error listing tasks: %v", err)), nil
 	}
+	if sortRequested {
+		slices.SortFunc(tasks, func(a, b models.Task) int { return models.CompareTaskPriority(a, b, false) })
+	}
 
 	// Format as JSON-like text or just a clear list
 	var sb strings.Builder
@@ -274,7 +287,7 @@ func (ms *MCPServer) handleList(ctx context.Context, request mcp.CallToolRequest
 			due = fmt.Sprintf(" Due: %s", t.DueAt.Format("2006-01-02"))
 		}
 
-		sb.WriteString(fmt.Sprintf("- [%d] %s (Project: %s, Status: %s)%s\n", t.ID, t.Title, t.Project, status, due))
+		fmt.Fprintf(&sb, "- [%d] %s (Project: %s, Status: %s)%s%s\n", t.ID, t.Title, t.Project, status, due, formatUserPriority(t))
 	}
 
 	return mcp.NewToolResultText(sb.String()), nil
@@ -372,44 +385,39 @@ func (ms *MCPServer) handleUpdate(ctx context.Context, request mcp.CallToolReque
 		return mcp.NewToolResultError("Invalid ID"), nil
 	}
 
-	// Fetch existing
-	task, err := ms.store.GetTask(id)
-	if err != nil {
+	if _, err := ms.store.GetTask(id); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Task not found: %v", err)), nil
 	}
 
-	if t := request.GetString("title", ""); t != "" {
-		task.Title = t
+	updates := make(map[string]interface{})
+	if err := addUserPriorityEdit(args, updates); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if d := request.GetString("description", ""); d != "" {
-		task.Description = d
+	for _, field := range []string{"title", "description", "project"} {
+		if value := request.GetString(field, ""); value != "" {
+			updates[field] = value
+		}
 	}
-	if p := request.GetString("project", ""); p != "" {
-		task.Project = p
-	}
-	// ... (rest is same but I need to include context to match block)
-	if _, ok := args["estimate"]; ok {
-		task.Estimate = request.GetString("estimate", "")
-	}
-	if _, ok := args["recurrence"]; ok {
-		task.Recurrence = request.GetString("recurrence", "")
+	for _, field := range []string{"estimate", "recurrence"} {
+		if _, ok := args[field]; ok {
+			updates[field] = request.GetString(field, "")
+		}
 	}
 
 	if _, ok := args["due"]; ok {
 		dueStr := request.GetString("due", "")
 		if dueStr == "" {
-			task.DueAt = nil
+			updates["due_at"] = nil
 		} else {
 			t, err := parse.Date(dueStr, ms.config.EndOfDay)
 			if err != nil {
 				return mcp.NewToolResultError(fmt.Sprintf("Invalid due date: %v", err)), nil
 			}
-			task.DueAt = t
+			updates["due_at"] = t
 		}
 	}
 
-	err = ms.store.UpdateTask(task)
-	if err != nil {
+	if err := ms.store.BatchUpdateTasks([]int64{id}, updates); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error updating task: %v", err)), nil
 	}
 
@@ -478,6 +486,9 @@ func (ms *MCPServer) handleBatchUpdate(ctx context.Context, request mcp.CallTool
 	}
 
 	updates := make(map[string]interface{})
+	if err := addUserPriorityEdit(request.GetArguments(), updates); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 
 	if p := request.GetString("project", ""); p != "" {
 		updates["project"] = p
@@ -502,6 +513,33 @@ func (ms *MCPServer) handleBatchUpdate(ctx context.Context, request mcp.CallTool
 	}
 
 	return mcp.NewToolResultText(fmt.Sprintf("Updated %d tasks.", len(ids))), nil
+}
+
+func addUserPriorityEdit(args, updates map[string]any) error {
+	value, set := args["user_priority"]
+	clear := false
+	if arg, ok := args["clear_user_priority"]; ok {
+		clear, ok = arg.(bool)
+		if !ok {
+			return fmt.Errorf("clear_user_priority must be a boolean")
+		}
+	}
+	if clear && set {
+		return fmt.Errorf("choose either user_priority or clear_user_priority")
+	}
+	if clear {
+		updates["user_priority"] = nil
+	}
+	if set {
+		if value == nil {
+			return store.ErrInvalidUserPriority
+		}
+		if err := store.ValidateUserPriority(value); err != nil {
+			return err
+		}
+		updates["user_priority"] = value
+	}
+	return nil
 }
 
 func (ms *MCPServer) handleDelete(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -771,7 +809,7 @@ func formatTaskDetails(t models.Task) string {
 	}
 
 	return fmt.Sprintf(
-		"- [%d] %s (Project: %s, Status: %s, Due: %s, Description: %s, Estimate: %s, Recurrence: %s, Time Spent: %ds)",
+		"- [%d] %s (Project: %s, Status: %s, Due: %s, Description: %s, Estimate: %s, Recurrence: %s, Time Spent: %ds)%s",
 		t.ID,
 		t.Title,
 		t.Project,
@@ -781,7 +819,15 @@ func formatTaskDetails(t models.Task) string {
 		estimate,
 		recurrence,
 		t.TimeSpent,
+		formatUserPriority(t),
 	)
+}
+
+func formatUserPriority(t models.Task) string {
+	if t.UserPriority == nil {
+		return ""
+	}
+	return fmt.Sprintf(" User priority: %d", *t.UserPriority)
 }
 
 func formatProjectDetails(p models.Project) string {

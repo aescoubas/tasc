@@ -14,6 +14,8 @@ Use these MCP endpoints when working with Tasc.
   - Create a task with title, optional description, project, due date, estimate, or recurrence.
 - `tasc_list_tasks`
   - Filter by project or status when the user already knows the scope.
+  - Set `sort: "priority"` to order by user priority from 1 (highest) to 5
+    (lowest). Unset tasks sort with 5, and task ID breaks ties.
   - Set `exclude_archived_projects: true` for cross-project reviews that should
     omit archived work. Unassigned tasks stay visible. To review an archived
     project's history, set `project` and omit the exclusion.
@@ -31,8 +33,11 @@ Use these MCP endpoints when working with Tasc.
   - A stale revision rejects the edit. Read the latest handoff before retrying.
 - `tasc_update_task`
   - Edit one task.
+  - Set `user_priority` to an integer from 1 to 5, or pass
+    `clear_user_priority: true` to clear it.
 - `tasc_batch_update_tasks`
   - Bulk reschedule or move tasks by project or status.
+  - Use the same priority arguments to apply one level or clear it across IDs.
   - Setting status to `done` atomically completes the whole batch, finalizes timers,
     and advances recurrence. A missing/deleted task or invalid recurrence rolls back
     the whole batch. Repeated IDs are processed once.

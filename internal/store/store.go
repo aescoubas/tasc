@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"math"
 	"time"
 
 	"github.com/aescoubas/tasc/internal/models"
@@ -15,6 +16,25 @@ var ErrInvalidCompletion = errors.New("invalid completion")
 
 // ErrTaskDescriptionConflict identifies a stale description edit.
 var ErrTaskDescriptionConflict = errors.New("task description changed or is unavailable")
+
+var ErrInvalidUserPriority = errors.New("user_priority must be an integer from 1 to 5")
+
+// ValidateUserPriority accepts nil to clear the value and a JSON number or int to set it.
+func ValidateUserPriority(value any) error {
+	switch value := value.(type) {
+	case nil:
+		return nil
+	case int:
+		if value >= models.HighestUserPriority && value <= models.LowestUserPriority {
+			return nil
+		}
+	case float64:
+		if value >= models.HighestUserPriority && value <= models.LowestUserPriority && value == math.Trunc(value) {
+			return nil
+		}
+	}
+	return ErrInvalidUserPriority
+}
 
 type ProjectCreateOptions struct {
 	KeepShortNameEmpty bool `json:"keep_short_name_empty,omitempty"`
@@ -54,6 +74,7 @@ type Store interface {
 	CreateTask(t models.Task) (int64, error)
 	LogTask(t models.Task) (int64, error)
 	GetTask(id int64) (models.Task, error)
+	// UpdateTask preserves user priority. Use BatchUpdateTasks for explicit priority edits.
 	UpdateTask(t models.Task) error
 	UpdateTaskDescription(id int64, expected, description string) error
 	DeleteTask(id int64) error // Soft delete usually

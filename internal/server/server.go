@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -66,6 +67,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /tasks/stop", s.handleTaskStop)
 	s.mux.HandleFunc("GET /tasks/active", s.handleGetActiveTask)
 	s.mux.HandleFunc("POST /tasks/batch-update", s.handleBatchUpdateTasks)
+	s.mux.HandleFunc("POST /tasks/batch-update/priority", s.handleBatchUpdateTasks)
 
 	s.mux.HandleFunc("GET /projects", s.handleListProjects)
 	s.mux.HandleFunc("POST /projects", s.handleCreateProject)
@@ -101,6 +103,11 @@ func (s *Server) handleGetActiveTask(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	filter := store.TaskFilter{}
 	q := r.URL.Query()
+	sortBy := q.Get("sort")
+	if sortBy != "" && sortBy != "priority" {
+		http.Error(w, "sort must be priority", http.StatusBadRequest)
+		return
+	}
 
 	if statuses := q.Get("status"); statuses != "" {
 		for _, status := range strings.Split(statuses, ",") {
@@ -161,6 +168,9 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if sortBy == "priority" {
+		slices.SortFunc(tasks, func(a, b models.Task) int { return models.CompareTaskPriority(a, b, false) })
+	}
 	respondJSON(w, http.StatusOK, tasks)
 }
 
@@ -181,7 +191,7 @@ func createTask(w http.ResponseWriter, r *http.Request, create func(models.Task)
 
 	id, err := create(t)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		respondMutationError(w, err)
 		return
 	}
 	t.ID = id
@@ -517,7 +527,7 @@ func respondMutationError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	if errors.Is(err, sql.ErrNoRows) {
 		status = http.StatusNotFound
-	} else if errors.Is(err, store.ErrInvalidCompletion) {
+	} else if errors.Is(err, store.ErrInvalidCompletion) || errors.Is(err, store.ErrInvalidUserPriority) {
 		status = http.StatusBadRequest
 	} else if errors.Is(err, store.ErrProjectNotEmpty) {
 		status = http.StatusConflict

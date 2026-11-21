@@ -229,9 +229,13 @@ var listCmd = &cobra.Command{
 		}
 
 		// Sort tasks
+		prioritySort := strings.EqualFold(sortBy, "priority")
 		sort.Slice(tasks, func(i, j int) bool {
 			t1 := tasks[i].task
 			t2 := tasks[j].task
+			if prioritySort {
+				return models.CompareTaskPriority(t1, t2, sortDesc) < 0
+			}
 			if sortBy == "" {
 				ongoingI := t1.Status == models.StatusOngoing
 				ongoingJ := t2.Status == models.StatusOngoing
@@ -326,6 +330,7 @@ var listCmd = &cobra.Command{
 		opts := ui.TableOptions{
 			ShowAll:       showAll,
 			MarkRecurring: true,
+			ShowPriority:  prioritySort,
 		}
 
 		ui.RenderTaskTable(displayTasks, displayScores, cfg, allProjects, opts)
@@ -333,7 +338,7 @@ var listCmd = &cobra.Command{
 }
 
 func init() {
-	listCmd.Flags().StringVarP(&sortBy, "sort", "s", "", "Sort by field (id, project, description, created, age, due, estimate, score, duration)")
+	listCmd.Flags().StringVarP(&sortBy, "sort", "s", "", "Sort by field (id, project, description, created, age, due, estimate, score, priority, duration)")
 	listCmd.Flags().BoolVarP(&sortDesc, "desc", "d", false, "Sort in descending order")
 	listCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all tasks (do not truncate to screen height)")
 	listCmd.Flags().BoolVarP(&forceRelative, "relative", "R", false, "Force relative dates")

@@ -41,6 +41,7 @@ func spawnNextTask(t models.Task) {
 		DueAt:         newDue,
 		Estimate:      t.Estimate,
 		ScheduleBlock: t.ScheduleBlock,
+		UserPriority:  t.UserPriority,
 	}
 
 	id, err := CurrentStore.CreateTask(newTask)
