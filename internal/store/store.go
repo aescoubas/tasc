@@ -16,6 +16,26 @@ var ErrInvalidCompletion = errors.New("invalid completion")
 // ErrTaskDescriptionConflict identifies a stale description edit.
 var ErrTaskDescriptionConflict = errors.New("task description changed or is unavailable")
 
+type ProjectCreateOptions struct {
+	KeepShortNameEmpty bool `json:"keep_short_name_empty,omitempty"`
+	RequireParent      bool `json:"require_parent,omitempty"`
+}
+
+type ProjectDeleteMode string
+
+const (
+	ProjectDeleteEmpty   ProjectDeleteMode = "empty"
+	ProjectDeleteUnlink  ProjectDeleteMode = "unlink"
+	ProjectDeleteCascade ProjectDeleteMode = "cascade"
+)
+
+type ProjectDeleteResult struct {
+	Tasks       int `json:"tasks"`
+	Subprojects int `json:"subprojects"`
+}
+
+var ErrProjectNotEmpty = errors.New("project has tasks or subprojects")
+
 type TaskFilter struct {
 	// Status matches the displayed status: open dependencies override it with blocked.
 	Status         []models.TaskStatus
@@ -32,6 +52,7 @@ type TaskFilter struct {
 type Store interface {
 	// Tasks
 	CreateTask(t models.Task) (int64, error)
+	LogTask(t models.Task) (int64, error)
 	GetTask(id int64) (models.Task, error)
 	UpdateTask(t models.Task) error
 	UpdateTaskDescription(id int64, expected, description string) error
@@ -42,6 +63,7 @@ type Store interface {
 	// MarkDone atomically finalizes the timer and recurrence. Already-done tasks
 	// are a no-op; missing tasks return sql.ErrNoRows.
 	MarkDone(id int64) error
+	MarkVague(id int64) error
 	StartTask(id int64) error
 	StopTask(id int64) error
 	// Setting status to done uses the same completion rules, atomically for all IDs.
@@ -57,9 +79,11 @@ type Store interface {
 	// Projects
 	ListProjects() ([]models.Project, error)
 	GetProject(name string) (models.Project, error)
-	CreateProject(p models.Project) error
+	CreateProject(p models.Project, options ProjectCreateOptions) error
 	UpdateProject(oldName string, p models.Project) error
+	ArchiveProject(name string) error
 	DeleteProject(name string) error
+	DeleteProjectWithMode(name string, mode ProjectDeleteMode) (ProjectDeleteResult, error)
 
 	// Search
 	SearchTasks(query string) ([]models.Task, error)

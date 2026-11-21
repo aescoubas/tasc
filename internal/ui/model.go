@@ -1,14 +1,11 @@
 package ui
 
 import (
-	"database/sql"
-	"log"
 	"sort"
 
-	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/priority"
-	"github.com/aescoubas/tasc/internal/store/sqlite"
+	"github.com/aescoubas/tasc/internal/store"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -18,20 +15,16 @@ import (
 var docStyle = lipgloss.NewStyle().Margin(1, 2)
 
 type Model struct {
-	list list.Model
+	list  list.Model
+	store store.Store
 }
 
-func InitialModel() Model {
-	// 1. Fetch tasks
-	tasks := loadTasks()
-
-	// 2. Convert to list.Item
-	items := make([]list.Item, len(tasks))
-	for i, t := range tasks {
-		items[i] = item{task: t}
+func InitialModel(st store.Store) (Model, error) {
+	items, err := loadItems(st)
+	if err != nil {
+		return Model{}, err
 	}
 
-	// 3. Setup list
 	l := list.New(items, list.NewDefaultDelegate(), 0, 0)
 	l.Title = "My Tasks"
 	l.AdditionalShortHelpKeys = func() []key.Binding {
@@ -40,64 +33,36 @@ func InitialModel() Model {
 		}
 	}
 
-	return Model{list: l}
+	return Model{list: l, store: st}, nil
 }
 
-func loadTasks() []models.Task {
-	query := "SELECT id, title, project, status, created_at, due_at, estimate, active_start, time_spent, reschedule_count FROM tasks WHERE status != 'done' AND status != 'deleted' ORDER BY created_at DESC"
-	rows, err := db.DB.Query(query)
+func loadItems(st store.Store) ([]list.Item, error) {
+	tasks, err := st.ListTasks(store.TaskFilter{Status: []models.TaskStatus{
+		models.StatusBacklog, models.StatusOngoing, models.StatusBlocked, models.StatusUndefined,
+	}})
 	if err != nil {
-		log.Fatal(err)
-	}
-	defer rows.Close()
-
-	var tasks []models.Task
-	for rows.Next() {
-		var t models.Task
-		var project sql.NullString
-		var dueAt sql.NullTime
-		var estimate sql.NullString
-		var activeStart sql.NullTime
-		var timeSpent sql.NullInt64
-
-		if err := rows.Scan(&t.ID, &t.Title, &project, &t.Status, &t.CreatedAt, &dueAt, &estimate, &activeStart, &timeSpent, &t.RescheduleCount); err != nil {
-			continue
-		}
-		t.Project = project.String
-		if dueAt.Valid {
-			t.DueAt = &dueAt.Time
-		}
-		if estimate.Valid {
-			t.Estimate = estimate.String
-		}
-		if activeStart.Valid {
-			t.ActiveStart = &activeStart.Time
-		}
-		if timeSpent.Valid {
-			t.TimeSpent = timeSpent.Int64
-		}
-		tasks = append(tasks, t)
+		return nil, err
 	}
 
-	// Sort by priority score
 	calc := priority.NewCalculator()
-	sort.Slice(tasks, func(i, j int) bool {
+	sort.SliceStable(tasks, func(i, j int) bool {
 		activeI := tasks[i].ActiveStart != nil
 		activeJ := tasks[j].ActiveStart != nil
-		if activeI && !activeJ {
-			return true
+		if activeI != activeJ {
+			return activeI
 		}
-		if !activeI && activeJ {
-			return false
+		scoreI, scoreJ := calc.Calculate(tasks[i]), calc.Calculate(tasks[j])
+		if scoreI != scoreJ {
+			return scoreI > scoreJ
 		}
-		return calc.Calculate(tasks[i]) > calc.Calculate(tasks[j])
+		return tasks[i].CreatedAt.After(tasks[j].CreatedAt)
 	})
 
-	return tasks
-}
-
-func markTaskDone(id int64) error {
-	return sqlite.NewSQLiteStore(db.DB).MarkDone(id)
+	items := make([]list.Item, len(tasks))
+	for i, task := range tasks {
+		items[i] = item{task: task}
+	}
+	return items, nil
 }
 
 func (m Model) Init() tea.Cmd {
@@ -115,12 +80,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "d":
 			if i, ok := m.list.SelectedItem().(item); ok {
-				if err := markTaskDone(i.task.ID); err != nil {
+				if err := m.store.MarkDone(i.task.ID); err != nil {
 					return m, m.list.NewStatusMessage("Error completing task: " + err.Error())
 				}
-				var items []list.Item
-				for _, task := range loadTasks() {
-					items = append(items, item{task: task})
+				items, err := loadItems(m.store)
+				if err != nil {
+					return m, m.list.NewStatusMessage("Task completed but the list could not refresh: " + err.Error())
 				}
 				refresh := m.list.SetItems(items)
 				cmd := m.list.NewStatusMessage(docStyle.Foreground(lipgloss.Color("#04B575")).Render("Task completed!"))

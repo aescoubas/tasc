@@ -369,7 +369,7 @@ Each fix needs regression evidence through the affected interface. Stored-data
 semantics and migrations still require the approval specified in `AGENTS.md`.
 
 **Tasks:**
-- [ ] **1451 — Complete remote CLI support and eliminate local-database panics.**
+- [x] **1451 — Complete remote CLI support and eliminate local-database panics.**
 - [x] **1452 — Unify task completion, recurrence, and timer finalization.**
 - [x] **1453 — Restrict REST server exposure and add access controls.**
 - [ ] **1454 — Make time blocks effective and enforce scheduling capacity.**
@@ -388,8 +388,26 @@ semantics and migrations still require the approval specified in `AGENTS.md`.
 
 Real-binary regressions cover local/remote read parity, unchanged client database
 contents, timer start/stop failures, local timer undo, and local-only rejection.
-The broader remote-support task remains open. This first batch was verified locally;
-deployment details are tracked in the Tasc tasks.
+The first batch landed in `cff1d1a` and is included in `v0.2.1`.
+
+**Completion (2026-11-21):**
+
+- Task `edit`, `log`, `vague`, project create/archive/delete, `ask` task
+  retrieval, and the terminal UI use the selected Store. SQLite administration
+  commands reject remote use with exit status 1.
+- Real-binary regressions cover project metadata, deleting an empty project,
+  refusing a nonempty project, unlinking tasks and promoting direct children,
+  cascading through nested projects, rollback on a failed cascade, and local undo.
+  Remote task editing, history logging, vague marking, and empty-list `ask` passed
+  against isolated databases. The external Gemini request was outside the probe.
+- Terminal sessions against local SQLite and a loopback server each printed
+  `Task completed!` and produced one completed row and one recurring successor.
+  The remote session left the client database absent. The installed `v0.2.1`
+  server returned HTTP 404 for the new CLI cascade request and kept the project.
+- `nix develop --command make check` passed with
+  `ok github.com/aescoubas/tasc/tests/integration 18.229s`.
+  `nix develop --command make test-race` passed with
+  `ok github.com/aescoubas/tasc/tests/integration 19.514s`.
 
 **1452 — Unify task completion, recurrence, and timer finalization.**
 

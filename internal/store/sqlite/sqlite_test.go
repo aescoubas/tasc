@@ -379,7 +379,7 @@ func TestSQLiteStore_Projects(t *testing.T) {
 		Name:        "Alpha",
 		Description: "Top level",
 	}
-	err := s.CreateProject(p)
+	err := s.CreateProject(p, store.ProjectCreateOptions{})
 	if err != nil {
 		t.Fatalf("CreateProject failed: %v", err)
 	}

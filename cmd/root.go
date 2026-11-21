@@ -46,10 +46,8 @@ func Execute() {
 
 func requiresLocalDatabase(command string) bool {
 	switch command {
-	case "tasc ask", "tasc backup", "tasc backup list", "tasc edit",
-		"tasc import-tw", "tasc log", "tasc project archive", "tasc project create",
-		"tasc project delete", "tasc renumber", "tasc restore", "tasc seed",
-		"tasc serve", "tasc ui", "tasc undo", "tasc vague":
+	case "tasc backup", "tasc backup list", "tasc import-tw", "tasc renumber",
+		"tasc restore", "tasc seed", "tasc serve", "tasc undo":
 		return true
 	}
 	return false

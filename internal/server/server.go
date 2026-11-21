@@ -54,12 +54,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /tasks", s.handleListTasks)
 	s.mux.HandleFunc("POST /tasks", s.handleCreateTask)
+	s.mux.HandleFunc("POST /tasks/log", s.handleLogTask)
 	s.mux.HandleFunc("GET /tasks/{id}", s.handleGetTask)
 	s.mux.HandleFunc("PUT /tasks/{id}", s.handleUpdateTask)
 	s.mux.HandleFunc("PUT /tasks/{id}/description", s.handleUpdateTaskDescription)
 	s.mux.HandleFunc("DELETE /tasks/{id}", s.handleDeleteTask)
 
 	s.mux.HandleFunc("POST /tasks/{id}/done", s.handleTaskDone)
+	s.mux.HandleFunc("POST /tasks/{id}/vague", s.handleTaskVague)
 	s.mux.HandleFunc("POST /tasks/{id}/start", s.handleTaskStart)
 	s.mux.HandleFunc("POST /tasks/stop", s.handleTaskStop)
 	s.mux.HandleFunc("GET /tasks/active", s.handleGetActiveTask)
@@ -67,9 +69,12 @@ func (s *Server) routes() {
 
 	s.mux.HandleFunc("GET /projects", s.handleListProjects)
 	s.mux.HandleFunc("POST /projects", s.handleCreateProject)
+	s.mux.HandleFunc("POST /projects/create", s.handleCreateProject)
 	s.mux.HandleFunc("GET /projects/{name}", s.handleGetProject)
 	s.mux.HandleFunc("PUT /projects/{name}", s.handleUpdateProject)
 	s.mux.HandleFunc("DELETE /projects/{name}", s.handleDeleteProject)
+	s.mux.HandleFunc("POST /projects/{name}/archive", s.handleArchiveProject)
+	s.mux.HandleFunc("POST /projects/{name}/delete", s.handleDeleteProjectWithMode)
 
 	s.mux.HandleFunc("GET /dependencies", s.handleListDependencies)
 	s.mux.HandleFunc("POST /dependencies", s.handleAddDependency)
@@ -160,13 +165,21 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
+	createTask(w, r, s.store.CreateTask)
+}
+
+func (s *Server) handleLogTask(w http.ResponseWriter, r *http.Request) {
+	createTask(w, r, s.store.LogTask)
+}
+
+func createTask(w http.ResponseWriter, r *http.Request, create func(models.Task) (int64, error)) {
 	var t models.Task
 	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	id, err := s.store.CreateTask(t)
+	id, err := create(t)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -214,7 +227,7 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	t.ID = id // Ensure ID matches URL
 
 	if err := s.store.UpdateTask(t); err != nil {
-		respondTaskMutationError(w, err)
+		respondMutationError(w, err)
 		return
 	}
 	// Completion owns timestamps and timer state; return the persisted result.
@@ -275,10 +288,23 @@ func (s *Server) handleTaskDone(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.MarkDone(id); err != nil {
-		respondTaskMutationError(w, err)
+		respondMutationError(w, err)
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]string{"status": "done"})
+}
+
+func (s *Server) handleTaskVague(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.MarkVague(id); err != nil {
+		respondMutationError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleTaskStart(w http.ResponseWriter, r *http.Request) {
@@ -401,13 +427,16 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
-	var p models.Project
-	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+	var request struct {
+		models.Project
+		Options store.ProjectCreateOptions `json:"options"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := s.store.CreateProject(p); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err := s.store.CreateProject(request.Project, request.Options); err != nil {
+		respondMutationError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
@@ -437,6 +466,36 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) handleArchiveProject(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.ArchiveProject(r.PathValue("name")); err != nil {
+		respondMutationError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleDeleteProjectWithMode(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Mode store.ProjectDeleteMode `json:"mode"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	switch request.Mode {
+	case store.ProjectDeleteEmpty, store.ProjectDeleteUnlink, store.ProjectDeleteCascade:
+	default:
+		http.Error(w, "invalid project deletion mode", http.StatusBadRequest)
+		return
+	}
+	result, err := s.store.DeleteProjectWithMode(r.PathValue("name"), request.Mode)
+	if err != nil {
+		respondMutationError(w, err)
+		return
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
 func (s *Server) handleBatchUpdateTasks(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		IDs     []int64                `json:"ids"`
@@ -448,18 +507,20 @@ func (s *Server) handleBatchUpdateTasks(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := s.store.BatchUpdateTasks(req.IDs, req.Updates); err != nil {
-		respondTaskMutationError(w, err)
+		respondMutationError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-func respondTaskMutationError(w http.ResponseWriter, err error) {
+func respondMutationError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	if errors.Is(err, sql.ErrNoRows) {
 		status = http.StatusNotFound
 	} else if errors.Is(err, store.ErrInvalidCompletion) {
 		status = http.StatusBadRequest
+	} else if errors.Is(err, store.ErrProjectNotEmpty) {
+		status = http.StatusConflict
 	}
 	http.Error(w, err.Error(), status)
 }

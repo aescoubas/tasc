@@ -653,7 +653,7 @@ func (ms *MCPServer) handleAddProject(ctx context.Context, request mcp.CallToolR
 		Status:      models.ProjectStatusActive,
 	}
 
-	err := ms.store.CreateProject(p)
+	err := ms.store.CreateProject(p, store.ProjectCreateOptions{})
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error creating project: %v", err)), nil
 	}

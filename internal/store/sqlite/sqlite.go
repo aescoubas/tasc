@@ -51,8 +51,9 @@ func generateUniqueShortName(q taskQueries, name string) (string, error) {
 		candidates = append(candidates, clean[:4])
 	}
 	// Fallback numbers
+	prefix := clean[:min(len(clean), 2)]
 	for i := 1; i <= 20; i++ {
-		candidates = append(candidates, fmt.Sprintf("%s%d", clean[:2], i))
+		candidates = append(candidates, fmt.Sprintf("%s%d", prefix, i))
 	}
 
 	for _, cand := range candidates {
@@ -67,7 +68,7 @@ func generateUniqueShortName(q taskQueries, name string) (string, error) {
 	}
 
 	// Ultimate fallback
-	return fmt.Sprintf("%s%d", clean[:2], time.Now().Unix()%1000), nil
+	return fmt.Sprintf("%s%d", prefix, time.Now().Unix()%1000), nil
 }
 
 func (s *SQLiteStore) ensureProjectExists(name string) error {
@@ -143,6 +144,33 @@ func (s *SQLiteStore) CreateTask(t models.Task) (int64, error) {
 	}
 
 	return res.LastInsertId()
+}
+
+func (s *SQLiteStore) LogTask(t models.Task) (int64, error) {
+	// Logging records past work without reopening or creating its project.
+	res, err := s.db.Exec(`INSERT INTO tasks
+		(title, project, due_at, estimate, status, created_at, completed_at)
+		VALUES (?, ?, ?, ?, 'done', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+		t.Title, t.Project, t.DueAt, t.Estimate)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *SQLiteStore) MarkVague(id int64) error {
+	return requireUpdatedRow(s.db.Exec("UPDATE tasks SET status = ? WHERE id = ?", models.StatusUndefined, id))
+}
+
+func requireUpdatedRow(result sql.Result, err error) error {
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err == nil && count == 0 {
+		return sql.ErrNoRows
+	}
+	return err
 }
 
 func (s *SQLiteStore) GetTask(id int64) (models.Task, error) {
@@ -891,8 +919,8 @@ func (s *SQLiteStore) GetProject(name string) (models.Project, error) {
 	return p, nil
 }
 
-func (s *SQLiteStore) CreateProject(p models.Project) error {
-	if p.ShortName == "" {
+func (s *SQLiteStore) CreateProject(p models.Project, options store.ProjectCreateOptions) error {
+	if p.ShortName == "" && !options.KeepShortNameEmpty {
 		var err error
 		p.ShortName, err = s.generateUniqueShortName(p.Name)
 		if err != nil {
@@ -900,12 +928,18 @@ func (s *SQLiteStore) CreateProject(p models.Project) error {
 		}
 	}
 
-	query := `INSERT INTO projects (name, short_name, description, parent, due_at, status) VALUES (?, ?, ?, ?, ?, ?)`
-	var parent *string
-	if p.Parent != "" {
-		parent = &p.Parent
+	var shortName *string
+	if p.ShortName != "" {
+		shortName = &p.ShortName
 	}
-	_, err := s.db.Exec(query, p.Name, p.ShortName, p.Description, parent, p.DueAt, p.Status)
+	err := requireUpdatedRow(s.db.Exec(`INSERT INTO projects
+		(name, short_name, description, parent, due_at, status)
+		SELECT ?, ?, ?, NULLIF(?, ''), ?, ?
+		WHERE NOT ? OR ? = '' OR EXISTS (SELECT 1 FROM projects WHERE name = ?)`,
+		p.Name, shortName, p.Description, p.Parent, p.DueAt, p.Status, options.RequireParent, p.Parent, p.Parent))
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("parent project %q not found: %w", p.Parent, err)
+	}
 	return err
 }
 

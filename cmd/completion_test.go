@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type mockStore struct{}
+type mockStore struct{ store.Store }
 
 func (m *mockStore) CreateTask(t models.Task) (int64, error) { return 0, nil }
 func (m *mockStore) GetTask(id int64) (models.Task, error)   { return models.Task{}, nil }
@@ -43,8 +43,10 @@ func (m *mockStore) ListProjects() ([]models.Project, error) {
 		{Name: "work.project1"},
 	}, nil
 }
-func (m *mockStore) GetProject(name string) (models.Project, error)       { return models.Project{}, nil }
-func (m *mockStore) CreateProject(p models.Project) error                 { return nil }
+func (m *mockStore) GetProject(name string) (models.Project, error) { return models.Project{}, nil }
+func (m *mockStore) CreateProject(p models.Project, options store.ProjectCreateOptions) error {
+	return nil
+}
 func (m *mockStore) UpdateProject(oldName string, p models.Project) error { return nil }
 func (m *mockStore) DeleteProject(name string) error                      { return nil }
 func (m *mockStore) SearchTasks(query string) ([]models.Task, error)      { return nil, nil }

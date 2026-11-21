@@ -29,12 +29,20 @@ func NewClient(baseURL string) *Client {
 }
 
 func (c *Client) CreateTask(t models.Task) (int64, error) {
+	return c.createTask("/tasks", t)
+}
+
+func (c *Client) LogTask(t models.Task) (int64, error) {
+	return c.createTask("/tasks/log", t)
+}
+
+func (c *Client) createTask(path string, t models.Task) (int64, error) {
 	data, err := json.Marshal(t)
 	if err != nil {
 		return 0, err
 	}
 
-	resp, err := c.http.Post(c.baseURL+"/tasks", "application/json", bytes.NewBuffer(data))
+	resp, err := c.http.Post(c.baseURL+path, "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return 0, err
 	}
@@ -232,6 +240,18 @@ func (c *Client) MarkDone(id int64) error {
 	return nil
 }
 
+func (c *Client) MarkVague(id int64) error {
+	resp, err := c.http.Post(fmt.Sprintf("%s/tasks/%d/vague", c.baseURL, id), "application/json", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return taskMutationError(resp)
+	}
+	return nil
+}
+
 func taskMutationError(resp *http.Response) error {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {
@@ -374,7 +394,7 @@ func (c *Client) ListProjects() ([]models.Project, error) {
 }
 
 func (c *Client) GetProject(name string) (models.Project, error) {
-	resp, err := c.http.Get(fmt.Sprintf("%s/projects/%s", c.baseURL, url.PathEscape(name)))
+	resp, err := c.http.Get(c.projectURL(name))
 	if err != nil {
 		return models.Project{}, err
 	}
@@ -391,18 +411,26 @@ func (c *Client) GetProject(name string) (models.Project, error) {
 	return p, nil
 }
 
-func (c *Client) CreateProject(p models.Project) error {
-	data, err := json.Marshal(p)
+func (c *Client) CreateProject(p models.Project, options store.ProjectCreateOptions) error {
+	path := "/projects"
+	if options != (store.ProjectCreateOptions{}) {
+		// Older servers must reject a request that depends on options they do not implement.
+		path += "/create"
+	}
+	data, err := json.Marshal(struct {
+		models.Project
+		Options store.ProjectCreateOptions `json:"options,omitzero"`
+	}{p, options})
 	if err != nil {
 		return err
 	}
-	resp, err := c.http.Post(c.baseURL+"/projects", "application/json", bytes.NewBuffer(data))
+	resp, err := c.http.Post(c.baseURL+path, "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("failed: %s", resp.Status)
+		return projectResponseError(resp)
 	}
 	return nil
 }
@@ -412,7 +440,7 @@ func (c *Client) UpdateProject(oldName string, p models.Project) error {
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/projects/%s", c.baseURL, url.PathEscape(oldName)), bytes.NewBuffer(data))
+	req, err := http.NewRequest(http.MethodPut, c.projectURL(oldName), bytes.NewBuffer(data))
 	if err != nil {
 		return err
 	}
@@ -431,7 +459,7 @@ func (c *Client) UpdateProject(oldName string, p models.Project) error {
 }
 
 func (c *Client) DeleteProject(name string) error {
-	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/projects/%s", c.baseURL, url.PathEscape(name)), nil)
+	req, err := http.NewRequest(http.MethodDelete, c.projectURL(name), nil)
 	if err != nil {
 		return err
 	}
@@ -444,6 +472,60 @@ func (c *Client) DeleteProject(name string) error {
 		return fmt.Errorf("failed: %s", resp.Status)
 	}
 	return nil
+}
+
+func (c *Client) ArchiveProject(name string) error {
+	resp, err := c.http.Post(c.projectURL(name)+"/archive", "application/json", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return projectResponseError(resp)
+	}
+	return nil
+}
+
+func (c *Client) DeleteProjectWithMode(name string, mode store.ProjectDeleteMode) (store.ProjectDeleteResult, error) {
+	var result store.ProjectDeleteResult
+	body, err := json.Marshal(map[string]store.ProjectDeleteMode{"mode": mode})
+	if err != nil {
+		return result, err
+	}
+	resp, err := c.http.Post(c.projectURL(name)+"/delete", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return result, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return result, projectResponseError(resp)
+	}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	return result, err
+}
+
+func (c *Client) projectURL(name string) string {
+	segment := url.PathEscape(name)
+	if segment == "." || segment == ".." {
+		segment = strings.ReplaceAll(segment, ".", "%2E")
+	}
+	return c.baseURL + "/projects/" + segment
+}
+
+func projectResponseError(resp *http.Response) error {
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if err != nil {
+		return fmt.Errorf("server error: %s (reading error: %w)", resp.Status, err)
+	}
+	message := strings.TrimSpace(string(body))
+	switch resp.StatusCode {
+	case http.StatusNotFound:
+		return fmt.Errorf("%w: %s", sql.ErrNoRows, message)
+	case http.StatusConflict:
+		return fmt.Errorf("%w: %s", store.ErrProjectNotEmpty, message)
+	default:
+		return fmt.Errorf("server error: %s: %s", resp.Status, message)
+	}
 }
 
 func (c *Client) SearchTasks(query string) ([]models.Task, error) {

@@ -19,11 +19,21 @@ Tasc can run as a standalone local CLI or as a distributed system.
   through a mode0600/0400 regular file. Authenticated clients require HTTPS or
   loopback HTTP and do not follow redirects. Existing local CLI and MCP authority
   is unchanged; this is a network boundary, not per-task authorization.
-- **Store-backed commands**: task commands, timer start/stop, calendar, statistics,
-  project listing, and project editing use `Store` in both modes. Statistics aggregate
-  a single task snapshot; listing includes completion timestamps for closure rates and
-  burndown. Remaining commands that access SQLite directly reject remote mode in the
-  root pre-run hook; the README lists them and the `tasc` project tracks the remaining work.
+- **Store-backed commands** use the selected backend for everyday task and project
+  operations, timers, calendar, statistics, and the terminal UI. Statistics aggregate
+  a single task snapshot with completion timestamps for closure rates and burndown.
+  The root pre-run hook rejects the SQLite administration commands listed in the README
+  when the client is in remote mode.
+- **Task history and status** use `POST /tasks/log` and `POST /tasks/{id}/vague`.
+  Logging inserts completed history without creating or reopening a project.
+  Marking a task vague updates its status without rewriting its other fields.
+- **Project actions** use `POST /projects/create`, `POST /projects/{name}/archive`,
+  and `POST /projects/{name}/delete`. CLI creation checks that a supplied parent
+  exists and leaves the short name unset. Archive updates the status in one write.
+  CLI deletion applies the chosen empty, unlink, or cascade behavior in a single
+  transaction. Dedicated routes make older servers reject operations whose
+  semantics they cannot honor. Existing REST and MCP project operations keep
+  their original contracts.
 - **Timer stop**: `POST /tasks/stop?id=<id>` stops only the requested active task.
   Omitting `id` stops the current timer. Invalid IDs return HTTP 400. The remote Store
   client preserves the ID instead of silently stopping whichever task is active.

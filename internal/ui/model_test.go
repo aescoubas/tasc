@@ -22,15 +22,15 @@ func TestTUICompletionKeepsFailuresAndLoadsSuccessors(t *testing.T) {
 			if err := db.RunMigrations(conn); err != nil {
 				t.Fatal(err)
 			}
-			previous := db.DB
-			db.DB = conn
-			defer func() { db.DB = previous }()
 			st := sqlite.NewSQLiteStore(conn)
 			id, err := st.CreateTask(models.Task{Title: "TUI completion probe", Recurrence: rule, ScheduleBlock: "morning"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			m := InitialModel()
+			m, err := InitialModel(st)
+			if err != nil {
+				t.Fatal(err)
+			}
 			updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
 			next := updated.(Model)
 			if len(next.list.Items()) != 1 {

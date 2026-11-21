@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/aescoubas/tasc/internal/ui"
 	tea "github.com/charmbracelet/bubbletea"
@@ -12,16 +11,16 @@ import (
 var uiCmd = &cobra.Command{
 	Use:   "ui",
 	Short: "Open the interactive terminal UI",
-	Run: func(cmd *cobra.Command, args []string) {
-		// DB is already inited by rootCmd.OnInitialize
-		// But if we run this standalone, we need to ensure it's ready.
-		// However, cobra runs OnInitialize before Run, so we are good.
-
-		p := tea.NewProgram(ui.InitialModel(), tea.WithAltScreen())
-		if _, err := p.Run(); err != nil {
-			fmt.Printf("Error running TUI: %v\n", err)
-			os.Exit(1)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		model, err := ui.InitialModel(CurrentStore)
+		if err != nil {
+			return fmt.Errorf("load tasks: %w", err)
 		}
+		p := tea.NewProgram(model, tea.WithAltScreen())
+		if _, err := p.Run(); err != nil {
+			return fmt.Errorf("run TUI: %w", err)
+		}
+		return nil
 	},
 }
 

@@ -1,15 +1,12 @@
 package cmd
 
 import (
-	"context"
-	"database/sql"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
-	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
+	"github.com/aescoubas/tasc/internal/store"
 	"github.com/google/generative-ai-go/genai"
 	"github.com/spf13/cobra"
 	"google.golang.org/api/option"
@@ -19,11 +16,10 @@ var askCmd = &cobra.Command{
 	Use:   "ask [prompt]",
 	Short: "Ask Gemini about your tasks",
 	Long:  `Send your current task list to Google's Gemini model and ask for advice, prioritization, or general queries.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		apiKey := os.Getenv("GEMINI_API_KEY")
 		if apiKey == "" {
-			fmt.Println("Error: GEMINI_API_KEY environment variable not set.")
-			return
+			return fmt.Errorf("GEMINI_API_KEY environment variable not set")
 		}
 
 		userPrompt := "What should I prioritize?"
@@ -32,53 +28,44 @@ var askCmd = &cobra.Command{
 		}
 
 		// 1. Fetch all pending tasks
-		query := "SELECT id, title, project, created_at, due_at FROM tasks WHERE status != 'done' AND status != 'deleted'"
-		rows, err := db.DB.Query(query)
+		tasks, err := CurrentStore.ListTasks(store.TaskFilter{Status: []models.TaskStatus{
+			models.StatusBacklog, models.StatusOngoing, models.StatusBlocked, models.StatusUndefined,
+		}})
 		if err != nil {
-			log.Fatalf("Error querying tasks: %v", err)
+			return fmt.Errorf("list tasks: %w", err)
 		}
-		defer rows.Close()
+		if len(tasks) == 0 {
+			fmt.Println("No pending tasks to analyze.")
+			return nil
+		}
 
 		var sb strings.Builder
 		sb.WriteString("Here is my current task list:\n")
 
-		count := 0
-		for rows.Next() {
-			var t models.Task
-			var project sql.NullString
-			var dueAt sql.NullTime // use NullTime for scanning
-			if err := rows.Scan(&t.ID, &t.Title, &project, &t.CreatedAt, &dueAt); err != nil {
-				continue
-			}
+		for _, t := range tasks {
 			due := "No due date"
-			if dueAt.Valid {
-				due = dueAt.Time.Format("2006-01-02")
+			if t.DueAt != nil {
+				due = t.DueAt.Format("2006-01-02")
 			}
 
-			sb.WriteString(fmt.Sprintf("- [ID: %d] %s (Project: %s, Created: %s, Due: %s)\n",
-				t.ID, t.Title, project.String, t.CreatedAt.Format("2006-01-02"), due))
-			count++
-		}
-
-		if count == 0 {
-			fmt.Println("No pending tasks to analyze.")
-			return
+			fmt.Fprintf(&sb, "- [ID: %d] %s (Project: %s, Created: %s, Due: %s)\n",
+				t.ID, t.Title, t.Project, t.CreatedAt.Format("2006-01-02"), due)
 		}
 
 		sb.WriteString("\nRequest: " + userPrompt)
 
 		// 2. Call Gemini
-		ctx := context.Background()
+		ctx := cmd.Context()
 		client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		defer client.Close()
 
 		model := client.GenerativeModel("gemini-1.5-flash")
 		resp, err := model.GenerateContent(ctx, genai.Text(sb.String()))
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		// 3. Print response
@@ -89,6 +76,7 @@ var askCmd = &cobra.Command{
 				}
 			}
 		}
+		return nil
 	},
 }
 

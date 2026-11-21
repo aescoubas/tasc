@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/aescoubas/tasc/internal/config"
-	"github.com/aescoubas/tasc/internal/db"
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/parse"
 	"github.com/aescoubas/tasc/internal/store"
@@ -180,47 +179,30 @@ var projectCreateCmd = &cobra.Command{
 	Use:   "create [name]",
 	Short: "Create a new project",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.LoadConfig()
 		if err != nil {
 			cfg = config.DefaultConfig()
 		}
 
-		name := args[0]
-
 		var dueAt *time.Time
 		if projDue != "" {
-			t, err := parse.Date(projDue, cfg.EndOfDay)
+			dueAt, err = parse.Date(projDue, cfg.EndOfDay)
 			if err != nil {
-				fmt.Printf("Invalid due date: %v\n", err)
-				return
+				return fmt.Errorf("invalid due date: %w", err)
 			}
-			dueAt = t
 		}
 
-		// Validate parent
-		var parent *string
-		if projParent != "" {
-			var exists int
-			err := db.DB.QueryRow("SELECT 1 FROM projects WHERE name = ?", projParent).Scan(&exists)
-			if err != nil {
-				fmt.Printf("Parent project '%s' not found.\n", projParent)
-				return
-			}
-			parent = &projParent
+		project := models.Project{
+			Name: args[0], Description: projDesc, Parent: projParent,
+			DueAt: dueAt, Status: models.ProjectStatusActive,
 		}
-
-		query := `INSERT INTO projects (name, description, parent, due_at, status) VALUES (?, ?, ?, ?, 'active')`
-		_, err = db.DB.Exec(query, name, projDesc, parent, dueAt)
-		if err != nil {
-			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-				fmt.Printf("Project '%s' already exists.\n", name)
-			} else {
-				fmt.Printf("Error creating project: %v\n", err)
-			}
-			return
+		options := store.ProjectCreateOptions{KeepShortNameEmpty: true, RequireParent: true}
+		if err := CurrentStore.CreateProject(project, options); err != nil {
+			return fmt.Errorf("create project %q: %w", project.Name, err)
 		}
-		fmt.Printf("Project '%s' created.\n", name)
+		fmt.Printf("Project '%s' created.\n", project.Name)
+		return nil
 	},
 }
 
@@ -401,14 +383,13 @@ var projectArchiveCmd = &cobra.Command{
 	Use:   "archive [name]",
 	Short: "Archive a project",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
-		_, err := db.DB.Exec("UPDATE projects SET status = 'archived' WHERE name = ?", name)
-		if err != nil {
-			fmt.Printf("Error archiving project: %v\n", err)
-			return
+		if err := CurrentStore.ArchiveProject(name); err != nil {
+			return fmt.Errorf("archive project %q: %w", name, err)
 		}
 		fmt.Printf("Project '%s' archived.\n", name)
+		return nil
 	},
 }
 
@@ -416,92 +397,28 @@ var projectDeleteCmd = &cobra.Command{
 	Use:   "delete [name]",
 	Short: "Delete a project",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
+		mode := store.ProjectDeleteEmpty
+		switch {
+		case projCascade:
+			mode = store.ProjectDeleteCascade
+		case projUnlink:
+			mode = store.ProjectDeleteUnlink
+		}
 
-		tx, err := db.DB.Begin()
+		result, err := CurrentStore.DeleteProjectWithMode(name, mode)
 		if err != nil {
-			fmt.Printf("Error starting transaction: %v\n", err)
-			return
+			return fmt.Errorf("delete project %q: %w", name, err)
 		}
-		defer tx.Rollback()
-
-		// Helper to find all descendants
-		var findAllDescendants func(root string) ([]string, error)
-		findAllDescendants = func(root string) ([]string, error) {
-
-			rows, err := tx.Query("SELECT name FROM projects WHERE parent = ?", root)
-			if err != nil {
-				return nil, err
-			}
-			defer rows.Close()
-
-			var descendants []string
-			for rows.Next() {
-				var child string
-				rows.Scan(&child)
-				descendants = append(descendants, child)
-				sub, err := findAllDescendants(child)
-				if err != nil {
-					return nil, err
-				}
-				descendants = append(descendants, sub...)
-			}
-			return descendants, nil
-		}
-
-		// Check for tasks and subprojects
-		var taskCount int
-		err = tx.QueryRow("SELECT COUNT(*) FROM tasks WHERE project = ? AND status != 'deleted'", name).Scan(&taskCount)
-
-		descendants, err := findAllDescendants(name)
-		if err != nil {
-			fmt.Printf("Error checking subprojects: %v\n", err)
-			return
-		}
-
-		if taskCount > 0 || len(descendants) > 0 {
-			if !projUnlink && !projCascade {
-				fmt.Printf("Project '%s' has %d active tasks and %d subprojects.\n", name, taskCount, len(descendants))
-				fmt.Println("Use --unlink to keep tasks (remove project association) or --cascade to delete EVERYTHING.")
-				return
-			}
-
-			if projCascade {
-				// Delete tasks in this project
-				_, err = tx.Exec("UPDATE tasks SET status = 'deleted' WHERE project = ?", name)
-				if err != nil {
-					fmt.Printf("Error deleting associated tasks: %v\n", err)
-					return
-				}
-
-				for _, d := range descendants {
-					// Delete tasks for descendant
-					_, err = tx.Exec("UPDATE tasks SET status = 'deleted' WHERE project = ?", d)
-					// Delete project
-					_, err = tx.Exec("DELETE FROM projects WHERE name = ?", d)
-				}
-
-				fmt.Printf("Deleted %d associated tasks and %d subprojects.\n", taskCount, len(descendants))
-			} else if projUnlink {
-				// Unlink tasks
-				_, err = tx.Exec("UPDATE tasks SET project = NULL WHERE project = ?", name)
-				// FK says ON DELETE SET NULL. So subprojects become root projects.
-				fmt.Printf("Unlinked %d tasks. Subprojects are now top-level.\n", taskCount)
-			}
-		}
-
-		_, err = tx.Exec("DELETE FROM projects WHERE name = ?", name)
-		if err != nil {
-			fmt.Printf("Error deleting project: %v\n", err)
-			return
-		}
-
-		if err := tx.Commit(); err != nil {
-			fmt.Printf("Error committing transaction: %v\n", err)
-			return
+		switch mode {
+		case store.ProjectDeleteCascade:
+			fmt.Printf("Deleted %d associated tasks and %d subprojects.\n", result.Tasks, result.Subprojects)
+		case store.ProjectDeleteUnlink:
+			fmt.Printf("Unlinked %d tasks. Subprojects are now top-level.\n", result.Tasks)
 		}
 		fmt.Printf("Project '%s' deleted.\n", name)
+		return nil
 	},
 }
 
@@ -530,4 +447,5 @@ func init() {
 	projectCmd.AddCommand(projectDeleteCmd)
 	projectDeleteCmd.Flags().BoolVar(&projUnlink, "unlink", false, "Unlink tasks")
 	projectDeleteCmd.Flags().BoolVar(&projCascade, "cascade", false, "Delete associated tasks and subprojects")
+	projectDeleteCmd.MarkFlagsMutuallyExclusive("unlink", "cascade")
 }

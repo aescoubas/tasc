@@ -1309,11 +1309,9 @@ func TestTimerCommandsRemainUndoable(t *testing.T) {
 func TestLocalOnlyCommandsRejectRemoteMode(t *testing.T) {
 	clientPath := filepath.Join(t.TempDir(), "client.db")
 	for _, args := range [][]string{
-		{"ask", "What next?"}, {"backup"}, {"backup", "list"}, {"edit", "1"},
-		{"import-tw"}, {"log", "Completed work"}, {"project", "archive", "Work"},
-		{"project", "create", "Work"}, {"project", "delete", "Work"},
+		{"backup"}, {"backup", "list"}, {"import-tw"},
 		{"renumber", "--yes"}, {"restore", "backup.db"}, {"seed"},
-		{"serve"}, {"ui"}, {"undo", "--yes"}, {"vague", "1"},
+		{"serve"}, {"undo", "--yes"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			out, err := runTasc(t, clientPath, append([]string{"--remote", "http://127.0.0.1:1"}, args...)...)
@@ -1568,7 +1566,7 @@ func TestMCPArchivedProjectFilter(t *testing.T) {
 		{Name: "Archived", Status: models.ProjectStatusActive},
 		{Name: "Active child", Parent: "Archived", Status: models.ProjectStatusActive},
 	} {
-		if err := st.CreateProject(project); err != nil {
+		if err := st.CreateProject(project, store.ProjectCreateOptions{}); err != nil {
 			t.Fatal(err)
 		}
 	}

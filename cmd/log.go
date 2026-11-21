@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/aescoubas/tasc/internal/config"
-	"github.com/aescoubas/tasc/internal/db"
+	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/parse"
 	"github.com/spf13/cobra"
 )
@@ -15,7 +15,7 @@ var logCmd = &cobra.Command{
 	Use:   "log [title]",
 	Short: "Log a task that is already completed",
 	Args:  cobra.MinimumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.LoadConfig()
 		if err != nil {
 			cfg = config.DefaultConfig()
@@ -27,28 +27,18 @@ var logCmd = &cobra.Command{
 		if due != "" {
 			t, err := parse.Date(due, cfg.EndOfDay)
 			if err != nil {
-				fmt.Printf("Invalid due date format: %v\n", err)
-				return
+				return fmt.Errorf("invalid due date format: %w", err)
 			}
 			dueAt = t
 		}
 
-		query := `INSERT INTO tasks (title, project, due_at, estimate, status, created_at, completed_at) VALUES (?, ?, ?, ?, 'done', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
-		stmt, err := db.DB.Prepare(query)
+		id, err := CurrentStore.LogTask(models.Task{Title: title, Project: project, DueAt: dueAt, Estimate: estimate})
 		if err != nil {
-			fmt.Printf("Error preparing statement: %v\n", err)
-			return
-		}
-		defer stmt.Close()
-
-		res, err := stmt.Exec(title, project, dueAt, estimate)
-		if err != nil {
-			fmt.Printf("Error executing statement: %v\n", err)
-			return
+			return fmt.Errorf("log task: %w", err)
 		}
 
-		id, _ := res.LastInsertId()
 		fmt.Printf("Logged task %d.\n", id)
+		return nil
 	},
 }
 

@@ -358,16 +358,20 @@ It requires HTTPS for authenticated remote URLs, except HTTP loopback endpoints
 TLS certificates must pass normal certificate verification. Token contents are
 never passed as command-line arguments or placed in YAML configuration.
 
-Task commands using the Store interface (`add`, `list`, `show`, `modify`, `delete`,
-`done`, `start`, `stop`, `search`, `reschedule`, `dep`, `undep`, and `graph`) operate
-on the remote server. `calendar`, `stats`, `project list`, and `project edit` also
-support remote mode.
+Remote mode supports task and project commands, dependencies, timers, search,
+calendar, statistics, `ask`, and the terminal UI. `ask` sends the selected server's
+pending task list to Gemini using the client's `GEMINI_API_KEY`.
 
-Commands that still require local SQLite access reject remote mode with a nonzero
-error: `ask`, `backup` (including `backup list`), `edit`, `import-tw`, `log`,
-`project create`, `project archive`, `project delete`, `renumber`, `restore`, `seed`,
-`serve`, `ui`, `undo`, and `vague`. Use `modify` for remote task edits. Broader remote
-support is tracked in the `tasc` project in Tasc.
+Use matching client and server versions for `log`, `vague`, and
+`project create`, `project archive`, and `project delete`. Removing a project
+with tasks or subprojects requires `--unlink` or `--cascade` in both modes.
+`--unlink` keeps tasks, clears their association with the removed project, and
+makes its direct children top-level projects. `--cascade` removes the full
+project tree and soft-deletes its tasks in a single transaction.
+
+Database administration commands require local SQLite and exit with an error in
+remote mode. These are `backup` (including `backup list`), `import-tw`, `renumber`,
+`restore`, `seed`, `serve`, and `undo`.
 
 You can also specify the remote URL per command using the `--remote` flag:
 ```bash
