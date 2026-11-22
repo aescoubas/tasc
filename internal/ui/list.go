@@ -13,9 +13,9 @@ type item struct {
 
 func (i item) Title() string {
 	if i.task.ActiveStart != nil {
-		return "▶ " + i.task.Title
+		return "▶ " + i.task.Title + i.task.AssignmentSuffix()
 	}
-	return i.task.Title
+	return i.task.Title + i.task.AssignmentSuffix()
 }
 func (i item) Description() string {
 	desc := fmt.Sprintf("[%s]", i.task.Project)

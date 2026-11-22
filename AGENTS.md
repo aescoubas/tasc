@@ -105,6 +105,12 @@ clean as of 2026-11-05.
    `fmt.Print` in that path. A corrupted JSON-RPC stream surfaces as a client error that
    does not mention tasc.
 
+Agent claims cover one goal and its task writes. Reuse the scoped store in new
+mutating interfaces and preserve the write-transaction fence. The lease clock,
+operator takeover and completion behavior are documented in
+`ARCHITECTURE/02_data_model.md`. The agent workflow is in
+`skills/tasc-task-manager/references/workflows.md`.
+
 ## Where things live
 
 | Path | What | Notes |

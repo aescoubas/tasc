@@ -405,7 +405,9 @@ func TestModifyCommandAllowsDependencyOnlyChanges(t *testing.T) {
 	dependsOn = []string{strconv.FormatInt(blocker, 10)}
 	modifyAutoApprove = true
 
-	modifyCmd.Run(modifyCmd, []string{strconv.FormatInt(target, 10)})
+	if err := modifyCmd.RunE(modifyCmd, []string{strconv.FormatInt(target, 10)}); err != nil {
+		t.Fatal(err)
+	}
 
 	deps, err := CurrentStore.GetDependencies()
 	if err != nil {

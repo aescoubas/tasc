@@ -2,52 +2,19 @@ package cmd
 
 import (
 	"fmt"
-	"time"
-
-	"github.com/aescoubas/tasc/internal/models"
-	"github.com/aescoubas/tasc/internal/recurrence"
+	"strings"
 )
 
-// spawnNextTask calculates the next occurrence and inserts a new task.
-func spawnNextTask(t models.Task) {
-	if t.Recurrence == "" {
-		return
+// The store makes the successor and edits its predecessor in one transaction.
+func keepSeries(id int64, prompt, short, answer string) bool {
+	task, err := CurrentStore.GetTask(id)
+	if err != nil || task.Recurrence == "" {
+		return false
 	}
-
-	// Determine base date
-	// Priority: Due -> Now
-	var base time.Time
-
-	if t.DueAt != nil {
-		base = *t.DueAt
-	} else {
-		base = time.Now()
+	fmt.Printf("Task %d is recurring ('%s').\n%s", task.ID, task.Recurrence, prompt)
+	var response string
+	if _, err := fmt.Scanln(&response); err != nil {
+		return false
 	}
-
-	nextDate, err := recurrence.Next(base, t.Recurrence)
-	if err != nil {
-		fmt.Printf("Error calculating next recurrence: %v\n", err)
-		return
-	}
-
-	newDue := &nextDate
-
-	// Insert new task
-	newTask := models.Task{
-		Title:         t.Title,
-		Description:   t.Description,
-		Project:       t.Project,
-		Recurrence:    t.Recurrence,
-		DueAt:         newDue,
-		Estimate:      t.Estimate,
-		ScheduleBlock: t.ScheduleBlock,
-		UserPriority:  t.UserPriority,
-	}
-
-	id, err := CurrentStore.CreateTask(newTask)
-	if err != nil {
-		fmt.Printf("Error creating next recurring task: %v\n", err)
-		return
-	}
-	fmt.Printf("Created next recurring task %d (Due: %s).\n", id, nextDate.Format("2006-01-02"))
+	return strings.EqualFold(response, short) || strings.EqualFold(response, answer)
 }

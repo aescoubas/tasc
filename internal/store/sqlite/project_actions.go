@@ -21,7 +21,7 @@ const projectTree = `WITH RECURSIVE project_tree(name) AS (
 
 func (s *SQLiteStore) DeleteProjectWithMode(name string, mode store.ProjectDeleteMode) (store.ProjectDeleteResult, error) {
 	var result store.ProjectDeleteResult
-	tx, err := s.db.Begin()
+	tx, err := s.beginWriter()
 	if err != nil {
 		return result, err
 	}

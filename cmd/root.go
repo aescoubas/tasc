@@ -11,21 +11,34 @@ import (
 	"github.com/aescoubas/tasc/internal/store"
 	"github.com/aescoubas/tasc/internal/store/remote"
 	"github.com/aescoubas/tasc/internal/store/sqlite"
+	"github.com/aescoubas/tasc/internal/version"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
 
 var (
+	runID        string
 	remoteURL    string
 	CurrentStore store.Store
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "tasc",
-	Short: "A modern, snappy task manager",
-	Long:  `Tasc is a fast and efficient CLI task manager for your terminal.`,
+	Use:     "tasc",
+	Version: version.Version,
+	Short:   "A modern, snappy task manager",
+	Long:    `Tasc is a fast and efficient CLI task manager for your terminal.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if db.DB == nil && requiresLocalDatabase(cmd.CommandPath()) {
 			return fmt.Errorf("%s requires a local SQLite database; remote mode is not supported", cmd.CommandPath())
+		}
+		if runID != "" {
+			if uuid.Validate(runID) != nil {
+				return fmt.Errorf("invalid --run ID")
+			}
+			if requiresLocalDatabase(cmd.CommandPath()) || cmd == mcpCmd || cmd.Name() == "claim" {
+				return fmt.Errorf("%s cannot run as a claimed task operation", cmd.CommandPath())
+			}
+			CurrentStore = CurrentStore.ForActor(runID)
 		}
 		beginUndoTracking(cmd)
 		return nil
@@ -55,6 +68,7 @@ func requiresLocalDatabase(command string) bool {
 
 func init() {
 	cobra.OnInitialize(initConfig)
+	rootCmd.PersistentFlags().StringVar(&runID, "run", "", "Execute a task operation as this agent run")
 	rootCmd.PersistentFlags().StringVar(&remoteURL, "remote", "", "Remote server URL (e.g. http://localhost:8080)")
 }
 

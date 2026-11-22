@@ -55,7 +55,7 @@ func TestUserPriorityUpgradesVersionSix(t *testing.T) {
 		}
 	}
 	var version int
-	if err := conn.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&version); err != nil || version != 7 {
+	if err := conn.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&version); err != nil || version != 8 {
 		t.Fatalf("schema version %d: %v", version, err)
 	}
 	var priority sql.NullInt64

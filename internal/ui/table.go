@@ -129,7 +129,7 @@ func RenderTaskTable(tasks []models.Task, scores map[int64]float64, cfg config.C
 			projectStr = projectStr[:17] + "..."
 		}
 
-		statusStr := string(t.Status)
+		statusStr := string(t.Status) + t.AssignmentSuffix()
 
 		scoreVal := 0.0
 		if scores != nil {

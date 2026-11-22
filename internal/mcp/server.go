@@ -13,18 +13,19 @@ import (
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/parse"
 	"github.com/aescoubas/tasc/internal/store"
+	"github.com/aescoubas/tasc/internal/version"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
 type MCPServer struct {
+	run    agentRun
 	store  store.Store
 	server *server.MCPServer
 	config config.Config
 }
 
 func NewServer(s store.Store) *MCPServer {
-	mcpServer := server.NewMCPServer("tasc", "0.1.0")
 
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -32,12 +33,14 @@ func NewServer(s store.Store) *MCPServer {
 	}
 
 	ms := &MCPServer{
-		store:  s,
-		server: mcpServer,
+		store: s,
+
 		config: cfg,
 	}
 
+	ms.server = server.NewMCPServer("tasc", version.Version, server.WithToolHandlerMiddleware(ms.bindCaller))
 	ms.registerTools()
+	ms.registerAssignmentTools()
 	ms.registerHandoffTools()
 	ms.registerResources()
 
@@ -45,6 +48,13 @@ func NewServer(s store.Store) *MCPServer {
 }
 
 func (ms *MCPServer) Serve() error {
+	defer func() {
+		ms.run.mu.Lock()
+		defer ms.run.mu.Unlock()
+		if ms.run.cancel != nil {
+			ms.run.cancel()
+		}
+	}()
 	return server.ServeStdio(ms.server)
 }
 
@@ -287,7 +297,7 @@ func (ms *MCPServer) handleList(ctx context.Context, request mcp.CallToolRequest
 			due = fmt.Sprintf(" Due: %s", t.DueAt.Format("2006-01-02"))
 		}
 
-		fmt.Fprintf(&sb, "- [%d] %s (Project: %s, Status: %s)%s%s\n", t.ID, t.Title, t.Project, status, due, formatUserPriority(t))
+		fmt.Fprintf(&sb, "- [%d] %s (Project: %s, Status: %s)%s%s\n", t.ID, t.Title, t.Project, status, due, formatUserPriority(t)+t.AssignmentSuffix())
 	}
 
 	return mcp.NewToolResultText(sb.String()), nil
@@ -366,7 +376,7 @@ func (ms *MCPServer) handleComplete(ctx context.Context, request mcp.CallToolReq
 		return mcp.NewToolResultError("Invalid ID"), nil
 	}
 
-	err := ms.store.MarkDone(id)
+	err := ms.caller(ctx).MarkDone(id)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error completing task: %v", err)), nil
 	}
@@ -417,7 +427,7 @@ func (ms *MCPServer) handleUpdate(ctx context.Context, request mcp.CallToolReque
 		}
 	}
 
-	if err := ms.store.BatchUpdateTasks([]int64{id}, updates); err != nil {
+	if err := ms.caller(ctx).BatchUpdateTasks([]int64{id}, updates); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error updating task: %v", err)), nil
 	}
 
@@ -507,7 +517,7 @@ func (ms *MCPServer) handleBatchUpdate(ctx context.Context, request mcp.CallTool
 		updates["due_at"] = t
 	}
 
-	err := ms.store.BatchUpdateTasks(ids, updates)
+	err := ms.caller(ctx).BatchUpdateTasks(ids, updates)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error batch updating tasks: %v", err)), nil
 	}
@@ -553,7 +563,7 @@ func (ms *MCPServer) handleDelete(ctx context.Context, request mcp.CallToolReque
 		return mcp.NewToolResultError("Invalid ID"), nil
 	}
 
-	err := ms.store.DeleteTask(id)
+	err := ms.caller(ctx).DeleteTask(id)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error deleting task: %v", err)), nil
 	}
@@ -572,7 +582,7 @@ func (ms *MCPServer) handleStart(ctx context.Context, request mcp.CallToolReques
 		return mcp.NewToolResultError("Invalid ID"), nil
 	}
 
-	err := ms.store.StartTask(id)
+	err := ms.caller(ctx).StartTask(id)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error starting task: %v", err)), nil
 	}
@@ -590,7 +600,7 @@ func (ms *MCPServer) handleStop(ctx context.Context, request mcp.CallToolRequest
 		}
 	}
 
-	err := ms.store.StopTask(targetID)
+	err := ms.caller(ctx).StopTask(targetID)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error stopping task: %v", err)), nil
 	}
@@ -614,7 +624,7 @@ func (ms *MCPServer) handleAddDependency(ctx context.Context, request mcp.CallTo
 		return mcp.NewToolResultError("Both blocker_id and blocked_id are required"), nil
 	}
 
-	err := ms.store.AddDependency(blockerID, blockedID)
+	err := ms.caller(ctx).AddDependency(blockerID, blockedID)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error adding dependency: %v", err)), nil
 	}
@@ -658,7 +668,7 @@ func (ms *MCPServer) handleRemoveDependency(ctx context.Context, request mcp.Cal
 		return mcp.NewToolResultText(msg), nil
 	}
 
-	if err := ms.store.RemoveDependency(blockerID, blockedID); err != nil {
+	if err := ms.caller(ctx).RemoveDependency(blockerID, blockedID); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error removing dependency: %v", err)), nil
 	}
 
@@ -737,7 +747,7 @@ func (ms *MCPServer) handleUpdateProject(ctx context.Context, request mcp.CallTo
 		}
 	}
 
-	err = ms.store.UpdateProject(name, p)
+	err = ms.caller(ctx).UpdateProject(name, p)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error updating project: %v", err)), nil
 	}
@@ -750,7 +760,7 @@ func (ms *MCPServer) handleDeleteProject(ctx context.Context, request mcp.CallTo
 		return mcp.NewToolResultError("name is required"), nil
 	}
 
-	err := ms.store.DeleteProject(name)
+	err := ms.caller(ctx).DeleteProject(name)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error deleting project: %v", err)), nil
 	}
@@ -776,7 +786,7 @@ func (ms *MCPServer) handleSearch(ctx context.Context, request mcp.CallToolReque
 
 	var sb strings.Builder
 	for _, t := range tasks {
-		sb.WriteString(fmt.Sprintf("- [%d] %s (Project: %s, Status: %s)\n", t.ID, t.Title, t.Project, t.Status))
+		sb.WriteString(fmt.Sprintf("- [%d] %s (Project: %s, Status: %s)\n", t.ID, t.Title, t.Project, string(t.Status)+t.AssignmentSuffix()))
 	}
 
 	return mcp.NewToolResultText(sb.String()), nil
@@ -819,7 +829,7 @@ func formatTaskDetails(t models.Task) string {
 		estimate,
 		recurrence,
 		t.TimeSpent,
-		formatUserPriority(t),
+		formatUserPriority(t)+t.AssignmentSuffix(),
 	)
 }
 

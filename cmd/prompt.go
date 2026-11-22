@@ -21,7 +21,7 @@ func AskConfirmation(msg string) ConfirmationResult {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Printf("%s [y/n/a]: ", msg)
-		input, _ := reader.ReadString('\n')
+		input, err := reader.ReadString('\n')
 		input = strings.TrimSpace(strings.ToLower(input))
 
 		switch input {
@@ -31,6 +31,9 @@ func AskConfirmation(msg string) ConfirmationResult {
 			return ConfirmNo
 		case "a", "all":
 			return ConfirmAll
+		}
+		if err != nil {
+			return ConfirmNo
 		}
 	}
 }

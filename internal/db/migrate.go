@@ -258,6 +258,7 @@ var migrations = []Migration{
 		Description: "Add optional user priority to tasks and undo",
 		Up:          addTaskUserPriority,
 	},
+	{Version: 8, Description: "Add task assignments and agent run leases", Up: addAssignments},
 }
 
 func addTaskUserPriority(db *sql.DB) error {

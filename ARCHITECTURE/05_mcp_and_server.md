@@ -60,11 +60,12 @@ Tasc can run as a standalone local CLI or as a distributed system.
 - **Transport**: stdio, via `server.ServeStdio`. **Stdout is the protocol** — diagnostics
   go through `log` (stderr by default) and never `fmt.Print`.
 - **Resource**: `tasc://tasks`, giving the model the current state in one read.
-- **Tools**: 21, covering the `Store` interface.
+- **Tools**: 25, covering the `Store` interface.
 
 | Area | Tools |
 |---|---|
 | Tasks | `tasc_add_task`, `tasc_get_task`, `tasc_update_task`, `tasc_delete_task`, `tasc_list_tasks`, `tasc_search_tasks` |
+| Assignments | `tasc_list_assignments`, `tasc_claim_tasks`, `tasc_release_tasks`, `tasc_end_run` |
 | Handoffs | `tasc_get_task_handoff`, `tasc_update_task_handoff` |
 | Task actions | `tasc_complete_task`, `tasc_start_task`, `tasc_stop_task`, `tasc_get_active_task`, `tasc_batch_update_tasks` |
 | Dependencies | `tasc_add_dependency`, `tasc_remove_dependency`, `tasc_get_dependencies` |
@@ -100,3 +101,30 @@ Tasc can run as a standalone local CLI or as a distributed system.
   `pkgs/tasc/default.nix` rev moves.
 
 Verify tool changes through the real MCP binary in `tests/integration`.
+
+Agent goal writes use a UUID bound to their stdio connection until the explicit
+end of that goal. The client must end the run when yielding an idle session.
+Disconnect stops the heartbeat and preserves recovery information. Use a
+separate stdio connection per concurrent goal. Clients sharing a server process
+can use Linux PID-bound CLI claims for independent goals.
+
+REST serves `GET /assignments` and `POST /assignments`. Scoped requests use
+`/actors/{run-id}/...` (or `guest`) under the same access checks as other REST
+calls. Older servers reject those paths. The server's boot and clock determine
+expiry for both local and remote writers.
+
+### Assignment verification on Linux, 2026-11-22
+
+`TestAssignmentLifecycle` drives two real stdio clients and the operator CLI
+against isolated databases in local and REST-backed modes. It checks a
+partially available batch, same-label runs, stale writes, recurring successors,
+release on completion, owner takeover, recovery context, and handoff to Alex.
+`TestConcurrentClaimsAndAwakeExpiry` races separate SQLite connections and
+checks the exact expiry boundary and boot change with a controlled clock.
+
+In a separate laptop check the CLI worker renewed after 60.1 awake seconds
+and exited when its watched PID exited. An MCP connection kept open for 62
+seconds after its watched PID exited renewed zero times. After setting that
+fixture's deadline to the current monotonic time, a fresh connection reclaimed
+both tasks. The old session returned `Error completing task: task assignment conflict`.
+The TUI rendered `Review operator handoff · Alex` against a separate fixture.

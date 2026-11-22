@@ -70,6 +70,12 @@ type TaskFilter struct {
 }
 
 type Store interface {
+	// ForActor binds task mutations to a run, or GuestActor for an unclaimed agent.
+	// The default store belongs to the human operator.
+	ForActor(actor string) Store
+	Assignments() ([]AssignmentRow, error)
+	ChangeAssignments(AssignmentChange) ([]AssignmentRow, error)
+
 	// Tasks
 	CreateTask(t models.Task) (int64, error)
 	LogTask(t models.Task) (int64, error)

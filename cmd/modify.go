@@ -38,7 +38,7 @@ var modifyCmd = &cobra.Command{
 		}
 		return nil
 	},
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.LoadConfig()
 		if err != nil {
 			cfg = config.DefaultConfig()
@@ -47,11 +47,11 @@ var modifyCmd = &cobra.Command{
 		dependencySelection, err := buildDependencySelection(dependsOn, blocks)
 		if err != nil {
 			fmt.Printf("Invalid dependency list: %v\n", err)
-			return
+			return nil
 		}
 		if err := ensureTasksExist(dependencySelection.referencedIDs()); err != nil {
 			fmt.Printf("Invalid dependencies: %v\n", err)
-			return
+			return nil
 		}
 
 		var ids []int64
@@ -75,7 +75,7 @@ var modifyCmd = &cobra.Command{
 
 		if len(ids) == 0 {
 			fmt.Println("No valid task IDs provided.")
-			return
+			return nil
 		}
 
 		updates := make(map[string]interface{})
@@ -92,7 +92,7 @@ var modifyCmd = &cobra.Command{
 		if len(titleParts) > 0 {
 			if len(ids) > 1 {
 				fmt.Println("Cannot update title for multiple tasks at once. Please provide a single ID to update title, or use flags only for batch updates.")
-				return
+				return nil
 			}
 			updates["title"] = strings.Join(titleParts, " ")
 		}
@@ -110,7 +110,7 @@ var modifyCmd = &cobra.Command{
 				parsed, err := parse.Date(due, cfg.EndOfDay)
 				if err != nil {
 					fmt.Printf("Invalid due date: %v\n", err)
-					return
+					return nil
 				}
 				updates["due_at"] = parsed
 			}
@@ -131,7 +131,7 @@ var modifyCmd = &cobra.Command{
 
 		if len(updates) == 0 && !dependencySelection.hasLinks() {
 			fmt.Println("No changes specified. Use flags like --due, --project, --estimate, or provide a new title.")
-			return
+			return nil
 		}
 
 		// Validation Loop
@@ -170,41 +170,23 @@ var modifyCmd = &cobra.Command{
 		ids = approvedIDs
 		if len(ids) == 0 {
 			fmt.Println("No tasks selected for modification.")
-			return
+			return nil
 		}
 
 		if err := dependencySelection.validate(ids); err != nil {
 			fmt.Printf("Invalid dependencies: %v\n", err)
-			return
+			return nil
 		}
 
-		// Recurrence Prompt Logic (Single Task Only)
-		if len(ids) == 1 && !modifyAutoApprove {
-			t, err := CurrentStore.GetTask(ids[0])
-			if err == nil && t.Recurrence != "" {
-				// Only if we are modifying something that impacts the series?
-				// Simplification: Ask if user wants to update series or detach.
-				fmt.Printf("Task %d is recurring ('%s').\n", t.ID, t.Recurrence)
-				fmt.Print("Do you want to (u)pdate the series (affects future) or (o)nly this instance (detach)? [u/o]: ")
-				var resp string
-				fmt.Scanln(&resp)
-				resp = strings.ToLower(resp)
-
-				if resp == "o" || resp == "only" {
-					// Detach: Spawn next task with OLD values
-					spawnNextTask(t)
-					// Clear recurrence on CURRENT (which becomes the 'instance')
-					// We add this to updates
-					updates["recurrence"] = ""
-				}
-			}
+		if len(ids) == 1 && !modifyAutoApprove && keepSeries(ids[0], "Do you want to (u)pdate the series or edit (o)nly this instance? [u/o]: ", "o", "only") {
+			updates["keep_series"] = true
+			updates["recurrence"] = ""
 		}
 
 		if len(updates) > 0 {
 			err = CurrentStore.BatchUpdateTasks(ids, updates)
 			if err != nil {
-				fmt.Printf("Error updating tasks: %v\n", err)
-				return
+				return fmt.Errorf("error updating tasks: %w", err)
 			}
 		}
 
@@ -215,12 +197,12 @@ var modifyCmd = &cobra.Command{
 			} else {
 				fmt.Printf("Error adding dependencies: %v\n", err)
 			}
-			return
+			return nil
 		}
 
 		if len(updates) == 0 && linksAdded == 0 {
 			fmt.Println("No new dependency links were added.")
-			return
+			return nil
 		}
 
 		if len(ids) == 1 {
@@ -231,6 +213,7 @@ var modifyCmd = &cobra.Command{
 		if linksAdded > 0 {
 			fmt.Printf("Added %d dependency link(s).\n", linksAdded)
 		}
+		return nil
 	},
 }
 

@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -15,7 +14,7 @@ var deleteCmd = &cobra.Command{
 	Short:             "Delete task(s)",
 	Args:              cobra.MinimumNArgs(1),
 	ValidArgsFunction: taskIDCompletionFunc,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		var ids []int64
 		for _, arg := range args {
 			id, err := strconv.Atoi(arg)
@@ -27,7 +26,7 @@ var deleteCmd = &cobra.Command{
 		}
 
 		if len(ids) == 0 {
-			return
+			return nil
 		}
 
 		// Validation Loop
@@ -69,35 +68,21 @@ var deleteCmd = &cobra.Command{
 
 		if len(ids) == 0 {
 			fmt.Println("No tasks selected for deletion.")
-			return
+			return nil
 		}
 
 		// Handle recurrence prompt ONLY if single task is being deleted.
 		// For batch delete, we assume user knows what they are doing or we skip recurrence logic
 		// (or implicitly stop it). Prompting for 10 tasks is bad UX.
 		// Let's adopt a policy: Batch delete = "Stop recurrence" (Delete all future).
-		if len(ids) == 1 && !deleteAutoApprove {
-			t, err := CurrentStore.GetTask(ids[0])
-			if err == nil && t.Recurrence != "" {
-				fmt.Printf("This is a recurring task ('%s').\n", t.Recurrence)
-				fmt.Print("Do you want to (s)kip this instance (spawn next) or (S)top recurrence (delete all future)? [s/S]: ")
-				var resp string
-				fmt.Scanln(&resp)
-				resp = strings.ToLower(resp)
-				if resp == "s" || resp == "skip" {
-					spawnNextTask(t)
-				}
-			}
-		}
-
-		updates := map[string]interface{}{
-			"status": "deleted",
+		updates := map[string]interface{}{"status": "deleted"}
+		if len(ids) == 1 && !deleteAutoApprove && keepSeries(ids[0], "Do you want to (s)kip this instance (spawn next) or stop recurrence? [skip/stop]: ", "s", "skip") {
+			updates["keep_series"] = true
 		}
 
 		err := CurrentStore.BatchUpdateTasks(ids, updates)
 		if err != nil {
-			fmt.Printf("Error deleting tasks: %v\n", err)
-			return
+			return fmt.Errorf("error deleting tasks: %w", err)
 		}
 
 		if len(ids) == 1 {
@@ -105,6 +90,7 @@ var deleteCmd = &cobra.Command{
 		} else {
 			fmt.Printf("Deleted %d tasks.\n", len(ids))
 		}
+		return nil
 	},
 }
 

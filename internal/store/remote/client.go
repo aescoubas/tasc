@@ -127,6 +127,13 @@ func (c *Client) UpdateTaskDescription(id int64, expected, description string) e
 	case http.StatusNoContent:
 		return nil
 	case http.StatusConflict:
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(string(body)) == store.AssignmentConflict {
+			return fmt.Errorf("%s", store.AssignmentConflict)
+		}
 		return store.ErrTaskDescriptionConflict
 	default:
 		return fmt.Errorf("updating task description: server returned %s", resp.Status)
@@ -142,6 +149,9 @@ func (c *Client) BatchUpdateTasks(ids []int64, updates map[string]interface{}) e
 		// Older servers ignore unknown batch fields. Use a dedicated route
 		// so they reject the whole edit instead of silently dropping priority.
 		path += "/priority"
+	}
+	if _, keep := updates["keep_series"]; keep {
+		path = "/tasks/batch-update/keep-series"
 	}
 	reqBody := map[string]interface{}{
 		"ids":     ids,

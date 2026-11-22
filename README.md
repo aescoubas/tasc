@@ -162,6 +162,45 @@ nix build .#web
     tasc renumber --yes
     ```
 
+### Task assignments
+
+Use `tasc assignments` to find a goal, its agent run ID, resume location, and
+remaining tasks. `tasc list` and `tasc show` also show ownership. A task assigned to
+Alex stays assigned across restarts. The operator can take over or release it at any time.
+
+```sh
+tasc assign <task-id>                          # assign to Alex
+tasc assign --to <active-run-id> <task-id>     # transfer to an agent
+tasc release <task-id>
+```
+
+On a named goal, an agent calls `tasc_claim_tasks` with the full batch in its
+own stdio MCP session. Each task in the response has a result. A conflict
+identifies the current owner. Only begin work on claimed tasks. Mark the current
+task ongoing when work starts. Completion releases its assignment. To hand work
+to Alex, record the next action, then call `tasc_release_tasks` with
+`to_alex: true`. Call `tasc_end_run` before pausing or yielding the goal.
+
+A Linux agent using the CLI can start the following command in its background
+command facility. Supply the PID of the long-lived coding agent. The first
+stdout line is JSON containing the run ID and per-task outcomes.
+
+```sh
+tasc claim --pid <agent-pid> --name "OpenCode · parser" --location <conversation> <task-id> ...
+tasc --run <run-id> modify --yes <task-id> --status ongoing
+tasc --run <run-id> done <task-id>
+tasc --run <run-id> assign <task-id>           # hand off to Alex
+tasc --run <run-id> end-run
+```
+
+The MCP connection or CLI claim process renews once a minute while the goal is
+open. The CLI watcher stops when its agent exits. For an MCP host that can outlive
+the Linux agent, supply its process ID in the claim tool’s `pid` argument. After ten awake minutes
+without renewal, or after a reboot, the old assignment is marked reclaimable.
+The next authorized agent claims it and checks the handoff, worktree, and
+local commits before resuming. Tasc rejects task edits from the old run.
+The operator commands apply immediately, including during the ten-minute window.
+
 ### Advanced Features
 
 *   **Interactive UI:**

@@ -77,3 +77,10 @@ Use these MCP endpoints when working with Tasc.
     rather than silently accepted.
 - `tasc_get_dependencies`
   - Inspect dependency structure before changing blockers or rescheduling blocked work.
+
+## Assignments
+
+- `tasc_list_assignments` returns task IDs, titles, status and owners, including expired runs and resume locations.
+- `tasc_claim_tasks` takes comma-separated `ids`, a readable `name` and optional `location` and Linux agent `pid`. Save the returned run ID. Each row reports `claimed`, `conflict`, `missing` or `closed`. A recovered claim includes `previous`.
+- `tasc_release_tasks` takes comma-separated `ids`. Set `to_alex: true` to hand the tasks to Alex. Inspect each result.
+- `tasc_end_run` stops renewal and releases all remaining claims belonging to this goal.

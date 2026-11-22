@@ -57,3 +57,10 @@ A blocker due after the task it blocks cannot be cleared on time, so check the t
 due dates before adding an edge — and when the one that is already stored is wrong,
 remove it rather than moving the dates to hide the contradiction. Removal is
 undoable with `tasc undo`.
+
+## Work a named goal
+
+1. Call `tasc_claim_tasks` with all named IDs, the agent and goal name, and a conversation or tmux location. Supply the long-lived coding agent’s `pid` when the MCP host can survive that process. Work only on rows returned as claimed. Report conflicts with the task number, title and owner.
+2. Mark each task ongoing as you begin it. On resume, recheck ownership. For reclaimed work, inspect the handoff, worktree and local commits before editing.
+3. Use the claiming session for task updates. Completion releases ownership. When Alex is next, write the handoff, then call `tasc_release_tasks` with `to_alex: true`.
+4. Call `tasc_end_run` before yielding or finishing, including when no tasks remain. An open idle stdio connection stays capable of renewing until the run ends. After a crash, a new run can claim expired tasks. A rejected write requires checking the current owner.

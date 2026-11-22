@@ -1,8 +1,8 @@
 package sqlite
 
 import (
-	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -18,31 +18,12 @@ type taskQueries interface {
 	QueryRow(string, ...interface{}) *sql.Row
 }
 
-// A dedicated connection keeps BEGIN IMMEDIATE, every read/write, and COMMIT on
-// the same SQLite connection. Acquire the write lock before reading task state:
-// concurrent completions must see the previous writer's committed done status.
-type completionQueries struct{ conn *sql.Conn }
-
-func (q completionQueries) Exec(query string, args ...interface{}) (sql.Result, error) {
-	return q.conn.ExecContext(context.Background(), query, args...)
-}
-
-func (q completionQueries) QueryRow(query string, args ...interface{}) *sql.Row {
-	return q.conn.QueryRowContext(context.Background(), query, args...)
-}
-
 func (s *SQLiteStore) completeTasks(ids []int64, updates map[string]interface{}, editCompleted bool) error {
-	conn, err := s.db.Conn(context.Background())
+	q, err := s.beginWriter()
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
-	q := completionQueries{conn}
-	if _, err := q.Exec("BEGIN IMMEDIATE"); err != nil {
-		return err
-	}
-	defer q.Exec("ROLLBACK")
-
+	defer q.Rollback()
 	now := time.Now()
 	seen := make(map[int64]bool)
 	projects := make(map[string]bool)
@@ -51,7 +32,7 @@ func (s *SQLiteStore) completeTasks(ids []int64, updates map[string]interface{},
 			continue
 		}
 		seen[id] = true
-		task, err := getTask(q, id)
+		task, err := s.readTask(q, "WHERE tasks.id=?", id)
 		if err != nil {
 			return fmt.Errorf("task %d: %w", id, err)
 		}
@@ -59,6 +40,10 @@ func (s *SQLiteStore) completeTasks(ids []int64, updates map[string]interface{},
 			return fmt.Errorf("%w: task %d is deleted", store.ErrInvalidCompletion, id)
 		}
 		wasDone := task.Status == models.StatusDone
+		if wasDone && s.actor != "" && s.actor != store.GuestActor {
+			// Terminal tasks have no claim. An old run must not report another run's completion as its own.
+			return errors.New(store.AssignmentConflict)
+		}
 		if wasDone && !editCompleted {
 			continue
 		}
@@ -66,7 +51,7 @@ func (s *SQLiteStore) completeTasks(ids []int64, updates map[string]interface{},
 		if err := applyCompletionEdits(q, id, updates); err != nil {
 			return err
 		}
-		task, err = getTask(q, id)
+		task, err = s.readTask(q, "WHERE tasks.id=?", id)
 		if err != nil {
 			return err
 		}
@@ -77,28 +62,8 @@ func (s *SQLiteStore) completeTasks(ids []int64, updates map[string]interface{},
 			continue
 		}
 
-		if task.Recurrence != "" {
-			base := now
-			if task.DueAt != nil {
-				base = *task.DueAt
-			}
-			next, err := recurrence.Next(base, task.Recurrence)
-			if err != nil {
-				return fmt.Errorf("%w: task %d: %v", store.ErrInvalidCompletion, id, err)
-			}
-			if !next.After(base) {
-				return fmt.Errorf("%w: task %d recurrence must advance its due date", store.ErrInvalidCompletion, id)
-			}
-			if err := ensureProjectExists(q, task.Project); err != nil {
-				return err
-			}
-			_, err = q.Exec(`INSERT INTO tasks
-				(title, description, project, due_at, schedule_block, estimate, recurrence, user_priority, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, task.Title, task.Description, task.Project,
-				next, task.ScheduleBlock, task.Estimate, task.Recurrence, task.UserPriority, now)
-			if err != nil {
-				return err
-			}
+		if err := createSuccessor(q, task, now); err != nil {
+			return err
 		}
 
 		elapsed := int64(0)
@@ -115,7 +80,33 @@ func (s *SQLiteStore) completeTasks(ids []int64, updates map[string]interface{},
 			return err
 		}
 	}
-	_, err = q.Exec("COMMIT")
+	return q.Commit()
+}
+
+// Insert the successor in the same guarded transaction as the change to its predecessor.
+func createSuccessor(q taskQueries, task models.Task, now time.Time) error {
+	if task.Recurrence == "" {
+		return nil
+	}
+
+	base := now
+	if task.DueAt != nil {
+		base = *task.DueAt
+	}
+	next, err := recurrence.Next(base, task.Recurrence)
+	if err != nil {
+		return fmt.Errorf("%w: task %d: %v", store.ErrInvalidCompletion, task.ID, err)
+	}
+	if !next.After(base) {
+		return fmt.Errorf("%w: task %d recurrence must advance its due date", store.ErrInvalidCompletion, task.ID)
+	}
+	if err := ensureProjectExists(q, task.Project); err != nil {
+		return err
+	}
+	_, err = q.Exec(`INSERT INTO tasks
+				(title, description, project, due_at, schedule_block, estimate, recurrence, user_priority, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, task.Title, task.Description, task.Project,
+		next, task.ScheduleBlock, task.Estimate, task.Recurrence, task.UserPriority, now)
 	return err
 }
 

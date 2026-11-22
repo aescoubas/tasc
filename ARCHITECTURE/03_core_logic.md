@@ -33,7 +33,7 @@ Handles generating the next task instance.
 - **Implementation**: Calculates the next `DueAt` date based on the *previous* `DueAt` (or `Now`). It creates a *new* task row for the next instance, preserving history.
 
 Completion is owned by `internal/store/sqlite/completion.go`, through `Store.MarkDone`
-and status-to-done updates. A dedicated SQLite connection acquires `BEGIN IMMEDIATE`
+and status-to-done updates. The write transaction sets the assignment actor and acquires the SQLite writer lock
 before reading any target. The same transaction applies completion edits, creates
 successors, records elapsed timer seconds, clears active timers, sets completion
 timestamps, and updates affected projects. A failure rolls back the entire batch.

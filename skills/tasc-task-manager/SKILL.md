@@ -33,6 +33,7 @@ Use this skill when the session has access to the `tasc` MCP server and the user
 
 ## Conventions
 
+- For a named multi-task goal, claim the full batch with `tasc_claim_tasks` and check each result before working. Use one stdio connection per concurrent goal. Record handoffs to Alex before transferring ownership. Call `tasc_end_run` before finishing, pausing or yielding. See `references/workflows.md`.
 - When asked to start work, read the task and mark it `ongoing` with `tasc_batch_update_tasks` if appropriate. Pass the single task ID in `ids` and begin the work.
 - Use `tasc_start_task` when the user requests time tracking. Starting a timer stops the previous task's timer. Use `tasc_stop_task` when asked to stop timing.
 - “finish” or “complete” maps to `tasc_complete_task`

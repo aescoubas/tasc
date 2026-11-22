@@ -30,6 +30,32 @@ The core entity.
 
 Migration 5 dropped `scheduled_at`. `schedule_block` is the only scheduling column.
 
+### Task assignments and leases
+
+Migration 8 adds `task_assignments` keyed by task ID. A null run ID identifies
+Alex. Each agent goal has a UUID in `assignment_runs`, a display name, a
+resume location, a boot identifier and an expiry in monotonic nanoseconds.
+A single heartbeat renews all assignments for a run. Linux CLOCK_MONOTONIC
+and Darwin CLOCK_UPTIME_RAW exclude suspend. A different boot expires the
+lease immediately. An expired heartbeat cannot revive the run.
+
+Claims serialize on the SQLite writer lock. Each available task is claimed
+in the same transaction and each conflict returns its owner. Expired owners
+stay visible until release or takeover. A successful reclaim returns the old
+owner and resume location. Ownership changes leave task status and the timer
+alone. Completion or deletion clears ownership in the same transaction.
+Undoing completion leaves the reopened task available. A recurring successor
+starts unassigned.
+
+Task mutations take the same lock before reading state. They set the caller and
+lease validity in the singleton `assignment_writer` row and reset it before
+commit. Triggers guard task writes, including indirect project or timer writes,
+and dependency edits. SQLite serializes writers and rolls back the context on
+failure. Human CLI calls can change unassigned tasks and Alex's tasks. Unclaimed
+MCP sessions can change unassigned tasks. An agent run can edit its live claims.
+An explicit operator assignment or release transfers ownership immediately.
+These identities coordinate cooperating callers with access to the same account.
+
 ### `projects`
 - **`name`**: `TEXT PRIMARY KEY`.
 - **`short_name`**: `TEXT`. Abbreviation for narrow terminals, added by migration 4.

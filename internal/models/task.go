@@ -34,6 +34,8 @@ type Task struct {
 	RescheduleCount int        `json:"reschedule_count" yaml:"reschedule_count"`
 	UserPriority    *int       `json:"user_priority,omitempty" yaml:"-"`
 	IsBlocked       bool       `json:"is_blocked" yaml:"is_blocked"`
+
+	Assignment *Assignment `json:"assignment,omitempty" yaml:"-"`
 }
 
 const (

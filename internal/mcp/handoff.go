@@ -102,7 +102,7 @@ func (ms *MCPServer) handleGetTaskHandoff(_ context.Context, request mcp.CallToo
 	return handoffResult(task)
 }
 
-func (ms *MCPServer) handleUpdateTaskHandoff(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (ms *MCPServer) handleUpdateTaskHandoff(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	handoff := strings.TrimSpace(request.GetString("handoff", ""))
 	start, end := openingParagraph(handoff)
 	if handoff == "" || len(handoff) > handoffMaxBytes || start != 0 || end != len(handoff) {
@@ -134,7 +134,7 @@ func (ms *MCPServer) handleUpdateTaskHandoff(_ context.Context, request mcp.Call
 		return mcp.NewToolResultError("mode must be prepend or replace"), nil
 	}
 
-	if err := ms.store.UpdateTaskDescription(task.ID, task.Description, description); err != nil {
+	if err := ms.caller(ctx).UpdateTaskDescription(task.ID, task.Description, description); err != nil {
 		if errors.Is(err, store.ErrTaskDescriptionConflict) {
 			return mcp.NewToolResultError(conflict), nil
 		}

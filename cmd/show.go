@@ -92,6 +92,9 @@ var showCmd = &cobra.Command{
 		style := ui.GetTaskStyle(t, cfg)
 
 		fmt.Println(style.Render(fmt.Sprintf("Task %d: %s", t.ID, t.Title)))
+		if t.Assignment != nil {
+			fmt.Printf("Assigned to %s\n", t.Assignment)
+		}
 		if t.Description != "" {
 			fmt.Println("------------------------------------------------")
 			fmt.Println(t.Description)
