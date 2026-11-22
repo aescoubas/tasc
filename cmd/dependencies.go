@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/aescoubas/tasc/internal/store"
 )
 
 var (
@@ -64,11 +66,8 @@ func (s dependencySelection) hasLinks() bool {
 	return len(s.dependsOn) > 0 || len(s.blocks) > 0
 }
 
-func (s dependencySelection) referencedIDs() []int64 {
-	ids := make([]int64, 0, len(s.dependsOn)+len(s.blocks))
-	ids = append(ids, s.dependsOn...)
-	ids = append(ids, s.blocks...)
-	return ids
+func (s dependencySelection) links() store.TaskLinks {
+	return store.TaskLinks{DependsOn: s.dependsOn, Blocks: s.blocks}
 }
 
 func (s dependencySelection) validate(targetIDs []int64) error {
@@ -110,61 +109,14 @@ func ensureTasksExist(ids []int64) error {
 		seen[id] = struct{}{}
 
 		if _, err := CurrentStore.GetTask(id); err != nil {
-			return fmt.Errorf("task %d not found", id)
+			return fmt.Errorf("fetch task %d: %w", id, err)
 		}
 	}
 
 	return nil
 }
 
-func addDependencyLinks(targetIDs []int64, selection dependencySelection) (int, error) {
-	if !selection.hasLinks() {
-		return 0, nil
-	}
-
-	existingDeps, err := CurrentStore.GetDependencies()
-	if err != nil {
-		return 0, fmt.Errorf("get dependencies: %w", err)
-	}
-
-	existing := make(map[[2]int64]struct{}, len(existingDeps))
-	for _, dep := range existingDeps {
-		existing[[2]int64{dep.BlockerID, dep.BlockedID}] = struct{}{}
-	}
-
-	added := 0
-	for _, targetID := range uniqueInt64s(targetIDs) {
-		for _, blockerID := range selection.dependsOn {
-			key := [2]int64{blockerID, targetID}
-			if _, ok := existing[key]; ok {
-				continue
-			}
-			if err := CurrentStore.AddDependency(blockerID, targetID); err != nil {
-				return added, fmt.Errorf("add dependency %d -> %d: %w", blockerID, targetID, err)
-			}
-			existing[key] = struct{}{}
-			added++
-		}
-
-		for _, blockedID := range selection.blocks {
-			key := [2]int64{targetID, blockedID}
-			if _, ok := existing[key]; ok {
-				continue
-			}
-			if err := CurrentStore.AddDependency(targetID, blockedID); err != nil {
-				return added, fmt.Errorf("add dependency %d -> %d: %w", targetID, blockedID, err)
-			}
-			existing[key] = struct{}{}
-			added++
-		}
-	}
-
-	return added, nil
-}
-
 // dependencyExists reports whether the exact blocker -> blocked edge is stored.
-// The store's delete is idempotent, so this is what lets a caller tell "removed"
-// from "there was nothing there".
 func dependencyExists(blockerID, blockedID int64) (bool, error) {
 	deps, err := CurrentStore.GetDependencies()
 	if err != nil {

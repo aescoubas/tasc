@@ -18,31 +18,33 @@ var stopCmd = &cobra.Command{
 	},
 	ValidArgsFunction: activeTaskIDCompletionFunc,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var targetID int64 = -1
+		var targetID *int64
 		if len(args) > 0 {
 			id, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
 				return fmt.Errorf("invalid task ID: %s", args[0])
 			}
-			targetID = id
+			targetID = &id
 		}
 
-		active, err := CurrentStore.GetActiveTask()
-		if err != nil {
-			return fmt.Errorf("error checking active task: %w", err)
+		if targetID == nil {
+			active, err := CurrentStore.GetActiveTask()
+			if err != nil {
+				return fmt.Errorf("error checking active task: %w", err)
+			}
+			if active != nil {
+				targetID = &active.ID
+			}
 		}
-		if targetID != -1 && (active == nil || active.ID != targetID) {
-			return fmt.Errorf("task %d is not active", targetID)
-		}
-		if active == nil {
-			return fmt.Errorf("no active task to stop")
-		}
-
-		if err := CurrentStore.StopTask(active.ID); err != nil {
-			return fmt.Errorf("error stopping task %d: %w", active.ID, err)
+		if err := CurrentStore.StopTask(targetID); err != nil {
+			return fmt.Errorf("error stopping task: %w", err)
 		}
 
-		fmt.Printf("Stopped task %d.\n", active.ID)
+		if targetID == nil {
+			fmt.Println("Stopped active task.")
+		} else {
+			fmt.Printf("Stopped task %d.\n", *targetID)
+		}
 		return nil
 	},
 }

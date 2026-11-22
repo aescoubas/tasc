@@ -626,12 +626,12 @@ func TestSQLiteStore_RemoveDependency(t *testing.T) {
 		t.Fatalf("surviving dependency is %+v, want %d -> %d", deps[0], blockerB, target)
 	}
 
-	// Removal is one directed edge, and repeating it is not an error.
-	if err := s.RemoveDependency(blockerA, target); err != nil {
-		t.Fatalf("RemoveDependency(repeat) failed: %v", err)
+	// Each removal requires the specified directed edge to exist.
+	if err := s.RemoveDependency(blockerA, target); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("RemoveDependency(repeat) = %v, want sql.ErrNoRows", err)
 	}
-	if err := s.RemoveDependency(target, blockerB); err != nil {
-		t.Fatalf("RemoveDependency(reversed) failed: %v", err)
+	if err := s.RemoveDependency(target, blockerB); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("RemoveDependency(reversed) = %v, want sql.ErrNoRows", err)
 	}
 
 	deps, err = s.GetDependencies()
@@ -663,16 +663,17 @@ func TestSQLiteStore_AddDependencyRejectsInvalidLinks(t *testing.T) {
 	for _, tt := range []struct {
 		name             string
 		blocker, blocked int64
+		want             error
 	}{
-		{"self", ids[0], ids[0]},
-		{"missing blocker", 9999, ids[0]},
-		{"missing dependent", ids[0], 9999},
-		{"direct cycle", ids[1], ids[0]},
-		{"indirect cycle", ids[2], ids[0]},
+		{"self", ids[0], ids[0], store.ErrInvalidDependency},
+		{"missing blocker", 9999, ids[0], sql.ErrNoRows},
+		{"missing dependent", ids[0], 9999, sql.ErrNoRows},
+		{"direct cycle", ids[1], ids[0], store.ErrInvalidDependency},
+		{"indirect cycle", ids[2], ids[0], store.ErrInvalidDependency},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := s.AddDependency(tt.blocker, tt.blocked); !errors.Is(err, store.ErrInvalidDependency) {
-				t.Fatalf("got %v, want ErrInvalidDependency", err)
+			if err := s.AddDependency(tt.blocker, tt.blocked); !errors.Is(err, tt.want) {
+				t.Fatalf("got %v, want %v", err, tt.want)
 			}
 			deps, err := s.GetDependencies()
 			if err != nil {

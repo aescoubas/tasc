@@ -83,11 +83,11 @@ func handoffResult(task models.Task) (*mcp.CallToolResult, error) {
 }
 
 func (ms *MCPServer) taskForHandoff(request mcp.CallToolRequest) (models.Task, error) {
-	id := request.GetFloat("id", 0)
-	if id <= 0 || id > (1<<53)-1 || float64(int64(id)) != id {
-		return models.Task{}, errors.New("invalid task ID")
+	id, err := taskID(request, "id")
+	if err != nil {
+		return models.Task{}, err
 	}
-	task, err := ms.store.GetTask(int64(id))
+	task, err := ms.store.GetTask(id)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && task.Status == models.StatusDeleted) {
 		return models.Task{}, errors.New("task not found")
 	}

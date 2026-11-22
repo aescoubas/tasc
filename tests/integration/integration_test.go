@@ -1137,10 +1137,10 @@ func TestUndepRemovesDependencyAndIsUndoable(t *testing.T) {
 
 	// Naming the pair the wrong way round must leave the edge in place.
 	out, err = runTasc(t, dbPath, "undep", "2", "1")
-	if err != nil {
-		t.Fatalf("undep (reversed) failed: %v\nOutput: %s", err, out)
+	if err == nil {
+		t.Fatalf("undep (reversed) exited successfully: %s", out)
 	}
-	if !strings.Contains(out, "No dependency from task 2 to task 1") {
+	if !strings.Contains(out, "no dependency from task 2 to task 1") {
 		t.Fatalf("undep (reversed) output unexpected: %s", out)
 	}
 	if countDependencies(t, dbPath) != 1 {
@@ -1397,7 +1397,7 @@ func TestDependencyValidationThroughCLIAndMCP(t *testing.T) {
 	} {
 		t.Run(backend.name, func(t *testing.T) {
 			out, err := runTasc(t, dbPath, append(append([]string{}, backend.prefix...), "dep", "3", "1")...)
-			if err != nil || !strings.Contains(out, "cycle") || countDependencies(t, dbPath) != 2 {
+			if err == nil || !strings.Contains(out, "cycle") || countDependencies(t, dbPath) != 2 {
 				t.Fatalf("CLI accepted indirect cycle: err=%v output=%s", err, out)
 			}
 			args := append(append([]string{}, backend.prefix...), "mcp")
@@ -1419,9 +1419,10 @@ func TestDependencyValidationThroughCLIAndMCP(t *testing.T) {
 			for _, tt := range []struct {
 				name             string
 				blocker, blocked int64
+				want             string
 			}{
-				{"self", 1, 1}, {"missing blocker", 9999, 1}, {"missing dependent", 1, 9999},
-				{"direct cycle", 2, 1}, {"indirect cycle", 3, 1},
+				{"self", 1, 1, "invalid dependency"}, {"missing blocker", 9999, 1, "not found"}, {"missing dependent", 1, 9999, "not found"},
+				{"direct cycle", 2, 1, "invalid dependency"}, {"indirect cycle", 3, 1, "invalid dependency"},
 			} {
 				t.Run(tt.name, func(t *testing.T) {
 					result, err := c.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{
@@ -1434,7 +1435,7 @@ func TestDependencyValidationThroughCLIAndMCP(t *testing.T) {
 						t.Fatalf("MCP accepted invalid dependency: %+v", result)
 					}
 					text, ok := result.Content[0].(mcp.TextContent)
-					if !ok || !strings.Contains(text.Text, "invalid dependency") {
+					if !ok || !strings.Contains(text.Text, tt.want) {
 						t.Fatalf("MCP lost validation reason: %+v", result)
 					}
 				})
@@ -1850,8 +1851,8 @@ func TestDepRefusesEdgesThatCannotHold(t *testing.T) {
 	// foreign_keys is off on the connection, so without the existence check this
 	// would store an edge pointing at a task that does not exist.
 	out, err := runTasc(t, dbPath, "dep", "1", "999999")
-	if err != nil {
-		t.Fatalf("dep with an unknown ID failed: %v\nOutput: %s", err, out)
+	if err == nil {
+		t.Fatalf("dep with an unknown ID exited successfully: %s", out)
 	}
 	if !strings.Contains(out, "task 999999 not found") {
 		t.Fatalf("dep did not report the unknown task: %s", out)
@@ -1865,8 +1866,8 @@ func TestDepRefusesEdgesThatCannotHold(t *testing.T) {
 	}
 
 	out, err = runTasc(t, dbPath, "dep", "2", "1")
-	if err != nil {
-		t.Fatalf("dep (reverse) failed: %v\nOutput: %s", err, out)
+	if err == nil {
+		t.Fatalf("dep (reverse) exited successfully: %s", out)
 	}
 	if !strings.Contains(out, "deadlock") {
 		t.Fatalf("dep did not refuse the reverse edge: %s", out)

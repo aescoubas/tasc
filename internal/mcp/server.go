@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -214,6 +215,9 @@ func (ms *MCPServer) registerResources() {
 // Handlers
 
 func (ms *MCPServer) handleAdd(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := validateTaskStringArgs(request, "title", "description", "project", "due", "estimate", "recurrence"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 	title := request.GetString("title", "")
 	desc := request.GetString("description", "")
 	proj := request.GetString("project", "")
@@ -249,6 +253,16 @@ func (ms *MCPServer) handleAdd(ctx context.Context, request mcp.CallToolRequest)
 }
 
 func (ms *MCPServer) handleList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := validateTaskStringArgs(request, "project", "status", "sort"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	for _, field := range []string{"include_deleted", "exclude_archived_projects"} {
+		if value, exists := request.GetArguments()[field]; exists {
+			if _, ok := value.(bool); !ok {
+				return mcp.NewToolResultError(field + " must be a boolean"), nil
+			}
+		}
+	}
 	proj := request.GetString("project", "")
 	statusStr := request.GetString("status", "")
 	incDel := request.GetBool("include_deleted", false)
@@ -303,20 +317,44 @@ func (ms *MCPServer) handleList(ctx context.Context, request mcp.CallToolRequest
 	return mcp.NewToolResultText(sb.String()), nil
 }
 
-func (ms *MCPServer) handleGetTask(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := request.GetArguments()
-	if _, ok := args["id"]; !ok {
-		return mcp.NewToolResultError("Invalid ID"), nil
+// MCP decodes JSON numbers as float64. Refuse fractional or imprecise
+// numeric IDs so a bad argument cannot mutate a different task.
+func taskID(request mcp.CallToolRequest, field string) (int64, error) {
+	switch value := request.GetArguments()[field].(type) {
+	case float64:
+		if math.Abs(value) < 1<<53 && math.Trunc(value) == value {
+			return int64(value), nil
+		}
+	case int:
+		return int64(value), nil
+	case string:
+		if id, err := strconv.ParseInt(value, 10, 64); err == nil {
+			return id, nil
+		}
 	}
+	return 0, fmt.Errorf("%w: invalid task ID (%s)", store.ErrInvalidTask, field)
+}
 
-	id := int64(request.GetInt("id", 0))
-	if id < 0 {
-		return mcp.NewToolResultError("Invalid ID"), nil
+func validateTaskStringArgs(request mcp.CallToolRequest, fields ...string) error {
+	for _, field := range fields {
+		if value, exists := request.GetArguments()[field]; exists {
+			if _, ok := value.(string); !ok {
+				return fmt.Errorf("%w: %s must be a string", store.ErrInvalidTask, field)
+			}
+		}
+	}
+	return nil
+}
+
+func (ms *MCPServer) handleGetTask(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := taskID(request, "id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	task, err := ms.store.GetTask(id)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Task not found: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("Error fetching task: %v", err)), nil
 	}
 
 	return mcp.NewToolResultText(formatTaskDetails(task)), nil
@@ -366,17 +404,12 @@ func (ms *MCPServer) handleGetProject(ctx context.Context, request mcp.CallToolR
 }
 
 func (ms *MCPServer) handleComplete(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := request.GetArguments()
-	if _, ok := args["id"]; !ok {
-		return mcp.NewToolResultError("Invalid ID"), nil
+	id, err := taskID(request, "id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	id := int64(request.GetInt("id", 0))
-	if id < 0 {
-		return mcp.NewToolResultError("Invalid ID"), nil
-	}
-
-	err := ms.caller(ctx).MarkDone(id)
+	err = ms.caller(ctx).MarkDone(id)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error completing task: %v", err)), nil
 	}
@@ -385,32 +418,23 @@ func (ms *MCPServer) handleComplete(ctx context.Context, request mcp.CallToolReq
 }
 
 func (ms *MCPServer) handleUpdate(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := taskID(request, "id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	if err := validateTaskStringArgs(request, "title", "description", "project", "due", "estimate", "recurrence"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	args := request.GetArguments()
-	if _, ok := args["id"]; !ok {
-		return mcp.NewToolResultError("Invalid ID"), nil
-	}
-
-	id := int64(request.GetInt("id", 0))
-	if id < 0 {
-		return mcp.NewToolResultError("Invalid ID"), nil
-	}
-
-	if _, err := ms.store.GetTask(id); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Task not found: %v", err)), nil
-	}
-
 	updates := make(map[string]interface{})
 	if err := addUserPriorityEdit(args, updates); err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	for _, field := range []string{"title", "description", "project"} {
-		if value := request.GetString(field, ""); value != "" {
+	for _, field := range []string{"title", "description", "project", "estimate", "recurrence"} {
+		if value, ok := args[field]; ok {
 			updates[field] = value
-		}
-	}
-	for _, field := range []string{"estimate", "recurrence"} {
-		if _, ok := args[field]; ok {
-			updates[field] = request.GetString(field, "")
 		}
 	}
 
@@ -468,6 +492,17 @@ func (ms *MCPServer) handleResourceTasks(ctx context.Context, request mcp.ReadRe
 }
 
 func (ms *MCPServer) handleBatchUpdate(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := validateTaskStringArgs(request, "ids", "project", "status", "due"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	args := request.GetArguments()
+	clearDue, clearDueValid := args["clear_due"].(bool)
+	if _, exists := args["clear_due"]; exists && !clearDueValid {
+		return mcp.NewToolResultError("clear_due must be a boolean"), nil
+	}
+	if clearDue && request.GetString("due", "") != "" {
+		return mcp.NewToolResultError("choose either due or clear_due"), nil
+	}
 	idsStr := request.GetString("ids", "")
 	if idsStr == "" {
 		return mcp.NewToolResultError("IDs are required"), nil
@@ -478,9 +513,6 @@ func (ms *MCPServer) handleBatchUpdate(ctx context.Context, request mcp.CallTool
 	parts := strings.Split(idsStr, ",")
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
 		id, err := strconv.ParseInt(p, 10, 64)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Invalid ID: %s", p)), nil
@@ -491,23 +523,18 @@ func (ms *MCPServer) handleBatchUpdate(ctx context.Context, request mcp.CallTool
 		}
 	}
 
-	if len(ids) == 0 {
-		return mcp.NewToolResultError("No valid IDs provided"), nil
-	}
-
 	updates := make(map[string]interface{})
 	if err := addUserPriorityEdit(request.GetArguments(), updates); err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	if p := request.GetString("project", ""); p != "" {
-		updates["project"] = p
-	}
-	if s := request.GetString("status", ""); s != "" {
-		updates["status"] = s
+	for _, field := range []string{"project", "status"} {
+		if value, exists := args[field]; exists {
+			updates[field] = value
+		}
 	}
 
-	if request.GetBool("clear_due", false) {
+	if clearDue {
 		updates["due_at"] = nil
 	} else if d := request.GetString("due", ""); d != "" {
 		t, err := parse.Date(d, ms.config.EndOfDay)
@@ -553,17 +580,12 @@ func addUserPriorityEdit(args, updates map[string]any) error {
 }
 
 func (ms *MCPServer) handleDelete(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := request.GetArguments()
-	if _, ok := args["id"]; !ok {
-		return mcp.NewToolResultError("Invalid ID"), nil
+	id, err := taskID(request, "id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	id := int64(request.GetInt("id", 0))
-	if id < 0 {
-		return mcp.NewToolResultError("Invalid ID"), nil
-	}
-
-	err := ms.caller(ctx).DeleteTask(id)
+	err = ms.caller(ctx).DeleteTask(id)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error deleting task: %v", err)), nil
 	}
@@ -572,17 +594,12 @@ func (ms *MCPServer) handleDelete(ctx context.Context, request mcp.CallToolReque
 }
 
 func (ms *MCPServer) handleStart(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := request.GetArguments()
-	if _, ok := args["id"]; !ok {
-		return mcp.NewToolResultError("Invalid ID"), nil
+	id, err := taskID(request, "id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	id := int64(request.GetInt("id", 0))
-	if id < 0 {
-		return mcp.NewToolResultError("Invalid ID"), nil
-	}
-
-	err := ms.caller(ctx).StartTask(id)
+	err = ms.caller(ctx).StartTask(id)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error starting task: %v", err)), nil
 	}
@@ -591,13 +608,13 @@ func (ms *MCPServer) handleStart(ctx context.Context, request mcp.CallToolReques
 }
 
 func (ms *MCPServer) handleStop(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := request.GetArguments()
-	targetID := int64(-1)
-	if _, ok := args["id"]; ok {
-		targetID = int64(request.GetInt("id", 0))
-		if targetID < 0 {
-			return mcp.NewToolResultError("Invalid ID"), nil
+	var targetID *int64
+	if _, ok := request.GetArguments()["id"]; ok {
+		id, err := taskID(request, "id")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
 		}
+		targetID = &id
 	}
 
 	err := ms.caller(ctx).StopTask(targetID)
@@ -609,22 +626,16 @@ func (ms *MCPServer) handleStop(ctx context.Context, request mcp.CallToolRequest
 }
 
 func (ms *MCPServer) handleAddDependency(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := request.GetArguments()
-	if _, ok := args["blocker_id"]; !ok {
-		return mcp.NewToolResultError("Both blocker_id and blocked_id are required"), nil
+	blockerID, err := taskID(request, "blocker_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if _, ok := args["blocked_id"]; !ok {
-		return mcp.NewToolResultError("Both blocker_id and blocked_id are required"), nil
-	}
-
-	blockerID := int64(request.GetInt("blocker_id", 0))
-	blockedID := int64(request.GetInt("blocked_id", 0))
-
-	if blockerID < 0 || blockedID < 0 {
-		return mcp.NewToolResultError("Both blocker_id and blocked_id are required"), nil
+	blockedID, err := taskID(request, "blocked_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	err := ms.caller(ctx).AddDependency(blockerID, blockedID)
+	err = ms.caller(ctx).AddDependency(blockerID, blockedID)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Error adding dependency: %v", err)), nil
 	}
@@ -633,16 +644,14 @@ func (ms *MCPServer) handleAddDependency(ctx context.Context, request mcp.CallTo
 }
 
 func (ms *MCPServer) handleRemoveDependency(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := request.GetArguments()
-	if _, ok := args["blocker_id"]; !ok {
-		return mcp.NewToolResultError("Both blocker_id and blocked_id are required"), nil
+	blockerID, err := taskID(request, "blocker_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if _, ok := args["blocked_id"]; !ok {
-		return mcp.NewToolResultError("Both blocker_id and blocked_id are required"), nil
+	blockedID, err := taskID(request, "blocked_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
-
-	blockerID := int64(request.GetInt("blocker_id", 0))
-	blockedID := int64(request.GetInt("blocked_id", 0))
 
 	deps, err := ms.store.GetDependencies()
 	if err != nil {
@@ -665,7 +674,7 @@ func (ms *MCPServer) handleRemoveDependency(ctx context.Context, request mcp.Cal
 		if reversed {
 			msg += fmt.Sprintf(" Task %d blocks task %d — the arguments may be the wrong way round.", blockedID, blockerID)
 		}
-		return mcp.NewToolResultText(msg), nil
+		return mcp.NewToolResultError(msg), nil
 	}
 
 	if err := ms.caller(ctx).RemoveDependency(blockerID, blockedID); err != nil {

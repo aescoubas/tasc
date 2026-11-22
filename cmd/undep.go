@@ -12,39 +12,35 @@ var undepCmd = &cobra.Command{
 	Short:             "Remove a dependency (blocker no longer blocks blocked)",
 	Args:              cobra.ExactArgs(2),
 	ValidArgsFunction: taskIDCompletionFunc,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		blockerID, err1 := strconv.ParseInt(args[0], 10, 64)
 		blockedID, err2 := strconv.ParseInt(args[1], 10, 64)
 
 		if err1 != nil || err2 != nil {
-			fmt.Println("IDs must be integers")
-			return
+			return fmt.Errorf("iDs must be integers")
 		}
 
 		exists, err := dependencyExists(blockerID, blockedID)
 		if err != nil {
-			fmt.Printf("Error reading dependencies: %v\n", err)
-			return
+			return fmt.Errorf("error reading dependencies: %w", err)
 		}
 
 		if !exists {
-			fmt.Printf("No dependency from task %d to task %d.\n", blockerID, blockedID)
-
 			// The common mistake is naming the pair the wrong way round, so say
 			// so rather than leaving the user to guess.
 			reversed, err := dependencyExists(blockedID, blockerID)
 			if err == nil && reversed {
-				fmt.Printf("Task %d blocks task %d — run: tasc undep %d %d\n", blockedID, blockerID, blockedID, blockerID)
+				return fmt.Errorf("no dependency from task %d to task %d. Task %d blocks task %d, run: tasc undep %d %d", blockerID, blockedID, blockedID, blockerID, blockedID, blockerID)
 			}
-			return
+			return fmt.Errorf("no dependency from task %d to task %d", blockerID, blockedID)
 		}
 
 		if err := CurrentStore.RemoveDependency(blockerID, blockedID); err != nil {
-			fmt.Printf("Error removing dependency: %v\n", err)
-			return
+			return fmt.Errorf("error removing dependency: %w", err)
 		}
 
 		fmt.Printf("Task %d no longer blocks task %d.\n", blockerID, blockedID)
+		return nil
 	},
 }
 

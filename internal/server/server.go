@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"slices"
@@ -61,6 +63,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /assignments", s.handleAssignments)
 	s.mux.HandleFunc("GET /tasks", s.handleListTasks)
 	s.mux.HandleFunc("POST /tasks", s.handleCreateTask)
+	s.mux.HandleFunc("POST /tasks/with-links", s.handleCreateTaskWithLinks)
 	s.mux.HandleFunc("POST /tasks/log", s.handleLogTask)
 	s.mux.HandleFunc("GET /tasks/{id}", s.handleGetTask)
 	s.mux.HandleFunc("PUT /tasks/{id}", s.handleUpdateTask)
@@ -70,11 +73,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /tasks/{id}/done", s.handleTaskDone)
 	s.mux.HandleFunc("POST /tasks/{id}/vague", s.handleTaskVague)
 	s.mux.HandleFunc("POST /tasks/{id}/start", s.handleTaskStart)
+	s.mux.HandleFunc("POST /tasks/{id}/stop", s.handleStopTaskByID)
 	s.mux.HandleFunc("POST /tasks/stop", s.handleTaskStop)
 	s.mux.HandleFunc("GET /tasks/active", s.handleGetActiveTask)
 	s.mux.HandleFunc("POST /tasks/batch-update", s.handleBatchUpdateTasks)
 	s.mux.HandleFunc("POST /tasks/batch-update/priority", s.handleBatchUpdateTasks)
 	s.mux.HandleFunc("POST /tasks/batch-update/keep-series", s.handleBatchUpdateTasks)
+	s.mux.HandleFunc("POST /tasks/batch-update/with-links", s.handleBatchUpdateTasksWithLinks)
 
 	s.mux.HandleFunc("GET /projects", s.handleListProjects)
 	s.mux.HandleFunc("POST /projects", s.handleCreateProject)
@@ -151,34 +156,59 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	if ids := q.Get("ids"); ids != "" {
 		for _, idStr := range strings.Split(ids, ",") {
 			id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
-			if err == nil {
-				filter.IDs = append(filter.IDs, id)
+			if err != nil {
+				http.Error(w, "Invalid ID filter", http.StatusBadRequest)
+				return
 			}
+			filter.IDs = append(filter.IDs, id)
 		}
 	}
 
-	parseDate := func(param string) *time.Time {
-		if val := q.Get(param); val != "" {
-			t, err := time.Parse(time.RFC3339, val)
-			if err == nil {
-				return &t
+	for _, item := range []struct {
+		param string
+		dest  **time.Time
+	}{{"due_before", &filter.DueBefore}, {"due_after", &filter.DueAfter}} {
+		if q.Has(item.param) {
+			date, err := time.Parse(time.RFC3339, q.Get(item.param))
+			if err != nil {
+				http.Error(w, item.param+" must be an RFC3339 timestamp", http.StatusBadRequest)
+				return
 			}
+			*item.dest = &date
 		}
-		return nil
 	}
-
-	filter.DueBefore = parseDate("due_before")
-	filter.DueAfter = parseDate("due_after")
 
 	tasks, err := s.requestStore(r).ListTasks(filter)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		respondMutationError(w, err)
 		return
 	}
 	if sortBy == "priority" {
 		slices.SortFunc(tasks, func(a, b models.Task) int { return models.CompareTaskPriority(a, b, false) })
 	}
 	respondJSON(w, http.StatusOK, tasks)
+}
+
+func (s *Server) handleCreateTaskWithLinks(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Task  models.Task      `json:"task"`
+		Links taskLinksRequest `json:"links"`
+	}
+	if err := decodeTaskRequest(r, &req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	links, err := req.Links.taskLinks()
+	if err != nil {
+		respondMutationError(w, err)
+		return
+	}
+	id, added, err := s.requestStore(r).CreateTaskWithLinks(req.Task, links)
+	if err != nil {
+		respondMutationError(w, err)
+		return
+	}
+	respondJSON(w, http.StatusCreated, map[string]any{"id": id, "links_added": added})
 }
 
 func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
@@ -191,7 +221,7 @@ func (s *Server) handleLogTask(w http.ResponseWriter, r *http.Request) {
 
 func createTask(w http.ResponseWriter, r *http.Request, create func(models.Task) (int64, error)) {
 	var t models.Task
-	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+	if err := decodeTaskRequest(r, &t); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -214,15 +244,8 @@ func (s *Server) handleGetTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t, err := s.requestStore(r).GetTask(id)
-	if errors.Is(err, sql.ErrNoRows) {
-		// A task that is not there is not a server fault, and the client turns
-		// this back into sql.ErrNoRows so callers can tell "missing" from
-		// "something broke" the same way they do against sqlite.
-		http.Error(w, "Task not found", http.StatusNotFound)
-		return
-	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		respondMutationError(w, err)
 		return
 	}
 	respondJSON(w, http.StatusOK, t)
@@ -237,7 +260,7 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var t models.Task
-	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+	if err := decodeTaskRequest(r, &t); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -258,7 +281,7 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUpdateTaskDescription(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil || id <= 0 {
+	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
 	}
@@ -266,16 +289,12 @@ func (s *Server) handleUpdateTaskDescription(w http.ResponseWriter, r *http.Requ
 		Expected    *string `json:"expected"`
 		Description *string `json:"description"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&edit); err != nil || edit.Expected == nil || edit.Description == nil {
+	if err := decodeTaskRequest(r, &edit); err != nil || edit.Expected == nil || edit.Description == nil {
 		http.Error(w, "expected and description must be strings", http.StatusBadRequest)
 		return
 	}
 	if err := s.requestStore(r).UpdateTaskDescription(id, *edit.Expected, *edit.Description); err != nil {
-		if errors.Is(err, store.ErrTaskDescriptionConflict) || err.Error() == store.AssignmentConflict {
-			http.Error(w, err.Error(), http.StatusConflict)
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+		respondMutationError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -339,17 +358,30 @@ func (s *Server) handleTaskStart(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"status": "started"})
 }
 
+func (s *Server) handleStopTaskByID(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+	s.stopTask(w, r, &id)
+}
+
 func (s *Server) handleTaskStop(w http.ResponseWriter, r *http.Request) {
-	id := int64(-1)
+	var target *int64
 	if r.URL.Query().Has("id") {
-		var err error
-		id, err = strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+		id, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
 		if err != nil {
 			http.Error(w, "Invalid ID", http.StatusBadRequest)
 			return
 		}
+		target = &id
 	}
-	if err := s.requestStore(r).StopTask(id); err != nil {
+	s.stopTask(w, r, target)
+}
+
+func (s *Server) stopTask(w http.ResponseWriter, r *http.Request, target *int64) {
+	if err := s.requestStore(r).StopTask(target); err != nil {
 		respondMutationError(w, err)
 		return
 	}
@@ -394,7 +426,7 @@ func (s *Server) handleAddDependency(w http.ResponseWriter, r *http.Request) {
 		BlockerID *int64 `json:"blocker_id"`
 		BlockedID *int64 `json:"blocked_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeTaskRequest(r, &req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -404,13 +436,7 @@ func (s *Server) handleAddDependency(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.requestStore(r).AddDependency(*req.BlockerID, *req.BlockedID); err != nil {
-		status := http.StatusInternalServerError
-		if errors.Is(err, store.ErrInvalidDependency) {
-			status = http.StatusBadRequest
-		} else if err.Error() == store.AssignmentConflict {
-			status = http.StatusConflict
-		}
-		http.Error(w, err.Error(), status)
+		respondMutationError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
@@ -517,28 +543,97 @@ func (s *Server) handleDeleteProjectWithMode(w http.ResponseWriter, r *http.Requ
 
 func (s *Server) handleBatchUpdateTasks(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		IDs     []int64                `json:"ids"`
-		Updates map[string]interface{} `json:"updates"`
+		IDs     []*int64       `json:"ids"`
+		Updates map[string]any `json:"updates"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeTaskRequest(r, &req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	if err := s.requestStore(r).BatchUpdateTasks(req.IDs, req.Updates); err != nil {
+	ids, err := taskIDs(req.IDs)
+	if err != nil {
+		respondMutationError(w, err)
+		return
+	}
+	if err := s.requestStore(r).BatchUpdateTasks(ids, req.Updates); err != nil {
 		respondMutationError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
+func (s *Server) handleBatchUpdateTasksWithLinks(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs     []*int64         `json:"ids"`
+		Updates map[string]any   `json:"updates"`
+		Links   taskLinksRequest `json:"links"`
+	}
+	if err := decodeTaskRequest(r, &req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	ids, err := taskIDs(req.IDs)
+	if err != nil {
+		respondMutationError(w, err)
+		return
+	}
+	links, err := req.Links.taskLinks()
+	if err != nil {
+		respondMutationError(w, err)
+		return
+	}
+	added, err := s.requestStore(r).BatchUpdateTasksWithLinks(ids, req.Updates, links)
+	if err != nil {
+		respondMutationError(w, err)
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]int{"links_added": added})
+}
+
+// Decode through pointers so a JSON null cannot address a real task with ID 0.
+func taskIDs(values []*int64) ([]int64, error) {
+	ids := make([]int64, 0, len(values))
+	for _, id := range values {
+		if id == nil {
+			return nil, fmt.Errorf("%w: task IDs must be integers", store.ErrInvalidTask)
+		}
+		ids = append(ids, *id)
+	}
+	return ids, nil
+}
+
+type taskLinksRequest struct {
+	DependsOn []*int64 `json:"depends_on"`
+	Blocks    []*int64 `json:"blocks"`
+}
+
+func (r taskLinksRequest) taskLinks() (store.TaskLinks, error) {
+	dependsOn, err := taskIDs(r.DependsOn)
+	if err != nil {
+		return store.TaskLinks{}, err
+	}
+	blocks, err := taskIDs(r.Blocks)
+	return store.TaskLinks{DependsOn: dependsOn, Blocks: blocks}, err
+}
+
+func decodeTaskRequest(r *http.Request, dst any) error {
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+	if err := decoder.Decode(new(json.RawMessage)); err != io.EOF {
+		return fmt.Errorf("request body must contain exactly one JSON value")
+	}
+	return nil
+}
+
 func respondMutationError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	if errors.Is(err, sql.ErrNoRows) {
 		status = http.StatusNotFound
-	} else if errors.Is(err, store.ErrInvalidCompletion) || errors.Is(err, store.ErrInvalidUserPriority) {
+	} else if errors.Is(err, store.ErrInvalidDependency) || errors.Is(err, store.ErrInvalidTask) || errors.Is(err, store.ErrInvalidCompletion) || errors.Is(err, store.ErrInvalidUserPriority) {
 		status = http.StatusBadRequest
-	} else if errors.Is(err, store.ErrProjectNotEmpty) || err.Error() == store.AssignmentConflict {
+	} else if errors.Is(err, store.ErrTaskDescriptionConflict) || errors.Is(err, store.ErrProjectNotEmpty) || err.Error() == store.AssignmentConflict {
 		status = http.StatusConflict
 	}
 	http.Error(w, err.Error(), status)

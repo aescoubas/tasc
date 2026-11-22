@@ -35,8 +35,18 @@ Tasc can run as a standalone local CLI or as a distributed system.
   semantics they cannot honor. Existing REST and MCP project operations keep
   their original contracts.
 - **Timer stop**: `POST /tasks/stop?id=<id>` stops only the requested active task.
-  Omitting `id` stops the current timer. Invalid IDs return HTTP 400. The remote Store
-  client preserves the ID instead of silently stopping whichever task is active.
+  Omitting `id` stops the current timer. A malformed ID returns HTTP 400, and a
+  missing target returns HTTP 404. An explicit `-1` addresses that task ID. The
+  remote Store sends it to `POST /tasks/-1/stop` so older servers cannot mistake
+  it for an omitted target.
+- **Task errors** use HTTP 400 for validation, 404 for missing targets, and 409
+  for assignment and description conflicts. The remote Store preserves the error
+  categories. MCP returns tool errors and the CLI exits nonzero for failed task
+  requests. Batch counts use distinct IDs and are reported only after success.
+- **Task edits with dependencies** use `POST /tasks/with-links` and
+  `POST /tasks/batch-update/with-links`. The task changes and links commit together.
+  The response reports the number of edges added. Older servers reject these routes
+  before applying any changes.
 - **Task filters**: `GET /tasks` accepts comma-separated `status` values and
   `include_deleted=true`, alongside project, ID and due-date filters. Status matches
   the displayed dependency state (`blocked` for unfinished tasks with open blockers).

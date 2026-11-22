@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -73,10 +74,6 @@ func generateUniqueShortName(q taskQueries, name string) (string, error) {
 	return fmt.Sprintf("%s%d", prefix, time.Now().Unix()%1000), nil
 }
 
-func (s *SQLiteStore) ensureProjectExists(name string) error {
-	return ensureProjectExists(s.db, name)
-}
-
 func ensureProjectExists(q taskQueries, name string) error {
 	if name == "" {
 		return nil
@@ -129,31 +126,63 @@ func checkProjectCompletion(q taskQueries, name string) error {
 }
 
 func (s *SQLiteStore) CreateTask(t models.Task) (int64, error) {
+	id, _, err := s.CreateTaskWithLinks(t, store.TaskLinks{})
+	return id, err
+}
+
+func (s *SQLiteStore) CreateTaskWithLinks(t models.Task, links store.TaskLinks) (int64, int, error) {
+	if err := store.ValidateTaskTitle(t.Title); err != nil {
+		return 0, 0, err
+	}
 	if t.UserPriority != nil {
 		if err := store.ValidateUserPriority(*t.UserPriority); err != nil {
-			return 0, err
+			return 0, 0, err
 		}
 	}
-	if err := s.ensureProjectExists(t.Project); err != nil {
-		return 0, err
-	}
-
-	query := `INSERT INTO tasks (title, description, project, due_at, schedule_block, estimate, recurrence, user_priority, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
-	stmt, err := s.db.Prepare(query)
+	tx, err := s.beginWriter()
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	defer stmt.Close()
+	defer tx.Rollback()
 
-	res, err := stmt.Exec(t.Title, t.Description, t.Project, t.DueAt, t.ScheduleBlock, t.Estimate, t.Recurrence, t.UserPriority)
+	// References must exist before the insert, even if a missing ID would
+	// happen to be allocated to the new task.
+	for _, refs := range [][]int64{links.DependsOn, links.Blocks} {
+		for _, id := range refs {
+			if err := requireTask(tx, id); err != nil {
+				return 0, 0, err
+			}
+		}
+	}
+
+	if err := ensureProjectExists(tx, t.Project); err != nil {
+		return 0, 0, err
+	}
+	result, err := tx.Exec(`INSERT INTO tasks
+		(title, description, project, due_at, schedule_block, estimate, recurrence, user_priority, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+		t.Title, t.Description, t.Project, t.DueAt, t.ScheduleBlock, t.Estimate, t.Recurrence, t.UserPriority)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-
-	return res.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, 0, err
+	}
+	added, err := addTaskLinks(tx, []int64{id}, links)
+	if err != nil {
+		return 0, 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, 0, err
+	}
+	return id, added, nil
 }
 
 func (s *SQLiteStore) LogTask(t models.Task) (int64, error) {
+	if err := store.ValidateTaskTitle(t.Title); err != nil {
+		return 0, err
+	}
 	if t.UserPriority != nil {
 		if err := store.ValidateUserPriority(*t.UserPriority); err != nil {
 			return 0, err
@@ -177,7 +206,7 @@ func (s *SQLiteStore) MarkVague(id int64) error {
 	}
 	defer tx.Rollback()
 	if err := requireUpdatedRow(tx.Exec("UPDATE tasks SET status = ? WHERE id = ?", models.StatusUndefined, id)); err != nil {
-		return err
+		return store.TaskLookupError(id, err)
 	}
 	return tx.Commit()
 }
@@ -194,7 +223,8 @@ func requireUpdatedRow(result sql.Result, err error) error {
 }
 
 func (s *SQLiteStore) GetTask(id int64) (models.Task, error) {
-	return s.readTask(s.db, "WHERE tasks.id=?", id)
+	task, err := s.readTask(s.db, "WHERE tasks.id=?", id)
+	return task, store.TaskLookupError(id, err)
 }
 
 func (s *SQLiteStore) readTask(q taskQueries, selection string, args ...any) (models.Task, error) {
@@ -249,6 +279,12 @@ func (s *SQLiteStore) readTask(q taskQueries, selection string, args ...any) (mo
 }
 
 func (s *SQLiteStore) UpdateTask(t models.Task) error {
+	if err := store.ValidateTaskTitle(t.Title); err != nil {
+		return err
+	}
+	if err := store.ValidateTaskStatus(t.Status); err != nil {
+		return err
+	}
 	if t.Status == models.StatusDone {
 		return s.completeTasks([]int64{t.ID}, map[string]interface{}{
 			"title": t.Title, "description": t.Description, "project": t.Project,
@@ -265,7 +301,7 @@ func (s *SQLiteStore) UpdateTask(t models.Task) error {
 	var oldProject sql.NullString
 	err = tx.QueryRow("SELECT project FROM tasks WHERE id = ?", t.ID).Scan(&oldProject)
 	if err != nil {
-		return err
+		return store.TaskLookupError(t.ID, err)
 	}
 
 	if err := ensureProjectExists(tx, t.Project); err != nil {
@@ -306,124 +342,178 @@ func (s *SQLiteStore) UpdateTaskDescription(id int64, expected, description stri
 	if changed, err := result.RowsAffected(); err != nil {
 		return err
 	} else if changed == 0 {
+		if err := tx.QueryRow("SELECT id FROM tasks WHERE id = ? AND status <> 'deleted'", id).Scan(&id); err != nil {
+			return store.TaskLookupError(id, err)
+		}
 		return store.ErrTaskDescriptionConflict
 	}
 	return tx.Commit()
 }
 
-func (s *SQLiteStore) BatchUpdateTasks(ids []int64, updates map[string]interface{}) error {
-	if len(ids) == 0 {
-		return nil
-	}
-	if len(updates) == 0 {
-		return nil
-	}
-	userPriority, hasPriority := updates["user_priority"]
-	if hasPriority {
-		if err := store.ValidateUserPriority(userPriority); err != nil {
-			return err
+func validateBatchUpdates(updates map[string]any) error {
+	for field, value := range updates {
+		switch field {
+		case "title", "project", "estimate", "recurrence", "description", "schedule_block":
+			str, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("%w: %s must be a string", store.ErrInvalidTask, field)
+			}
+			if field == "title" {
+				if err := store.ValidateTaskTitle(str); err != nil {
+					return err
+				}
+			}
+		case "status":
+			switch value := value.(type) {
+			case string:
+				if err := store.ValidateTaskStatus(models.TaskStatus(value)); err != nil {
+					return err
+				}
+			case models.TaskStatus:
+				if err := store.ValidateTaskStatus(value); err != nil {
+					return err
+				}
+			default:
+				return fmt.Errorf("%w: status must be a string", store.ErrInvalidTask)
+			}
+		case "due_at", "completed_at":
+			switch value := value.(type) {
+			case nil, time.Time, *time.Time:
+			case string:
+				if _, err := time.Parse(time.RFC3339Nano, value); err != nil {
+					return fmt.Errorf("%w: %s must be an RFC3339 timestamp or null", store.ErrInvalidTask, field)
+				}
+			default:
+				return fmt.Errorf("%w: %s must be a timestamp or null", store.ErrInvalidTask, field)
+			}
+		case "user_priority":
+			if err := store.ValidateUserPriority(value); err != nil {
+				return err
+			}
+		case "keep_series":
+			if value != true {
+				return fmt.Errorf("%w: keep_series must be true", store.ErrInvalidTask)
+			}
+		default:
+			return fmt.Errorf("%w: unknown task update field %q", store.ErrInvalidTask, field)
 		}
 	}
-	if status, ok := updates["status"]; ok && fmt.Sprint(status) == string(models.StatusDone) {
-		return s.completeTasks(ids, updates, false)
+	return nil
+}
+
+func (s *SQLiteStore) BatchUpdateTasks(ids []int64, updates map[string]interface{}) error {
+	_, err := s.BatchUpdateTasksWithLinks(ids, updates, store.TaskLinks{})
+	return err
+}
+
+func (s *SQLiteStore) BatchUpdateTasksWithLinks(ids []int64, updates map[string]any, links store.TaskLinks) (int, error) {
+	if len(ids) == 0 {
+		return 0, fmt.Errorf("%w: at least one task ID is required", store.ErrInvalidTask)
+	}
+	if len(updates) == 0 && links.Empty() {
+		return 0, fmt.Errorf("%w: no task updates specified", store.ErrInvalidTask)
+	}
+	if err := validateBatchUpdates(updates); err != nil {
+		return 0, err
+	}
+	status := fmt.Sprint(updates["status"])
+	_, keepSeries := updates["keep_series"]
+	if keepSeries && (len(ids) != 1 || status == "done" || (status != "deleted" && updates["recurrence"] != "")) {
+		return 0, fmt.Errorf("%w: keeping a series requires deleting or detaching one instance", store.ErrInvalidCompletion)
+	}
+	if status == "done" {
+		if !links.Empty() {
+			return 0, fmt.Errorf("%w: completion cannot add dependencies", store.ErrInvalidTask)
+		}
+		if _, ok := updates["completed_at"]; ok {
+			return 0, fmt.Errorf("%w: completion sets completed_at", store.ErrInvalidTask)
+		}
+		return 0, s.completeTasks(ids, updates, false)
 	}
 
 	tx, err := s.beginWriter()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer tx.Rollback()
-	if keep, ok := updates["keep_series"]; ok {
-		if keep != true || len(ids) != 1 || (updates["status"] != "deleted" && updates["recurrence"] != "") {
-			return fmt.Errorf("%w: keeping a series requires deleting or detaching one instance", store.ErrInvalidCompletion)
+
+	affectedProjects := make(map[string]bool)
+	seen := make(map[int64]bool)
+	targets := make([]int64, 0, len(ids))
+	placeholders := make([]string, 0, len(ids))
+	queryArgs := make([]any, 0, len(ids))
+	for _, id := range ids {
+		if seen[id] {
+			continue
 		}
+		var project sql.NullString
+		if err := tx.QueryRow("SELECT project FROM tasks WHERE id = ?", id).Scan(&project); err != nil {
+			return 0, store.TaskLookupError(id, err)
+		}
+		seen[id] = true
+		targets = append(targets, id)
+		placeholders = append(placeholders, "?")
+		queryArgs = append(queryArgs, id)
+		if project.Valid {
+			affectedProjects[project.String] = true
+		}
+	}
+
+	added, err := addTaskLinks(tx, targets, links)
+	if err != nil {
+		return 0, err
+	}
+	if len(updates) == 0 {
+		if err := tx.Commit(); err != nil {
+			return 0, err
+		}
+		return added, nil
+	}
+
+	where := " WHERE id IN (" + strings.Join(placeholders, ", ") + ")"
+
+	if keepSeries {
 		task, err := s.readTask(tx, "WHERE tasks.id=?", ids[0])
 		if err != nil {
-			return err
+			return 0, err
 		}
 		if task.Status != models.StatusDeleted && task.Status != models.StatusDone {
 			if err := createSuccessor(tx, task, time.Now()); err != nil {
-				return err
-			}
-		}
-	}
-	// 1. Identify affected projects (Before update)
-	affectedProjects := make(map[string]bool)
-
-	// Helper to collect projects
-	placeholders := make([]string, len(ids))
-	queryArgs := make([]interface{}, len(ids))
-	for i, id := range ids {
-		placeholders[i] = "?"
-		queryArgs[i] = id
-	}
-	if hasPriority && len(updates) == 1 {
-		if err := requireUpdatedRow(tx.Exec("UPDATE tasks SET user_priority = ? WHERE id IN ("+
-			strings.Join(placeholders, ",")+")", append([]interface{}{userPriority}, queryArgs...)...)); err != nil {
-			return err
-		}
-		return tx.Commit()
-	}
-
-	rows, err := tx.Query(fmt.Sprintf("SELECT DISTINCT project FROM tasks WHERE id IN (%s)", strings.Join(placeholders, ",")), queryArgs...)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var p sql.NullString
-			if err := rows.Scan(&p); err == nil && p.Valid {
-				affectedProjects[p.String] = true
+				return 0, err
 			}
 		}
 	}
 
-	// 2. Ensure new project exists (if setting project)
-	if pVal, ok := updates["project"]; ok {
-		if pStr, ok := pVal.(string); ok {
-			if err := ensureProjectExists(tx, pStr); err != nil {
-				return err
-			}
-			affectedProjects[pStr] = true
+	if project, ok := updates["project"].(string); ok {
+		if err := ensureProjectExists(tx, project); err != nil {
+			return 0, err
 		}
+		affectedProjects[project] = true
 	}
 
-	// 3. Perform Update
-	query := "UPDATE tasks SET "
-	var args []interface{}
+	var args []any
 	var sets []string
-
-	for k, v := range updates {
-		// Whitelist fields
-		switch k {
-		case "project", "status", "estimate", "recurrence", "title", "description", "schedule_block", "user_priority":
-			sets = append(sets, fmt.Sprintf("%s = ?", k))
-			args = append(args, v)
-		case "due_at", "completed_at":
-			sets = append(sets, fmt.Sprintf("%s = ?", k))
-			args = append(args, v)
+	for field, value := range updates {
+		if field != "keep_series" {
+			sets = append(sets, field+" = ?")
+			args = append(args, value)
 		}
 	}
-
-	if len(sets) == 0 {
-		return nil
+	if _, err := tx.Exec("UPDATE tasks SET "+strings.Join(sets, ", ")+where, append(args, queryArgs...)...); err != nil {
+		return 0, err
 	}
-
-	query += strings.Join(sets, ", ")
-	query += " WHERE id IN (" + strings.Join(placeholders, ", ") + ")"
-	args = append(args, queryArgs...)
-
-	_, err = tx.Exec(query, args...)
-	if err != nil {
-		return err
-	}
-
-	// 4. Check completion for all affected projects
-	for p := range affectedProjects {
-		if err := checkProjectCompletion(tx, p); err != nil {
-			return err
+	// A priority-only edit does not reopen or archive a project.
+	if _, priority := updates["user_priority"]; !priority || len(updates) != 1 {
+		for project := range affectedProjects {
+			if err := checkProjectCompletion(tx, project); err != nil {
+				return 0, err
+			}
 		}
 	}
-
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return added, nil
 }
 
 func (s *SQLiteStore) DeleteTask(id int64) error {
@@ -433,7 +523,9 @@ func (s *SQLiteStore) DeleteTask(id int64) error {
 	}
 	defer tx.Rollback()
 	var project sql.NullString
-	tx.QueryRow("SELECT project FROM tasks WHERE id = ?", id).Scan(&project)
+	if err := tx.QueryRow("SELECT project FROM tasks WHERE id = ?", id).Scan(&project); err != nil {
+		return store.TaskLookupError(id, err)
+	}
 
 	query := `UPDATE tasks SET status = 'deleted' WHERE id = ?`
 	_, err = tx.Exec(query, id)
@@ -567,94 +659,70 @@ func (s *SQLiteStore) MarkDone(id int64) error {
 }
 
 func (s *SQLiteStore) StartTask(id int64) error {
-	// Logic from cmd/start.go
-	// 1. Stop active
-	// 2. Start new
-
-	// Transaction? Ideally yes.
 	tx, err := s.beginWriter()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	// Stop any active
-	rows, err := tx.Query("SELECT id, active_start FROM tasks WHERE active_start IS NOT NULL")
-	if err != nil {
-		return err
+	var targetStart sql.NullTime
+	if err := tx.QueryRow("SELECT active_start FROM tasks WHERE id = ?", id).Scan(&targetStart); err != nil {
+		return store.TaskLookupError(id, err)
+	}
+	if targetStart.Valid {
+		return fmt.Errorf("%w: task %d is already active", store.ErrInvalidTask, id)
 	}
 
 	var activeID int64
 	var activeStart time.Time
-	taskFound := false
-
-	for rows.Next() {
-		rows.Scan(&activeID, &activeStart)
-		taskFound = true
-		if activeID == id {
-			rows.Close()
-			return fmt.Errorf("task %d is already active", id)
-		}
+	err = tx.QueryRow("SELECT id, active_start FROM tasks WHERE active_start IS NOT NULL").Scan(&activeID, &activeStart)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
 	}
-	rows.Close()
 
 	now := time.Now()
-	if taskFound {
+	if err == nil {
 		elapsed := int64(now.Sub(activeStart).Seconds())
-		_, err = tx.Exec("UPDATE tasks SET active_start = NULL, time_spent = time_spent + ? WHERE id = ?", elapsed, activeID)
-		if err != nil {
+		if _, err := tx.Exec("UPDATE tasks SET active_start = NULL, time_spent = time_spent + ? WHERE id = ?", elapsed, activeID); err != nil {
 			return err
 		}
 	}
 
-	_, err = tx.Exec("UPDATE tasks SET active_start = ?, status = 'ongoing' WHERE id = ?", now, id)
-	if err != nil {
+	if _, err := tx.Exec("UPDATE tasks SET active_start = ?, status = 'ongoing' WHERE id = ?", now, id); err != nil {
 		return err
 	}
-
 	return tx.Commit()
 }
 
-func (s *SQLiteStore) StopTask(id int64) error {
-	// Logic from cmd/stop.go
+func (s *SQLiteStore) StopTask(target *int64) error {
 	tx, err := s.beginWriter()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	query := "SELECT id, active_start FROM tasks WHERE active_start IS NOT NULL"
-	rows, err := tx.Query(query)
-	if err != nil {
-		return err
-	}
-
-	var activeID int64
-	var activeStart time.Time
-	found := false
-
-	for rows.Next() {
-		rows.Scan(&activeID, &activeStart)
-		if id != -1 && activeID != id {
-			continue
+	var activeStart sql.NullTime
+	var id int64
+	if target == nil {
+		err = tx.QueryRow("SELECT id, active_start FROM tasks WHERE active_start IS NOT NULL").Scan(&id, &activeStart)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: no active task to stop", store.ErrInvalidTask)
 		}
-		found = true
-		break
+	} else {
+		id = *target
+		err = tx.QueryRow("SELECT active_start FROM tasks WHERE id = ?", id).Scan(&activeStart)
 	}
-	rows.Close()
-
-	if !found {
-		return fmt.Errorf("no active task found")
-	}
-
-	now := time.Now()
-	elapsed := int64(now.Sub(activeStart).Seconds())
-
-	_, err = tx.Exec("UPDATE tasks SET active_start = NULL, time_spent = time_spent + ? WHERE id = ?", elapsed, activeID)
 	if err != nil {
+		return store.TaskLookupError(id, err)
+	}
+	if !activeStart.Valid {
+		return fmt.Errorf("%w: task %d is not active", store.ErrInvalidTask, id)
+	}
+
+	elapsed := int64(time.Since(activeStart.Time).Seconds())
+	if _, err := tx.Exec("UPDATE tasks SET active_start = NULL, time_spent = time_spent + ? WHERE id = ?", elapsed, id); err != nil {
 		return err
 	}
-
 	return tx.Commit()
 }
 
@@ -833,18 +901,68 @@ func (s *SQLiteStore) GetActiveTask() (*models.Task, error) {
 	return &t, nil
 }
 
-func (s *SQLiteStore) AddDependency(blockerID, blockedID int64) error {
-	if blockerID == blockedID {
-		return fmt.Errorf("%w: a task cannot block itself", store.ErrInvalidDependency)
+func addTaskLinks(tx *writerTx, ids []int64, links store.TaskLinks) (int, error) {
+	added := 0
+	for _, id := range ids {
+		for _, blocker := range links.DependsOn {
+			n, err := insertDependency(tx, blocker, id)
+			if err != nil {
+				return 0, err
+			}
+			added += n
+		}
+		for _, blocked := range links.Blocks {
+			n, err := insertDependency(tx, id, blocked)
+			if err != nil {
+				return 0, err
+			}
+			added += n
+		}
 	}
+	return added, nil
+}
+
+func (s *SQLiteStore) AddDependency(blockerID, blockedID int64) error {
 	tx, err := s.beginWriter()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	// Check and insert in one write statement so concurrent callers cannot both
-	// pass validation and then create a cycle. UNION terminates on legacy cycles.
-	query := `
+	added, err := insertDependency(tx, blockerID, blockedID)
+	if err != nil {
+		return err
+	}
+	if added == 0 {
+		return fmt.Errorf("%w: task %d already blocks task %d", store.ErrInvalidDependency, blockerID, blockedID)
+	}
+	return tx.Commit()
+}
+
+func requireTask(q taskQueries, id int64) error {
+	var found int64
+	err := q.QueryRow("SELECT id FROM tasks WHERE id = ?", id).Scan(&found)
+	return store.TaskLookupError(id, err)
+}
+
+func insertDependency(tx *writerTx, blockerID, blockedID int64) (int, error) {
+	for _, id := range []int64{blockerID, blockedID} {
+		if err := requireTask(tx, id); err != nil {
+			return 0, err
+		}
+	}
+	if blockerID == blockedID {
+		return 0, fmt.Errorf("%w: a task cannot block itself", store.ErrInvalidDependency)
+	}
+	var exists bool
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM task_dependencies
+		WHERE blocker_id = ? AND blocked_id = ?)`, blockerID, blockedID).Scan(&exists); err != nil {
+		return 0, err
+	}
+	if exists {
+		return 0, nil
+	}
+	// The writer lock covers validation and insertion. UNION terminates on legacy cycles.
+	result, err := tx.Exec(`
 		WITH RECURSIVE descendants(id) AS (
 			SELECT ?
 			UNION
@@ -853,35 +971,31 @@ func (s *SQLiteStore) AddDependency(blockerID, blockedID int64) error {
 		)
 		INSERT INTO task_dependencies (blocker_id, blocked_id)
 		SELECT ?, ?
-		WHERE EXISTS (SELECT 1 FROM tasks WHERE id = ?)
-		  AND EXISTS (SELECT 1 FROM tasks WHERE id = ?)
-		  AND NOT EXISTS (SELECT 1 FROM descendants WHERE id = ?)
-	`
-	result, err := tx.Exec(query, blockedID, blockerID, blockedID, blockerID, blockedID, blockerID)
+		WHERE NOT EXISTS (SELECT 1 FROM descendants WHERE id = ?)
+	`, blockedID, blockerID, blockedID, blockerID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	inserted, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if inserted == 0 {
-		return fmt.Errorf("%w: both tasks must exist and the link must not create a cycle", store.ErrInvalidDependency)
+		return 0, fmt.Errorf("%w: link %d -> %d would create a cycle", store.ErrInvalidDependency, blockerID, blockedID)
 	}
-	return tx.Commit()
+	return int(inserted), nil
 }
 
-// RemoveDependency drops one blocker -> blocked edge. The primary key makes it
-// exact, and a missing edge is not an error: callers that need to report whether
-// anything was there check GetDependencies first.
 func (s *SQLiteStore) RemoveDependency(blockerID, blockedID int64) error {
 	tx, err := s.beginWriter()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	query := `DELETE FROM task_dependencies WHERE blocker_id = ? AND blocked_id = ?`
-	_, err = tx.Exec(query, blockerID, blockedID)
+	err = requireUpdatedRow(tx.Exec(`DELETE FROM task_dependencies WHERE blocker_id = ? AND blocked_id = ?`, blockerID, blockedID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("no dependency from task %d to task %d: %w", blockerID, blockedID, err)
+	}
 	if err != nil {
 		return err
 	}

@@ -14,6 +14,12 @@ type mockStore struct{ store.Store }
 func (m *mockStore) CreateTask(t models.Task) (int64, error) { return 0, nil }
 func (m *mockStore) GetTask(id int64) (models.Task, error)   { return models.Task{}, nil }
 func (m *mockStore) UpdateTask(t models.Task) error          { return nil }
+func (m *mockStore) CreateTaskWithLinks(t models.Task, links store.TaskLinks) (int64, int, error) {
+	return 0, 0, nil
+}
+func (m *mockStore) BatchUpdateTasksWithLinks(ids []int64, updates map[string]any, links store.TaskLinks) (int, error) {
+	return 0, nil
+}
 func (m *mockStore) UpdateTaskDescription(id int64, expected, description string) error {
 	return nil
 }
@@ -30,7 +36,7 @@ func (m *mockStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) {
 }
 func (m *mockStore) MarkDone(id int64) error                                            { return nil }
 func (m *mockStore) StartTask(id int64) error                                           { return nil }
-func (m *mockStore) StopTask(id int64) error                                            { return nil }
+func (m *mockStore) StopTask(id *int64) error                                           { return nil }
 func (m *mockStore) BatchUpdateTasks(ids []int64, updates map[string]interface{}) error { return nil }
 func (m *mockStore) GetActiveTask() (*models.Task, error)                               { return nil, nil }
 func (m *mockStore) AddDependency(blockerID, blockedID int64) error                     { return nil }

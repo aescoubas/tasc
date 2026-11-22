@@ -18,20 +18,6 @@ var startCmd = &cobra.Command{
 			return fmt.Errorf("invalid task ID: %s", args[0])
 		}
 
-		// Check the target before stopping an existing timer.
-		_, err = CurrentStore.GetTask(id)
-		if err != nil {
-			return fmt.Errorf("cannot start task %d: %w", id, err)
-		}
-		active, err := CurrentStore.GetActiveTask()
-		if err != nil {
-			return fmt.Errorf("error checking active task: %w", err)
-		}
-		if active != nil && active.ID == id {
-			fmt.Printf("Task %d is already active.\n", id)
-			return nil
-		}
-
 		if err := CurrentStore.StartTask(id); err != nil {
 			return fmt.Errorf("error starting task %d: %w", id, err)
 		}

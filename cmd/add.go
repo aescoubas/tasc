@@ -24,7 +24,7 @@ var addCmd = &cobra.Command{
 	Use:   "add [title]",
 	Short: "Add a new task",
 	Args:  cobra.MinimumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.LoadConfig()
 		if err != nil {
 			cfg = config.DefaultConfig()
@@ -32,16 +32,10 @@ var addCmd = &cobra.Command{
 
 		dependencySelection, err := buildDependencySelection(dependsOn, blocks)
 		if err != nil {
-			fmt.Printf("Invalid dependency list: %v\n", err)
-			return
+			return fmt.Errorf("invalid dependency list: %w", err)
 		}
 		if err := dependencySelection.validate(nil); err != nil {
-			fmt.Printf("Invalid dependencies: %v\n", err)
-			return
-		}
-		if err := ensureTasksExist(dependencySelection.referencedIDs()); err != nil {
-			fmt.Printf("Invalid dependencies: %v\n", err)
-			return
+			return fmt.Errorf("invalid dependencies: %w", err)
 		}
 
 		title := strings.Join(args, " ")
@@ -50,8 +44,7 @@ var addCmd = &cobra.Command{
 		if due != "" {
 			t, err := parse.Date(due, cfg.EndOfDay)
 			if err != nil {
-				fmt.Printf("Invalid due date format: %v\n", err)
-				return
+				return fmt.Errorf("invalid due date format: %w", err)
 			}
 			dueAt = t
 		}
@@ -106,22 +99,16 @@ var addCmd = &cobra.Command{
 			Recurrence:    recurrenceFlag,
 		}
 
-		id, err := CurrentStore.CreateTask(task)
+		id, linksAdded, err := CurrentStore.CreateTaskWithLinks(task, dependencySelection.links())
 		if err != nil {
-			fmt.Printf("Error creating task: %v\n", err)
-			return
-		}
-
-		linksAdded, err := addDependencyLinks([]int64{id}, dependencySelection)
-		if err != nil {
-			fmt.Printf("Created task %d, but failed to add dependencies: %v\n", id, err)
-			return
+			return fmt.Errorf("error creating task: %w", err)
 		}
 
 		fmt.Printf("Created task %d.\n", id)
 		if linksAdded > 0 {
 			fmt.Printf("Added %d dependency link(s).\n", linksAdded)
 		}
+		return nil
 	},
 }
 

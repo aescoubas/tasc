@@ -132,7 +132,7 @@ func TestRemoteStopRespectsRequestedID(t *testing.T) {
 	srv := httptest.NewServer(NewServer(st))
 	defer srv.Close()
 	client := remote.NewClient(srv.URL)
-	if err := client.StopTask(second); err == nil {
+	if err := client.StopTask(&second); err == nil {
 		t.Fatal("stopping an inactive ID must fail")
 	}
 	for _, id := range []string{"not-an-id", ""} {
@@ -149,13 +149,13 @@ func TestRemoteStopRespectsRequestedID(t *testing.T) {
 	if err != nil || active == nil || active.ID != first {
 		t.Fatalf("unsuccessful stops changed the active timer: %+v, %v", active, err)
 	}
-	if err := client.StopTask(first); err != nil {
+	if err := client.StopTask(&first); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.StartTask(first); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.StopTask(-1); err != nil {
+	if err := client.StopTask(nil); err != nil {
 		t.Fatal(err)
 	}
 	active, err = st.GetActiveTask()
@@ -317,15 +317,16 @@ func TestServer_DependencyValidation(t *testing.T) {
 	for _, tt := range []struct {
 		name string
 		body string
+		want int
 	}{
-		{"self", `{"blocker_id":2,"blocked_id":2}`},
-		{"missing blocker task", `{"blocker_id":9999,"blocked_id":2}`},
-		{"missing dependent task", `{"blocker_id":2,"blocked_id":9999}`},
-		{"direct cycle", `{"blocker_id":2,"blocked_id":0}`},
-		{"indirect cycle", `{"blocker_id":3,"blocked_id":0}`},
-		{"missing blocker field", `{"blocked_id":4}`},
-		{"missing dependent field", `{"blocker_id":4}`},
-		{"null blocker field", `{"blocker_id":null,"blocked_id":4}`},
+		{"self", `{"blocker_id":2,"blocked_id":2}`, http.StatusBadRequest},
+		{"missing blocker task", `{"blocker_id":9999,"blocked_id":2}`, http.StatusNotFound},
+		{"missing dependent task", `{"blocker_id":2,"blocked_id":9999}`, http.StatusNotFound},
+		{"direct cycle", `{"blocker_id":2,"blocked_id":0}`, http.StatusBadRequest},
+		{"indirect cycle", `{"blocker_id":3,"blocked_id":0}`, http.StatusBadRequest},
+		{"missing blocker field", `{"blocked_id":4}`, http.StatusBadRequest},
+		{"missing dependent field", `{"blocker_id":4}`, http.StatusBadRequest},
+		{"null blocker field", `{"blocker_id":null,"blocked_id":4}`, http.StatusBadRequest},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			response, err := srv.Client().Post(srv.URL+"/dependencies", "application/json", bytes.NewBufferString(tt.body))
@@ -333,8 +334,8 @@ func TestServer_DependencyValidation(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer response.Body.Close()
-			if response.StatusCode != http.StatusBadRequest {
-				t.Fatalf("invalid dependency returned HTTP %d, want 400", response.StatusCode)
+			if response.StatusCode != tt.want {
+				t.Fatalf("invalid dependency returned HTTP %d, want %d", response.StatusCode, tt.want)
 			}
 			deps, err := st.GetDependencies()
 			if err != nil || len(deps) != 2 {

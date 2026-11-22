@@ -152,10 +152,8 @@ func TestServeBinaryAuthenticatedRemoteCLI(t *testing.T) {
 		output, err := cmd.CombinedOutput()
 		return string(output), err
 	}
-	// Existing list uses a printing Run handler (1455 tracks its exit status).
-	// Assert actual HTTP denial, rather than mistaking that exit status for access.
-	if out, _ := run("", "list"); !strings.Contains(out, "401 Unauthorized") {
-		t.Fatalf("anonymous CLI did not report denial: %s", out)
+	if out, err := run("", "list"); err == nil || !strings.Contains(out, "401 Unauthorized") {
+		t.Fatalf("anonymous CLI must exit nonzero and report denial: %v %s", err, out)
 	}
 	if out, err := run(tokenPath, "add", "Credential integration task"); err != nil {
 		t.Fatalf("authenticated create: %v %s", err, out)

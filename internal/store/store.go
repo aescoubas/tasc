@@ -1,12 +1,40 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
+	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/aescoubas/tasc/internal/models"
 )
+
+var ErrInvalidTask = errors.New("invalid task")
+
+func ValidateTaskTitle(title string) error {
+	if strings.TrimSpace(title) == "" {
+		return fmt.Errorf("%w: title must not be blank", ErrInvalidTask)
+	}
+	return nil
+}
+
+func ValidateTaskStatus(status models.TaskStatus) error {
+	switch status {
+	case models.StatusBacklog, models.StatusOngoing, models.StatusDone, models.StatusBlocked, models.StatusUndefined, models.StatusDeleted:
+		return nil
+	default:
+		return fmt.Errorf("%w: unknown status %q", ErrInvalidTask, status)
+	}
+}
+
+func TaskLookupError(id int64, err error) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("task %d not found: %w", id, err)
+	}
+	return err
+}
 
 // ErrInvalidDependency identifies a link that would violate the task graph rules.
 var ErrInvalidDependency = errors.New("invalid dependency")
@@ -69,6 +97,16 @@ type TaskFilter struct {
 	ExcludeArchivedProjects bool
 }
 
+// TaskLinks describes edges to add for every task in the same write.
+type TaskLinks struct {
+	DependsOn []int64 `json:"depends_on,omitempty"`
+	Blocks    []int64 `json:"blocks,omitempty"`
+}
+
+func (l TaskLinks) Empty() bool {
+	return len(l.DependsOn) == 0 && len(l.Blocks) == 0
+}
+
 type Store interface {
 	// ForActor binds task mutations to a run, or GuestActor for an unclaimed agent.
 	// The default store belongs to the human operator.
@@ -78,6 +116,7 @@ type Store interface {
 
 	// Tasks
 	CreateTask(t models.Task) (int64, error)
+	CreateTaskWithLinks(t models.Task, links TaskLinks) (id int64, added int, err error)
 	LogTask(t models.Task) (int64, error)
 	GetTask(id int64) (models.Task, error)
 	// UpdateTask preserves user priority. Use BatchUpdateTasks for explicit priority edits.
@@ -92,9 +131,11 @@ type Store interface {
 	MarkDone(id int64) error
 	MarkVague(id int64) error
 	StartTask(id int64) error
-	StopTask(id int64) error
+	// A nil ID stops the active timer. Any explicit ID, including -1, is a target.
+	StopTask(id *int64) error
 	// Setting status to done uses the same completion rules, atomically for all IDs.
 	BatchUpdateTasks(ids []int64, updates map[string]interface{}) error
+	BatchUpdateTasksWithLinks(ids []int64, updates map[string]any, links TaskLinks) (added int, err error)
 	GetActiveTask() (*models.Task, error)
 
 	// Dependencies

@@ -70,9 +70,10 @@ Blocking relationships, as a graph.
 - **`blocker_id`**, **`blocked_id`**: FKs to `tasks.id`; composite primary key.
 
 `Store.AddDependency` requires existing, distinct tasks and rejects direct and indirect
-cycles. SQLite validates and inserts in one atomic write statement, including across
-connections. REST returns HTTP 400 for validation failures; the remote client preserves
-`store.ErrInvalidDependency` for callers.
+cycles. SQLite holds the writer lock through validation and insertion. Removing an
+absent directed edge returns `sql.ErrNoRows`. CLI task creation and modification can
+add several edges in the same transaction as the task and project changes. A missing
+task, a cycle or a failed write rolls back the full operation.
 
 ### `undo_actions`, `undo_entries`, `undo_context`
 Added by migration 6. An `undo_actions` row is one user command; `undo_entries` holds
@@ -102,3 +103,10 @@ projects and search.
   REST API, selected when `TASC_REMOTE` is set.
 
 Both must implement any new operation, or the remote backend loses it silently.
+
+Task creation, logging and title edits require a nonblank title. Batch edits validate
+the fields and values and resolve every distinct ID inside the write transaction.
+Missing targets return an error matching `sql.ErrNoRows`. Invalid task input returns
+`store.ErrInvalidTask` or a specific validation error for completion, priority or
+dependencies. IDs are signed integers because renumbering assigns zero to open tasks
+and negative IDs to historical tasks. An omitted stop target is represented separately.

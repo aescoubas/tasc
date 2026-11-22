@@ -45,11 +45,10 @@ var (
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List pending tasks",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		outputFormat, err := validateOutputFormat(listOutput)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			return
+			return err
 		}
 
 		cfg, err := config.LoadConfig()
@@ -73,17 +72,17 @@ var listCmd = &cobra.Command{
 		projectParent := make(map[string]string)
 		projectShortName := make(map[string]string)
 		projectChildren := make(map[string][]string)
-		var allProjects []models.Project
-		if projects, err := CurrentStore.ListProjects(); err == nil {
-			allProjects = projects
-			for _, p := range allProjects {
-				if p.ShortName != "" {
-					projectShortName[p.Name] = p.ShortName
-				}
-				if p.Parent != "" {
-					projectParent[p.Name] = p.Parent
-					projectChildren[p.Parent] = append(projectChildren[p.Parent], p.Name)
-				}
+		allProjects, err := CurrentStore.ListProjects()
+		if err != nil {
+			return fmt.Errorf("error querying projects: %w", err)
+		}
+		for _, p := range allProjects {
+			if p.ShortName != "" {
+				projectShortName[p.Name] = p.ShortName
+			}
+			if p.Parent != "" {
+				projectParent[p.Name] = p.Parent
+				projectChildren[p.Parent] = append(projectChildren[p.Parent], p.Name)
 			}
 		}
 
@@ -120,22 +119,25 @@ var listCmd = &cobra.Command{
 
 		for _, s := range filterIDs {
 			id, err := strconv.ParseInt(s, 10, 64)
-			if err == nil {
-				filter.IDs = append(filter.IDs, id)
+			if err != nil {
+				return fmt.Errorf("invalid task ID filter %q: %w", s, err)
 			}
+			filter.IDs = append(filter.IDs, id)
 		}
 
 		if filterDueBefore != "" {
 			t, err := parse.Date(filterDueBefore, "")
-			if err == nil {
-				filter.DueBefore = t
+			if err != nil {
+				return fmt.Errorf("invalid due-before filter: %w", err)
 			}
+			filter.DueBefore = t
 		}
 		if filterDueAfter != "" {
 			t, err := parse.Date(filterDueAfter, "")
-			if err == nil {
-				filter.DueAfter = t
+			if err != nil {
+				return fmt.Errorf("invalid due-after filter: %w", err)
 			}
+			filter.DueAfter = t
 		}
 		if filterOverdue {
 			now := time.Now()
@@ -146,8 +148,7 @@ var listCmd = &cobra.Command{
 		// 1. Fetch tasks via Store
 		fetchedTasks, err := CurrentStore.ListTasks(filter)
 		if err != nil {
-			fmt.Printf("Error querying tasks: %v\n", err)
-			return
+			return fmt.Errorf("error querying tasks: %w", err)
 		}
 
 		// Apply Smart Auto-Schedule (Virtual Times)
@@ -320,11 +321,10 @@ var listCmd = &cobra.Command{
 
 			data, err := json.MarshalIndent(payload, "", "  ")
 			if err != nil {
-				fmt.Printf("Error encoding JSON output: %v\n", err)
-				return
+				return fmt.Errorf("error encoding JSON output: %w", err)
 			}
 			fmt.Println(string(data))
-			return
+			return nil
 		}
 
 		opts := ui.TableOptions{
@@ -334,6 +334,7 @@ var listCmd = &cobra.Command{
 		}
 
 		ui.RenderTaskTable(displayTasks, displayScores, cfg, allProjects, opts)
+		return nil
 	},
 }
 

@@ -34,7 +34,7 @@ func (s *SQLiteStore) completeTasks(ids []int64, updates map[string]interface{},
 		seen[id] = true
 		task, err := s.readTask(q, "WHERE tasks.id=?", id)
 		if err != nil {
-			return fmt.Errorf("task %d: %w", id, err)
+			return store.TaskLookupError(id, err)
 		}
 		if task.Status == models.StatusDeleted {
 			return fmt.Errorf("%w: task %d is deleted", store.ErrInvalidCompletion, id)

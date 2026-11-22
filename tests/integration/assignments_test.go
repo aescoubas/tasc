@@ -115,7 +115,7 @@ func TestAssignmentLifecycle(t *testing.T) {
 			if batch.RunID == competing.RunID || competing.Tasks[0].Result != "conflict" || competing.Tasks[0].Title != "Check results" || competing.Tasks[0].Assignment.RunID != batch.RunID || competing.Tasks[1].Result != "claimed" {
 				t.Fatalf("overlap: %+v", competing)
 			}
-			call(first, "tasc_update_task", map[string]any{"id": 1, "status": "ongoing"}, false)
+			call(first, "tasc_update_task", map[string]any{"id": 1, "description": "Working on it"}, false)
 			call(second, "tasc_batch_update_tasks", map[string]any{"ids": "5,1", "status": "done"}, true)
 			if task, err := st.GetTask(5); err != nil || task.Status != models.StatusBacklog {
 				t.Fatalf("partial batch: %+v %v", task, err)

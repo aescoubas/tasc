@@ -23,7 +23,7 @@ var rescheduleCmd = &cobra.Command{
 		// Completion for the date part
 		return dateCompletionFunc(cmd, args, toComplete)
 	},
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.LoadConfig()
 		if err != nil {
 			cfg = config.DefaultConfig()
@@ -31,22 +31,19 @@ var rescheduleCmd = &cobra.Command{
 
 		id, err := strconv.Atoi(args[0])
 		if err != nil {
-			fmt.Println("Invalid task ID")
-			return
+			return fmt.Errorf("invalid task ID")
 		}
 
 		dateStr := strings.Join(args[1:], " ")
 		newDate, err := parse.Date(dateStr, cfg.EndOfDay)
 		if err != nil {
-			fmt.Printf("Invalid date format: %v\n", err)
-			return
+			return fmt.Errorf("invalid date format: %w", err)
 		}
 
 		// Fetch task
 		t, err := CurrentStore.GetTask(int64(id))
 		if err != nil {
-			fmt.Printf("Task %d not found.\n", id)
-			return
+			return fmt.Errorf("fetch task %d: %w", id, err)
 		}
 
 		// Update DueAt
@@ -71,11 +68,11 @@ var rescheduleCmd = &cobra.Command{
 
 		err = CurrentStore.UpdateTask(t)
 		if err != nil {
-			fmt.Printf("Error updating task: %v\n", err)
-			return
+			return fmt.Errorf("error updating task: %w", err)
 		}
 
 		fmt.Printf("Rescheduled task %d from %s to %s\n", id, oldDate, newDate.Format("2006-01-02 15:04"))
+		return nil
 	},
 }
 

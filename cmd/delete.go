@@ -17,17 +17,13 @@ var deleteCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var ids []int64
 		for _, arg := range args {
-			id, err := strconv.Atoi(arg)
+			id, err := strconv.ParseInt(arg, 10, 64)
 			if err != nil {
-				fmt.Printf("Invalid task ID: %s\n", arg)
-				continue
+				return fmt.Errorf("invalid task ID: %q", arg)
 			}
-			ids = append(ids, int64(id))
+			ids = append(ids, id)
 		}
-
-		if len(ids) == 0 {
-			return nil
-		}
+		ids = uniqueInt64s(ids)
 
 		// Validation Loop
 		var approvedIDs []int64
@@ -35,7 +31,7 @@ var deleteCmd = &cobra.Command{
 
 		for _, id := range ids {
 			// If we already confirmed all, just add and continue
-			if confirmAll {
+			if confirmAll || deleteAutoApprove {
 				approvedIDs = append(approvedIDs, id)
 				continue
 			}
@@ -43,13 +39,7 @@ var deleteCmd = &cobra.Command{
 			// Fetch task to show title
 			t, err := CurrentStore.GetTask(id)
 			if err != nil {
-				fmt.Printf("Task %d not found or error fetching: %v. Skipping.\n", id, err)
-				continue
-			}
-
-			if deleteAutoApprove {
-				approvedIDs = append(approvedIDs, id)
-				continue
+				return fmt.Errorf("fetch task %d: %w", id, err)
 			}
 
 			res := AskConfirmation(fmt.Sprintf("Delete task %d '%s'?", t.ID, t.Title))

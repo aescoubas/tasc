@@ -112,7 +112,7 @@ func TestAddDependencyLinksAddsMissingAndSkipsExisting(t *testing.T) {
 		blocks:    []int64{blocked},
 	}
 
-	added, err := addDependencyLinks([]int64{target}, selection)
+	added, err := CurrentStore.BatchUpdateTasksWithLinks([]int64{target}, nil, selection.links())
 	if err != nil {
 		t.Fatalf("addDependencyLinks returned error: %v", err)
 	}
@@ -157,7 +157,9 @@ func TestAddCommandCreatesDependencies(t *testing.T) {
 	dependsOn = []string{strconv.FormatInt(blocker, 10)}
 	blocks = []string{strconv.FormatInt(blocked, 10)}
 
-	addCmd.Run(addCmd, []string{"New task"})
+	if err := addCmd.RunE(addCmd, []string{"New task"}); err != nil {
+		t.Fatal(err)
+	}
 
 	tasks, err := CurrentStore.ListTasks(store.TaskFilter{})
 	if err != nil {
@@ -206,7 +208,7 @@ func TestDepCommandAddsThroughTheStore(t *testing.T) {
 		t.Fatalf("create blocked: %v", err)
 	}
 
-	depCmd.Run(depCmd, []string{
+	depCmd.RunE(depCmd, []string{
 		strconv.FormatInt(blocker, 10),
 		strconv.FormatInt(blocked, 10),
 	})
@@ -223,7 +225,7 @@ func TestDepCommandAddsThroughTheStore(t *testing.T) {
 	}
 
 	// Repeating it is reported, not duplicated.
-	depCmd.Run(depCmd, []string{
+	depCmd.RunE(depCmd, []string{
 		strconv.FormatInt(blocker, 10),
 		strconv.FormatInt(blocked, 10),
 	})
@@ -250,7 +252,7 @@ func TestDepCommandRejectsUnknownAndCyclicEdges(t *testing.T) {
 
 	// foreign_keys is off, so this is the only thing standing between a typo and
 	// an edge pointing at a task that does not exist.
-	depCmd.Run(depCmd, []string{strconv.FormatInt(blocker, 10), "999999"})
+	depCmd.RunE(depCmd, []string{strconv.FormatInt(blocker, 10), "999999"})
 
 	deps, err := CurrentStore.GetDependencies()
 	if err != nil {
@@ -264,7 +266,7 @@ func TestDepCommandRejectsUnknownAndCyclicEdges(t *testing.T) {
 		t.Fatalf("add dependency: %v", err)
 	}
 
-	depCmd.Run(depCmd, []string{
+	depCmd.RunE(depCmd, []string{
 		strconv.FormatInt(blocked, 10),
 		strconv.FormatInt(blocker, 10),
 	})
@@ -304,7 +306,7 @@ func TestUndepCommandRemovesOnlyTheNamedEdge(t *testing.T) {
 		t.Fatalf("add dependency B: %v", err)
 	}
 
-	undepCmd.Run(undepCmd, []string{
+	undepCmd.RunE(undepCmd, []string{
 		strconv.FormatInt(blockerA, 10),
 		strconv.FormatInt(target, 10),
 	})
@@ -338,7 +340,7 @@ func TestUndepCommandLeavesAnAbsentEdgeAlone(t *testing.T) {
 	}
 
 	// Arguments the wrong way round: the stored edge must survive.
-	undepCmd.Run(undepCmd, []string{
+	undepCmd.RunE(undepCmd, []string{
 		strconv.FormatInt(blocked, 10),
 		strconv.FormatInt(blocker, 10),
 	})

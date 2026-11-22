@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,6 +33,19 @@ func (c *Client) CreateTask(t models.Task) (int64, error) {
 	return c.createTask("/tasks", t)
 }
 
+func (c *Client) CreateTaskWithLinks(t models.Task, links store.TaskLinks) (int64, int, error) {
+	if links.Empty() {
+		id, err := c.CreateTask(t)
+		return id, 0, err
+	}
+	var result struct {
+		ID    int64 `json:"id"`
+		Added int   `json:"links_added"`
+	}
+	err := c.postTaskWithLinks("/tasks/with-links", http.StatusCreated, map[string]any{"task": t, "links": links}, &result)
+	return result.ID, result.Added, err
+}
+
 func (c *Client) LogTask(t models.Task) (int64, error) {
 	return c.createTask("/tasks/log", t)
 }
@@ -49,7 +63,7 @@ func (c *Client) createTask(path string, t models.Task) (int64, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		return 0, fmt.Errorf("server error: %s", resp.Status)
+		return 0, taskResponseError(resp)
 	}
 
 	var created models.Task
@@ -66,15 +80,8 @@ func (c *Client) GetTask(id int64) (models.Task, error) {
 	}
 	defer resp.Body.Close()
 
-	// Report a missing task the way the sqlite backend does, so a caller can
-	// tell it apart from a transport or server failure without matching on
-	// message text.
-	if resp.StatusCode == http.StatusNotFound {
-		return models.Task{}, sql.ErrNoRows
-	}
-
 	if resp.StatusCode != http.StatusOK {
-		return models.Task{}, fmt.Errorf("server error: %s", resp.Status)
+		return models.Task{}, taskResponseError(resp)
 	}
 
 	var t models.Task
@@ -103,7 +110,7 @@ func (c *Client) UpdateTask(t models.Task) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return taskMutationError(resp)
+		return taskResponseError(resp)
 	}
 	return nil
 }
@@ -123,21 +130,10 @@ func (c *Client) UpdateTaskDescription(id int64, expected, description string) e
 		return err
 	}
 	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case http.StatusNoContent:
-		return nil
-	case http.StatusConflict:
-		body, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		if err != nil {
-			return err
-		}
-		if strings.TrimSpace(string(body)) == store.AssignmentConflict {
-			return fmt.Errorf("%s", store.AssignmentConflict)
-		}
-		return store.ErrTaskDescriptionConflict
-	default:
-		return fmt.Errorf("updating task description: server returned %s", resp.Status)
+	if resp.StatusCode != http.StatusNoContent {
+		return taskResponseError(resp)
 	}
+	return nil
 }
 
 func (c *Client) BatchUpdateTasks(ids []int64, updates map[string]interface{}) error {
@@ -169,9 +165,38 @@ func (c *Client) BatchUpdateTasks(ids []int64, updates map[string]interface{}) e
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return taskMutationError(resp)
+		return taskResponseError(resp)
 	}
 	return nil
+}
+
+func (c *Client) BatchUpdateTasksWithLinks(ids []int64, updates map[string]any, links store.TaskLinks) (int, error) {
+	if links.Empty() {
+		return 0, c.BatchUpdateTasks(ids, updates)
+	}
+	var result struct {
+		Added int `json:"links_added"`
+	}
+	err := c.postTaskWithLinks("/tasks/batch-update/with-links", http.StatusOK,
+		map[string]any{"ids": ids, "updates": updates, "links": links}, &result)
+	return result.Added, err
+}
+
+// Dedicated routes ensure older servers reject the entire operation.
+func (c *Client) postTaskWithLinks(path string, wantStatus int, body, result any) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	resp, err := c.http.Post(c.baseURL+path, "application/json", bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != wantStatus {
+		return taskResponseError(resp)
+	}
+	return json.NewDecoder(resp.Body).Decode(result)
 }
 
 func (c *Client) DeleteTask(id int64) error {
@@ -187,7 +212,7 @@ func (c *Client) DeleteTask(id int64) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server error: %s", resp.Status)
+		return taskResponseError(resp)
 	}
 	return nil
 }
@@ -237,7 +262,7 @@ func (c *Client) ListTasks(filter store.TaskFilter) ([]models.Task, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("server error: %s", resp.Status)
+		return nil, taskResponseError(resp)
 	}
 
 	var tasks []models.Task
@@ -254,7 +279,7 @@ func (c *Client) MarkDone(id int64) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return taskMutationError(resp)
+		return taskResponseError(resp)
 	}
 	return nil
 }
@@ -266,12 +291,12 @@ func (c *Client) MarkVague(id int64) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return taskMutationError(resp)
+		return taskResponseError(resp)
 	}
 	return nil
 }
 
-func taskMutationError(resp *http.Response) error {
+func taskResponseError(resp *http.Response) error {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {
 		return fmt.Errorf("server error: %s (reading error: %w)", resp.Status, err)
@@ -279,12 +304,26 @@ func taskMutationError(resp *http.Response) error {
 	message := strings.TrimSpace(string(body))
 	switch resp.StatusCode {
 	case http.StatusNotFound:
-		return fmt.Errorf("%w: %s", sql.ErrNoRows, message)
+		return fmt.Errorf("%s: %w", strings.TrimSuffix(message, ": "+sql.ErrNoRows.Error()), sql.ErrNoRows)
 	case http.StatusBadRequest:
-		return fmt.Errorf("%w: %s", store.ErrInvalidCompletion, message)
-	default:
-		return fmt.Errorf("server error: %s: %s", resp.Status, message)
+		for _, category := range []error{store.ErrInvalidCompletion, store.ErrInvalidUserPriority, store.ErrInvalidDependency, store.ErrInvalidTask} {
+			if message == category.Error() {
+				return category
+			}
+			if detail, ok := strings.CutPrefix(message, category.Error()+": "); ok {
+				return fmt.Errorf("%w: %s", category, detail)
+			}
+		}
+		return fmt.Errorf("%w: %s", store.ErrInvalidTask, message)
+	case http.StatusConflict:
+		switch message {
+		case store.ErrTaskDescriptionConflict.Error():
+			return store.ErrTaskDescriptionConflict
+		case store.AssignmentConflict:
+			return errors.New(store.AssignmentConflict)
+		}
 	}
+	return fmt.Errorf("server error: %s: %s", resp.Status, message)
 }
 
 func (c *Client) StartTask(id int64) error {
@@ -294,15 +333,20 @@ func (c *Client) StartTask(id int64) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to start: %s", resp.Status)
+		return taskResponseError(resp)
 	}
 	return nil
 }
 
-func (c *Client) StopTask(id int64) error {
+func (c *Client) StopTask(id *int64) error {
 	endpoint := c.baseURL + "/tasks/stop"
-	if id != -1 {
-		endpoint += "?id=" + strconv.FormatInt(id, 10)
+	if id != nil {
+		if *id == -1 {
+			// Older servers treat ?id=-1 as an omitted target.
+			endpoint = c.baseURL + "/tasks/-1/stop"
+		} else {
+			endpoint += "?id=" + strconv.FormatInt(*id, 10)
+		}
 	}
 	resp, err := c.http.Post(endpoint, "application/json", nil)
 	if err != nil {
@@ -310,7 +354,7 @@ func (c *Client) StopTask(id int64) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to stop: %s", resp.Status)
+		return taskResponseError(resp)
 	}
 	return nil
 }
@@ -348,20 +392,8 @@ func (c *Client) AddDependency(blockerID, blockedID int64) error {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusBadRequest {
-		body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		if err != nil {
-			return fmt.Errorf("%w: read validation error: %v", store.ErrInvalidDependency, err)
-		}
-		message := strings.TrimSpace(string(body))
-		message = strings.TrimPrefix(message, store.ErrInvalidDependency.Error()+": ")
-		if message == "" {
-			return store.ErrInvalidDependency
-		}
-		return fmt.Errorf("%w: %s", store.ErrInvalidDependency, message)
-	}
 	if resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("failed: %s", resp.Status)
+		return taskResponseError(resp)
 	}
 	return nil
 }
@@ -379,7 +411,7 @@ func (c *Client) RemoveDependency(blockerID, blockedID int64) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server error: %s", resp.Status)
+		return taskResponseError(resp)
 	}
 	return nil
 }
@@ -390,6 +422,9 @@ func (c *Client) GetDependencies() ([]models.TaskDependency, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, taskResponseError(resp)
+	}
 
 	var deps []models.TaskDependency
 	if err := json.NewDecoder(resp.Body).Decode(&deps); err != nil {
@@ -404,6 +439,9 @@ func (c *Client) ListProjects() ([]models.Project, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, taskResponseError(resp)
+	}
 
 	var projects []models.Project
 	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {

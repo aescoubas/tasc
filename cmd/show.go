@@ -28,36 +28,31 @@ var showCmd = &cobra.Command{
 	Use:   "show [id]",
 	Short: "Show detailed information for a task",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		outputFormat, err := validateOutputFormat(showOutput)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			return
+			return err
 		}
 
 		cfg, _ := config.LoadConfig()
 
 		id, err := strconv.Atoi(args[0])
 		if err != nil {
-			fmt.Println("Invalid task ID")
-			return
+			return fmt.Errorf("invalid task ID")
 		}
 
 		// 1. Fetch Task
 		t, err := CurrentStore.GetTask(int64(id))
 		if errors.Is(err, sql.ErrNoRows) {
-			fmt.Printf("Task %d not found.\n", id)
-			return
+			return err
 		} else if err != nil {
-			fmt.Printf("Error fetching task: %v\n", err)
-			return
+			return fmt.Errorf("error fetching task: %w", err)
 		}
 
 		// 2. Fetch Dependencies
 		blockedBy, blocking, err := showNeighbours(int64(id))
 		if err != nil {
-			fmt.Printf("Error fetching dependencies: %v\n", err)
-			return
+			return fmt.Errorf("error fetching dependencies: %w", err)
 		}
 
 		totalDuration := t.TimeSpent
@@ -80,11 +75,10 @@ var showCmd = &cobra.Command{
 
 			data, err := json.MarshalIndent(payload, "", "  ")
 			if err != nil {
-				fmt.Printf("Error encoding JSON output: %v\n", err)
-				return
+				return fmt.Errorf("error encoding JSON output: %w", err)
 			}
 			fmt.Println(string(data))
-			return
+			return nil
 		}
 
 		// 3. Display
@@ -155,6 +149,7 @@ var showCmd = &cobra.Command{
 			}
 		}
 		fmt.Println()
+		return nil
 	},
 }
 
