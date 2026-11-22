@@ -17,6 +17,7 @@ type TableOptions struct {
 	ShowAll       bool // If true, do not truncate to screen height
 	MarkRecurring bool
 	ShowPriority  bool
+	Unscheduled   map[int64]string
 }
 
 // RenderTaskTable prints a formatted table of tasks to stdout.
@@ -65,7 +66,9 @@ func RenderTaskTable(tasks []models.Task, scores map[int64]float64, cfg config.C
 
 		dueStr := "-"
 		if t.DueAt != nil {
-			if cfg.RelativeDates {
+			if reason := opts.Unscheduled[t.ID]; reason != "" {
+				dueStr = FormatDate(*t.DueAt, cfg) + " (" + reason + ")"
+			} else if cfg.RelativeDates {
 				dueStr = FormatRelative(*t.DueAt)
 			} else {
 				dueStr = FormatDate(*t.DueAt, cfg)

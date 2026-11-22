@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"strings"
 	"time"
@@ -158,10 +159,11 @@ func (s *SQLiteStore) CreateTaskWithLinks(t models.Task, links store.TaskLinks) 
 	if err := ensureProjectExists(tx, t.Project); err != nil {
 		return 0, 0, err
 	}
+	precision := duePrecision(t.DueAt, t.DueDateOnly, models.Task{})
 	result, err := tx.Exec(`INSERT INTO tasks
-		(title, description, project, due_at, schedule_block, estimate, recurrence, user_priority, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-		t.Title, t.Description, t.Project, t.DueAt, t.ScheduleBlock, t.Estimate, t.Recurrence, t.UserPriority)
+		(title, description, project, due_at, due_date_only, schedule_block, estimate, recurrence, user_priority, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+		t.Title, t.Description, t.Project, t.DueAt, precision, t.ScheduleBlock, t.Estimate, t.Recurrence, t.UserPriority)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -241,14 +243,14 @@ func (s *SQLiteStore) readTask(q taskQueries, selection string, args ...any) (mo
 
 	query := `SELECT 
 		tasks.id, title, description, project, status, created_at,
-		completed_at, due_at, schedule_block, estimate, 
+		completed_at, due_at, due_date_only, schedule_block, estimate,
 		recurrence, active_start, time_spent, reschedule_count, user_priority
 	` + assignmentColumns + "FROM tasks" + assignmentJoin + selection
 
 	row := q.QueryRow(query, args...)
 	a, err := scanAssignment(row, s.clock, &leaseTime{},
 		&t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt,
-		&completedAt, &dueAt, &scheduleBlock, &estimate,
+		&completedAt, &dueAt, &t.DueDateOnly, &scheduleBlock, &estimate,
 		&recurrence, &activeStart, &timeSpent, &t.RescheduleCount, &t.UserPriority,
 	)
 
@@ -288,18 +290,16 @@ func (s *SQLiteStore) UpdateTask(t models.Task) error {
 	if t.Status == models.StatusDone {
 		return s.completeTasks([]int64{t.ID}, map[string]interface{}{
 			"title": t.Title, "description": t.Description, "project": t.Project,
-			"due_at": t.DueAt, "schedule_block": t.ScheduleBlock, "estimate": t.Estimate,
+			"schedule_block": t.ScheduleBlock, "estimate": t.Estimate,
 			"recurrence": t.Recurrence, "reschedule_count": t.RescheduleCount,
-		}, true)
+		}, &t)
 	}
 	tx, err := s.beginWriter()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	// Fetch old project
-	var oldProject sql.NullString
-	err = tx.QueryRow("SELECT project FROM tasks WHERE id = ?", t.ID).Scan(&oldProject)
+	old, err := s.readTask(tx, "WHERE tasks.id=?", t.ID)
 	if err != nil {
 		return store.TaskLookupError(t.ID, err)
 	}
@@ -308,14 +308,14 @@ func (s *SQLiteStore) UpdateTask(t models.Task) error {
 		return err
 	}
 
-	query := `UPDATE tasks SET title = ?, description = ?, project = ?, status = ?, due_at = ?, schedule_block = ?, estimate = ?, recurrence = ?, reschedule_count = ? WHERE id = ?`
-	_, err = tx.Exec(query, t.Title, t.Description, t.Project, t.Status, t.DueAt, t.ScheduleBlock, t.Estimate, t.Recurrence, t.RescheduleCount, t.ID)
+	query := `UPDATE tasks SET title = ?, description = ?, project = ?, status = ?, due_at = ?, due_date_only = ?, schedule_block = ?, estimate = ?, recurrence = ?, reschedule_count = ? WHERE id = ?`
+	_, err = tx.Exec(query, t.Title, t.Description, t.Project, t.Status, t.DueAt, duePrecision(t.DueAt, t.DueDateOnly, old), t.ScheduleBlock, t.Estimate, t.Recurrence, t.RescheduleCount, t.ID)
 	if err != nil {
 		return err
 	}
 
-	if oldProject.Valid && oldProject.String != t.Project {
-		if err := checkProjectCompletion(tx, oldProject.String); err != nil {
+	if old.Project != t.Project {
+		if err := checkProjectCompletion(tx, old.Project); err != nil {
 			return err
 		}
 	}
@@ -324,6 +324,21 @@ func (s *SQLiteStore) UpdateTask(t models.Task) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// Full task edits from clients without provenance preserve an unchanged due
+// date's precision. A new timestamp without provenance is an explicit time.
+func duePrecision(due *time.Time, explicit *bool, old models.Task) *bool {
+	if due == nil {
+		return nil
+	}
+	if explicit != nil {
+		return explicit
+	}
+	if old.DueAt != nil && due.Equal(*old.DueAt) {
+		return old.DueDateOnly
+	}
+	return new(bool)
 }
 
 func (s *SQLiteStore) UpdateTaskDescription(id int64, expected, description string) error {
@@ -386,6 +401,13 @@ func validateBatchUpdates(updates map[string]any) error {
 			default:
 				return fmt.Errorf("%w: %s must be a timestamp or null", store.ErrInvalidTask, field)
 			}
+		case "due_date_only":
+			if due := updates["due_at"]; due == nil || due == (*time.Time)(nil) {
+				return fmt.Errorf("%w: due_date_only requires due_at", store.ErrInvalidTask)
+			}
+			if _, ok := value.(bool); !ok {
+				return fmt.Errorf("%w: due_date_only requires a boolean and a due_at timestamp", store.ErrInvalidTask)
+			}
 		case "user_priority":
 			if err := store.ValidateUserPriority(value); err != nil {
 				return err
@@ -416,6 +438,14 @@ func (s *SQLiteStore) BatchUpdateTasksWithLinks(ids []int64, updates map[string]
 	if err := validateBatchUpdates(updates); err != nil {
 		return 0, err
 	}
+	if due, changed := updates["due_at"]; changed {
+		updates = maps.Clone(updates)
+		if due == nil || due == (*time.Time)(nil) {
+			updates["due_date_only"] = nil
+		} else if _, given := updates["due_date_only"]; !given {
+			updates["due_date_only"] = false
+		}
+	}
 	status := fmt.Sprint(updates["status"])
 	_, keepSeries := updates["keep_series"]
 	if keepSeries && (len(ids) != 1 || status == "done" || (status != "deleted" && updates["recurrence"] != "")) {
@@ -428,7 +458,7 @@ func (s *SQLiteStore) BatchUpdateTasksWithLinks(ids []int64, updates map[string]
 		if _, ok := updates["completed_at"]; ok {
 			return 0, fmt.Errorf("%w: completion sets completed_at", store.ErrInvalidTask)
 		}
-		return 0, s.completeTasks(ids, updates, false)
+		return 0, s.completeTasks(ids, updates, nil)
 	}
 
 	tx, err := s.beginWriter()
@@ -544,7 +574,7 @@ func (s *SQLiteStore) DeleteTask(id int64) error {
 func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) {
 	baseQuery := `
 		SELECT 
-			tasks.id, title, description, project, status, created_at, completed_at, due_at, schedule_block, estimate, recurrence, active_start, time_spent, reschedule_count,
+			tasks.id, title, description, project, status, created_at, completed_at, due_at, due_date_only, schedule_block, estimate, recurrence, active_start, time_spent, reschedule_count,
 			user_priority, is_blocked` + assignmentColumns + `FROM (
 			SELECT tasks.*, status NOT IN ('done', 'deleted') AND EXISTS(
 				SELECT 1 FROM task_dependencies td
@@ -623,7 +653,7 @@ func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) 
 		var timeSpent sql.NullInt64
 		var isBlocked bool
 
-		a, err := scanAssignment(rows, s.clock, &stamp, &t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt, &completedAt, &dueAt, &scheduleBlock, &estimate, &recurrence, &activeStart, &timeSpent, &t.RescheduleCount, &t.UserPriority, &isBlocked)
+		a, err := scanAssignment(rows, s.clock, &stamp, &t.ID, &t.Title, &description, &project, &t.Status, &t.CreatedAt, &completedAt, &dueAt, &t.DueDateOnly, &scheduleBlock, &estimate, &recurrence, &activeStart, &timeSpent, &t.RescheduleCount, &t.UserPriority, &isBlocked)
 		if err != nil {
 			return nil, err
 		}
@@ -655,7 +685,7 @@ func (s *SQLiteStore) ListTasks(filter store.TaskFilter) ([]models.Task, error) 
 }
 
 func (s *SQLiteStore) MarkDone(id int64) error {
-	return s.completeTasks([]int64{id}, nil, false)
+	return s.completeTasks([]int64{id}, nil, nil)
 }
 
 func (s *SQLiteStore) StartTask(id int64) error {

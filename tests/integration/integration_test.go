@@ -83,8 +83,9 @@ func TestCompletionAcrossInterfaces(t *testing.T) {
 			}
 			st := sqlite.NewSQLiteStore(conn)
 			due := time.Date(2030, 1, 10, 9, 0, 0, 0, time.UTC)
+			dateOnly := true
 			id, err := st.CreateTask(models.Task{Title: "Interface completion", Description: "Preserve the body", Project: "InterfaceSeries",
-				DueAt: &due, ScheduleBlock: "morning", Estimate: "30m", Recurrence: "daily"})
+				DueAt: &due, DueDateOnly: &dateOnly, ScheduleBlock: "morning", Estimate: "30m", Recurrence: "daily"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -238,7 +239,8 @@ func TestCompletionAcrossInterfaces(t *testing.T) {
 			}
 			next, err := st.GetTask(nextID)
 			if err != nil || next.Recurrence != "daily" || next.ScheduleBlock != "morning" || next.Description != "Preserve the body" ||
-				next.Estimate != "30m" || next.Project != "InterfaceSeries" || next.DueAt == nil || !next.DueAt.Equal(due.AddDate(0, 0, 1)) || next.TimeSpent != 0 {
+				next.Estimate != "30m" || next.Project != "InterfaceSeries" || next.DueAt == nil ||
+				!next.DueAt.Equal(due.AddDate(0, 0, 1)) || next.DueDateOnly == nil || !*next.DueDateOnly || next.TimeSpent != 0 {
 				t.Fatalf("successor metadata: %+v, %v", next, err)
 			}
 		})
@@ -1874,5 +1876,122 @@ func TestDepRefusesEdgesThatCannotHold(t *testing.T) {
 	}
 	if got := countDependencies(t, dbPath); got != 1 {
 		t.Fatalf("task_dependencies has %d rows, want 1", got)
+	}
+}
+
+func TestScheduleBlockCapacityAcrossCLIViews(t *testing.T) {
+	t.Setenv("TASC_REMOTE", "")
+	dbPath := filepath.Join(t.TempDir(), "schedule.db")
+	day := time.Now().AddDate(0, 0, 1).Format(time.DateOnly)
+	mustRun := func(args ...string) string {
+		t.Helper()
+		output, err := runTasc(t, dbPath, args...)
+		if err != nil {
+			t.Fatalf("%v: %v\n%s", args, err, output)
+		}
+		return output
+	}
+	mustRun("add", "Fixed appointment", "--due", day+" 06:15", "--estimate", "30m", "--block", "morning")
+	mustRun("add", "Eight-hour overflow", "--due", day, "--estimate", "8h", "--block", "morning")
+	mustRun("add", "Backfill slot", "--due", "tomorrow", "--estimate", "15m", "--block", "morning")
+	mustRun("add", "Starts after appointment", "--due", day, "--estimate", "5h15m", "--block", "morning")
+	mustRun("add", "Missing block", "--due", day, "--block", "missing")
+	mustRun("add", "Explicit midnight", "--due", day+" 00:00", "--block", "morning")
+	mustRun("add", "Explicit end of day", "--due", day+" 20:00", "--block", "morning")
+	mustRun("add", "Unblocked deadline", "--due", day)
+
+	conn, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	midnight, err := time.ParseInLocation(time.DateOnly, day, time.Local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(`INSERT INTO tasks (title, due_at, schedule_block) VALUES
+		('Legacy midnight', ?, 'afternoon'), ('Legacy deadline', ?, 'morning')`, midnight, midnight.Add(20*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	type listedTask struct {
+		Task        models.Task `json:"task"`
+		Unscheduled string      `json:"unscheduled"`
+	}
+	list := func(args ...string) []listedTask {
+		t.Helper()
+		output := mustRun(append([]string{"list", "--output", "json", "--sort", "id"}, args...)...)
+		var records []listedTask
+		if err := json.Unmarshal([]byte(output), &records); err != nil {
+			t.Fatalf("decode list: %v\n%s", err, output)
+		}
+		return records
+	}
+	wantTimes := []string{"06:15", "20:00", "06:00", "06:45", "20:00", "00:00", "20:00", "20:00", "13:00", "20:00"}
+	wantReasons := map[int64]string{2: "no capacity", 5: "invalid time block"}
+	records := list()
+	if len(records) != len(wantTimes) {
+		t.Fatalf("list returned %d tasks, want %d", len(records), len(wantTimes))
+	}
+	for i, row := range records {
+		if row.Task.DueAt == nil || row.Task.DueAt.Format("15:04") != wantTimes[i] || row.Unscheduled != wantReasons[row.Task.ID] {
+			t.Errorf("task %d due=%v unscheduled=%q, want %s %q", row.Task.ID, row.Task.DueAt, row.Unscheduled,
+				wantTimes[i], wantReasons[row.Task.ID])
+		}
+	}
+	if rows := list("--id", "4"); len(rows) != 1 || rows[0].Task.DueAt.Format("15:04") != "06:45" {
+		t.Fatalf("filtered list changed the planned slot: %+v", rows)
+	}
+	grid, overflow, found := strings.Cut(mustRun("calendar", "--next", "--view", "day"), "Unscheduled tasks")
+	if !found || !strings.Contains(grid, "Explicit midnight") || strings.Contains(grid, "Eight-hour overflow") ||
+		!strings.Contains(overflow, "Eight-hour overflow (no capacity)") ||
+		!strings.Contains(overflow, "Missing block (invalid time block)") {
+		t.Fatalf("unexpected calendar overflow:\n%s%s", grid, overflow)
+	}
+	var stored time.Time
+	if err := conn.QueryRow("SELECT due_at FROM tasks WHERE id = 4").Scan(&stored); err != nil || stored.Format("15:04") != "20:00" {
+		t.Fatalf("scheduling wrote the planned slot: %v (%v)", stored, err)
+	}
+
+	mustRun("delete", "9", "--yes")
+	mustRun("modify", "8", "--block", "afternoon", "--yes")
+	if got := list("--id", "8")[0].Task.DueAt.Format("15:04"); got != "13:00" {
+		t.Fatalf("adding a block to a date-only task scheduled %s, want 13:00", got)
+	}
+	mustRun("modify", "8", "--due", day+" 20:00", "--yes")
+	if got := list("--id", "8")[0].Task.DueAt.Format("15:04"); got != "20:00" {
+		t.Fatalf("explicit end-of-day time moved to %s", got)
+	}
+	if output := mustRun("undo", "--yes"); !strings.Contains(output, "Undid action") {
+		t.Fatalf("undo failed: %s", output)
+	}
+	if got := list("--id", "8")[0].Task.DueAt.Format("15:04"); got != "13:00" {
+		t.Fatalf("undo did not restore date-only precision, got %s", got)
+	}
+	mustRun("reschedule", "8", day+" 00:00")
+	if got := list("--id", "8")[0].Task.DueAt.Format("15:04"); got != "00:00" {
+		t.Fatalf("explicit midnight moved to %s after reschedule", got)
+	}
+	mustRun("reschedule", "8", day)
+	if got := list("--id", "8")[0].Task.DueAt.Format("15:04"); got != "13:00" {
+		t.Fatalf("date-only reschedule did not float, got %s", got)
+	}
+	mustRun("modify", "8", "--due", "", "--yes")
+	if task := list("--id", "8")[0].Task; task.DueAt != nil || task.DueDateOnly != nil {
+		t.Fatalf("clearing a deadline left date or precision: %+v", task)
+	}
+
+	srv := httptest.NewServer(server.NewServer(sqlite.NewSQLiteStore(conn)))
+	defer srv.Close()
+	t.Setenv("TASC_REMOTE", srv.URL)
+	mustRun("add", "Remote midnight", "--due", day+" 00:00", "--block", "afternoon")
+	remote := list("--id", "11")[0].Task
+	if remote.DueDateOnly == nil || *remote.DueDateOnly || remote.DueAt.Format("15:04") != "00:00" {
+		t.Fatalf("remote add lost explicit time precision: %+v", remote)
+	}
+	mustRun("modify", "11", "--due", day, "--yes")
+	remote = list("--id", "11")[0].Task
+	if remote.DueDateOnly == nil || !*remote.DueDateOnly || remote.DueAt.Format("15:04") != "13:00" {
+		t.Fatalf("remote modify lost date-only precision: %+v", remote)
 	}
 }

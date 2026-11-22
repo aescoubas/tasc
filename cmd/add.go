@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/aescoubas/tasc/internal/config"
 	"github.com/aescoubas/tasc/internal/models"
@@ -40,30 +39,13 @@ var addCmd = &cobra.Command{
 
 		title := strings.Join(args, " ")
 
-		var dueAt *time.Time
-		if due != "" {
-			t, err := parse.Date(due, cfg.EndOfDay)
-			if err != nil {
-				return fmt.Errorf("invalid due date format: %w", err)
-			}
-			dueAt = t
+		dueInput := due
+		if dueInput == "" {
+			dueInput = "in 1 week"
 		}
-
-		// Defaulting Logic:
-		// 1. If due is not set, default to 1 week from today.
-		if dueAt == nil {
-			t, err := parse.Date("in 1 week", cfg.EndOfDay)
-			if err == nil {
-				dueAt = t
-			}
-		}
-
-		// Handle Block Default logic
-		if block == "" && dueAt != nil {
-			// If due is date-only (floating), default to morning.
-			if dueAt.Hour() == 0 && dueAt.Minute() == 0 {
-				block = "morning"
-			}
+		dueAt, dateOnly, err := parse.DateWithPrecision(dueInput, cfg.EndOfDay)
+		if err != nil {
+			return fmt.Errorf("invalid due date format: %w", err)
 		}
 
 		// Check project deadline
@@ -94,6 +76,7 @@ var addCmd = &cobra.Command{
 			Description:   description,
 			Project:       project,
 			DueAt:         dueAt,
+			DueDateOnly:   &dateOnly,
 			ScheduleBlock: block,
 			Estimate:      estimate,
 			Recurrence:    recurrenceFlag,

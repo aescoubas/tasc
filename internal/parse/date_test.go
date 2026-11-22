@@ -112,3 +112,28 @@ func TestDate(t *testing.T) {
 		})
 	}
 }
+
+func TestDateWithPrecision(t *testing.T) {
+	for _, tc := range []struct {
+		input, clock string
+		dateOnly     bool
+	}{
+		{"2030-05-03", "20:00", true},
+		{"tomorrow", "20:00", true},
+		{"2030-05-03 20:00", "20:00", false},
+		{"2030-05-03 00:00", "00:00", false},
+		{"2030-05-03T00:00:00Z", "00:00", false},
+		{"00:00", "00:00", false},
+		{"tomorrow at midnight", "00:00", false},
+		{"tomorrow at 12 AM", "00:00", false},
+		{"tomorrow at 12:30 PM", "12:30", false},
+		{"tomorrow at 7", "07:00", false},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			due, dateOnly, err := DateWithPrecision(tc.input, "20:00")
+			if err != nil || due.Format("15:04") != tc.clock || dateOnly != tc.dateOnly {
+				t.Fatalf("DateWithPrecision(%q) = %v, %t, %v", tc.input, due, dateOnly, err)
+			}
+		})
+	}
+}

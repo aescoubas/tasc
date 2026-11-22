@@ -9,7 +9,6 @@ import (
 
 	"github.com/aescoubas/tasc/internal/config"
 	"github.com/aescoubas/tasc/internal/models"
-	"github.com/aescoubas/tasc/internal/scheduling"
 	"github.com/aescoubas/tasc/internal/store"
 	"github.com/aescoubas/tasc/internal/ui"
 	"github.com/charmbracelet/lipgloss"
@@ -87,8 +86,19 @@ var calendarCmd = &cobra.Command{
 			return fmt.Errorf("error fetching tasks: %w", err)
 		}
 
-		// Apply Smart Auto-Schedule (Virtual Times)
-		tasks = scheduling.ApplyAutoSchedule(tasks, cfg.TimeBlocks)
+		unscheduled, err := scheduleVisibleTasks(tasks, cfg.TimeBlocks)
+		if err != nil {
+			return err
+		}
+		gridTasks := tasks
+		if (view == "day" || view == "week") && len(unscheduled) > 0 {
+			gridTasks = nil
+			for _, task := range tasks {
+				if unscheduled[task.ID] == "" {
+					gridTasks = append(gridTasks, task)
+				}
+			}
+		}
 
 		// Render
 		width, _, err := term.GetSize(int(os.Stdout.Fd()))
@@ -100,19 +110,27 @@ var calendarCmd = &cobra.Command{
 
 		switch view {
 		case "day":
-			renderTimeGrid([]time.Time{start}, tasks, width, cfg, now)
+			renderTimeGrid([]time.Time{start}, gridTasks, width, cfg, now)
 		case "week":
 			var days []time.Time
 			for i := 0; i < 7; i++ {
 				days = append(days, start.AddDate(0, 0, i))
 			}
-			renderTimeGrid(days, tasks, width, cfg, now)
+			renderTimeGrid(days, gridTasks, width, cfg, now)
 		case "month":
 			renderMonthView(tasks, start, width, cfg, now)
 		case "quarter":
 			renderQuarterView(tasks, start, width, cfg, now)
 		case "year":
 			renderYearView(tasks, start, width, cfg, now)
+		}
+		if (view == "day" || view == "week") && len(unscheduled) > 0 {
+			fmt.Println("Unscheduled tasks")
+			for _, task := range tasks {
+				if reason := unscheduled[task.ID]; reason != "" {
+					fmt.Printf("%s  %d  %s (%s)\n", ui.FormatDate(*task.DueAt, cfg), task.ID, task.Title, reason)
+				}
+			}
 		}
 		return nil
 	},
@@ -176,15 +194,9 @@ func renderTimeGrid(days []time.Time, tasks []models.Task, width int, cfg config
 			continue
 		}
 
-		// Bucket by Hour
+		// Expand the grid for early tasks or blocks.
 		h := d.Hour()
-		if h < startHour {
-			h = startHour
-		} // Clamp to view? or ignore? Clamp for visibility
-		if h > endHour {
-			h = endHour
-		}
-
+		startHour = min(startHour, h)
 		buckets[dayIdx][h] = append(buckets[dayIdx][h], t)
 	}
 
@@ -228,6 +240,9 @@ func renderTimeGrid(days []time.Time, tasks []models.Task, width int, cfg config
 		// Day Columns
 		for dIdx := range days {
 			ts := buckets[dIdx][h]
+			sort.SliceStable(ts, func(i, j int) bool {
+				return ts[i].DueAt.Before(*ts[j].DueAt)
+			})
 
 			var cellContent []string
 			if len(ts) > 0 {

@@ -12,7 +12,6 @@ import (
 	"github.com/aescoubas/tasc/internal/models"
 	"github.com/aescoubas/tasc/internal/parse"
 	"github.com/aescoubas/tasc/internal/priority"
-	"github.com/aescoubas/tasc/internal/scheduling"
 	"github.com/aescoubas/tasc/internal/store"
 	"github.com/aescoubas/tasc/internal/ui"
 	"github.com/spf13/cobra"
@@ -151,8 +150,10 @@ var listCmd = &cobra.Command{
 			return fmt.Errorf("error querying tasks: %w", err)
 		}
 
-		// Apply Smart Auto-Schedule (Virtual Times)
-		fetchedTasks = scheduling.ApplyAutoSchedule(fetchedTasks, cfg.TimeBlocks)
+		unscheduled, err := scheduleVisibleTasks(fetchedTasks, cfg.TimeBlocks)
+		if err != nil {
+			return err
+		}
 
 		var tasks []taskWithScore
 		calc := priority.NewCalculator()
@@ -308,14 +309,16 @@ var listCmd = &cobra.Command{
 
 		if outputFormat == OutputJSON {
 			type taskJSON struct {
-				Task  models.Task `json:"task"`
-				Score float64     `json:"score"`
+				Task        models.Task `json:"task"`
+				Score       float64     `json:"score"`
+				Unscheduled string      `json:"unscheduled,omitempty"`
 			}
 			payload := make([]taskJSON, 0, len(tasks))
 			for _, item := range tasks {
 				payload = append(payload, taskJSON{
-					Task:  item.task,
-					Score: item.score,
+					Task:        item.task,
+					Score:       item.score,
+					Unscheduled: unscheduled[item.task.ID],
 				})
 			}
 
@@ -331,6 +334,7 @@ var listCmd = &cobra.Command{
 			ShowAll:       showAll,
 			MarkRecurring: true,
 			ShowPriority:  prioritySort,
+			Unscheduled:   unscheduled,
 		}
 
 		ui.RenderTaskTable(displayTasks, displayScores, cfg, allProjects, opts)

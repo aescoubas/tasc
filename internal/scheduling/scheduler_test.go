@@ -11,11 +11,11 @@ import (
 func TestApplyAutoSchedule(t *testing.T) {
 	// Helpers
 	fixedTime := func(h, m int) *time.Time {
-		tm := time.Date(2026, 2, 1, h, m, 0, 0, time.UTC)
+		tm := time.Date(2026, 2, 1, h, m, 0, 0, time.Local)
 		return &tm
 	}
 	floatingTime := func() *time.Time {
-		tm := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+		tm := time.Date(2026, 2, 1, 0, 0, 0, 0, time.Local)
 		return &tm
 	}
 
@@ -56,11 +56,13 @@ func TestApplyAutoSchedule(t *testing.T) {
 		"afternoon": {Start: "13:00", End: "18:00"},
 	}
 
-	scheduled := ApplyAutoSchedule(tasks, blocks)
+	if unscheduled := ApplyAutoSchedule(tasks, blocks); len(unscheduled) != 0 {
+		t.Fatalf("unexpected unscheduled tasks: %v", unscheduled)
+	}
 
 	// Map by ID for checking
 	res := make(map[int64]models.Task)
-	for _, t := range scheduled {
+	for _, t := range tasks {
 		res[t.ID] = t
 	}
 
@@ -86,5 +88,37 @@ func TestApplyAutoSchedule(t *testing.T) {
 	// Start 07:50 (after High). Ends 08:10.
 	if !res[3].DueAt.Equal(*fixedTime(7, 50)) {
 		t.Errorf("Low priority task assigned %v, want 07:50", res[3].DueAt.Format("15:04"))
+	}
+}
+
+func TestScheduleWindows(t *testing.T) {
+	midnight := time.Date(2030, 1, 2, 0, 0, 0, 0, time.Local)
+	previous := midnight.Add(-90 * time.Minute)
+	tasks := []models.Task{
+		{ID: 1, DueAt: &previous, Estimate: "3h"},
+		{ID: 2, DueAt: &midnight, ScheduleBlock: "early", Estimate: "30m"},
+		{ID: 3, DueAt: &midnight, ScheduleBlock: "early", Estimate: "1h"},
+		{ID: 4, DueAt: &midnight, ScheduleBlock: "invalid"},
+		{ID: 5, DueAt: &midnight, ScheduleBlock: "overnight"},
+		{ID: 6, DueAt: &midnight, ScheduleBlock: "late", Estimate: "60m"},
+		{ID: 7, DueAt: &midnight, ScheduleBlock: "equal"},
+	}
+	unscheduled := ApplyAutoSchedule(tasks, map[string]config.TimeBlock{
+		"early":     {Start: "01:00", End: "02:00"},
+		"invalid":   {Start: "06:00", End: "51:00"},
+		"overnight": {Start: "22:00", End: "02:00"},
+		"late":      {Start: "23:00", End: "24:00"},
+		"equal":     {Start: "12:00", End: "12:00"},
+	})
+	for id, reason := range map[int64]string{3: "no capacity", 4: "invalid time block", 5: "invalid time block", 7: "invalid time block"} {
+		if unscheduled[id] != reason || !tasks[id-1].DueAt.Equal(midnight) {
+			t.Errorf("task %d = %v (%q), want midnight (%q)", id, tasks[id-1].DueAt, unscheduled[id], reason)
+		}
+	}
+	if got := tasks[1].DueAt.Format("15:04"); got != "01:30" {
+		t.Errorf("earliest available slot = %s, want 01:30", got)
+	}
+	if got := tasks[5].DueAt.Format("15:04"); got != "23:00" {
+		t.Errorf("late slot = %s, want 23:00", got)
 	}
 }

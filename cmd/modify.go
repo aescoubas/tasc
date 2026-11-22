@@ -102,11 +102,12 @@ var modifyCmd = &cobra.Command{
 			if due == "" {
 				updates["due_at"] = nil
 			} else {
-				parsed, err := parse.Date(due, cfg.EndOfDay)
+				parsed, dateOnly, err := parse.DateWithPrecision(due, cfg.EndOfDay)
 				if err != nil {
 					return fmt.Errorf("invalid due date: %w", err)
 				}
 				updates["due_at"] = parsed
+				updates["due_date_only"] = dateOnly
 			}
 		}
 		if cmd.Flags().Changed("estimate") {

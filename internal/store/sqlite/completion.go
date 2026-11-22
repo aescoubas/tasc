@@ -18,7 +18,7 @@ type taskQueries interface {
 	QueryRow(string, ...interface{}) *sql.Row
 }
 
-func (s *SQLiteStore) completeTasks(ids []int64, updates map[string]interface{}, editCompleted bool) error {
+func (s *SQLiteStore) completeTasks(ids []int64, updates map[string]interface{}, fullEdit *models.Task) error {
 	q, err := s.beginWriter()
 	if err != nil {
 		return err
@@ -44,10 +44,14 @@ func (s *SQLiteStore) completeTasks(ids []int64, updates map[string]interface{},
 			// Terminal tasks have no claim. An old run must not report another run's completion as its own.
 			return errors.New(store.AssignmentConflict)
 		}
-		if wasDone && !editCompleted {
+		if wasDone && fullEdit == nil {
 			continue
 		}
 		projects[task.Project] = true
+		if fullEdit != nil {
+			updates["due_at"] = fullEdit.DueAt
+			updates["due_date_only"] = duePrecision(fullEdit.DueAt, fullEdit.DueDateOnly, task)
+		}
 		if err := applyCompletionEdits(q, id, updates); err != nil {
 			return err
 		}
@@ -104,9 +108,9 @@ func createSuccessor(q taskQueries, task models.Task, now time.Time) error {
 		return err
 	}
 	_, err = q.Exec(`INSERT INTO tasks
-				(title, description, project, due_at, schedule_block, estimate, recurrence, user_priority, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, task.Title, task.Description, task.Project,
-		next, task.ScheduleBlock, task.Estimate, task.Recurrence, task.UserPriority, now)
+				(title, description, project, due_at, due_date_only, schedule_block, estimate, recurrence, user_priority, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, task.Title, task.Description, task.Project,
+		next, task.DueDateOnly, task.ScheduleBlock, task.Estimate, task.Recurrence, task.UserPriority, now)
 	return err
 }
 
@@ -114,7 +118,7 @@ func applyCompletionEdits(q taskQueries, id int64, updates map[string]interface{
 	var fields []string
 	for field := range updates {
 		switch field {
-		case "title", "description", "project", "due_at", "schedule_block", "estimate", "recurrence", "reschedule_count", "user_priority":
+		case "title", "description", "project", "due_at", "due_date_only", "schedule_block", "estimate", "recurrence", "reschedule_count", "user_priority":
 			fields = append(fields, field)
 		}
 	}

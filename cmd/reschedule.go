@@ -35,7 +35,7 @@ var rescheduleCmd = &cobra.Command{
 		}
 
 		dateStr := strings.Join(args[1:], " ")
-		newDate, err := parse.Date(dateStr, cfg.EndOfDay)
+		newDate, dateOnly, err := parse.DateWithPrecision(dateStr, cfg.EndOfDay)
 		if err != nil {
 			return fmt.Errorf("invalid date format: %w", err)
 		}
@@ -65,6 +65,7 @@ var rescheduleCmd = &cobra.Command{
 		}
 
 		t.DueAt = newDate
+		t.DueDateOnly = &dateOnly
 
 		err = CurrentStore.UpdateTask(t)
 		if err != nil {

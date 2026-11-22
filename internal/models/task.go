@@ -26,6 +26,7 @@ type Task struct {
 	CreatedAt       time.Time  `json:"created_at" yaml:"created_at"`
 	CompletedAt     *time.Time `json:"completed_at,omitempty" yaml:"completed_at,omitempty"`
 	DueAt           *time.Time `json:"due_at,omitempty" yaml:"due_at,omitempty"`
+	DueDateOnly     *bool      `json:"due_date_only,omitempty" yaml:"-"` // nil for legacy deadlines
 	ScheduleBlock   string     `json:"schedule_block,omitempty" yaml:"schedule_block,omitempty"`
 	Estimate        string     `json:"estimate,omitempty" yaml:"estimate,omitempty"`
 	Recurrence      string     `json:"recurrence,omitempty" yaml:"recurrence,omitempty"`

@@ -226,13 +226,15 @@ func (ms *MCPServer) handleAdd(ctx context.Context, request mcp.CallToolRequest)
 	rec := request.GetString("recurrence", "")
 
 	var dueAt *time.Time
+	var precision *bool
 
 	if dueStr != "" {
-		t, err := parse.Date(dueStr, ms.config.EndOfDay)
+		t, dateOnly, err := parse.DateWithPrecision(dueStr, ms.config.EndOfDay)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Invalid due date: %v", err)), nil
 		}
 		dueAt = t
+		precision = &dateOnly
 	}
 
 	task := models.Task{
@@ -240,6 +242,7 @@ func (ms *MCPServer) handleAdd(ctx context.Context, request mcp.CallToolRequest)
 		Description: desc,
 		Project:     proj,
 		DueAt:       dueAt,
+		DueDateOnly: precision,
 		Estimate:    est,
 		Recurrence:  rec,
 	}
@@ -443,11 +446,12 @@ func (ms *MCPServer) handleUpdate(ctx context.Context, request mcp.CallToolReque
 		if dueStr == "" {
 			updates["due_at"] = nil
 		} else {
-			t, err := parse.Date(dueStr, ms.config.EndOfDay)
+			t, dateOnly, err := parse.DateWithPrecision(dueStr, ms.config.EndOfDay)
 			if err != nil {
 				return mcp.NewToolResultError(fmt.Sprintf("Invalid due date: %v", err)), nil
 			}
 			updates["due_at"] = t
+			updates["due_date_only"] = dateOnly
 		}
 	}
 
@@ -537,11 +541,12 @@ func (ms *MCPServer) handleBatchUpdate(ctx context.Context, request mcp.CallTool
 	if clearDue {
 		updates["due_at"] = nil
 	} else if d := request.GetString("due", ""); d != "" {
-		t, err := parse.Date(d, ms.config.EndOfDay)
+		t, dateOnly, err := parse.DateWithPrecision(d, ms.config.EndOfDay)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Invalid due date: %v", err)), nil
 		}
 		updates["due_at"] = t
+		updates["due_date_only"] = dateOnly
 	}
 
 	err := ms.caller(ctx).BatchUpdateTasks(ids, updates)

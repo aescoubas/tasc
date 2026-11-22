@@ -16,6 +16,10 @@ The core entity.
   `blocked`, `deleted`, `undefined`.
 - **`created_at`**, **`completed_at`**: timestamps.
 - **`due_at`**: `DATETIME`.
+- **`due_date_only`**: Nullable boolean, added by migration 9. A date-only
+  input stores true alongside the configured end-of-day deadline. Explicit
+  timestamps store false. Existing rows keep their timestamps and a null flag.
+  Clearing the deadline clears the flag. Recurrence and undo preserve it.
 - **`schedule_block`**: `TEXT`. Named time block (`morning`, `afternoon`, …) resolved
   against `time_blocks` in `~/.tasc.yaml`. Added by migration 3.
 - **`active_start`**: `DATETIME`. Set while a task is "started", for time tracking.
@@ -28,7 +32,8 @@ The core entity.
   highest to lowest priority. `NULL` sorts with 5 and represents an unset value.
   The migration extends the task undo triggers and leaves existing rows unset.
 
-Migration 5 dropped `scheduled_at`. `schedule_block` is the only scheduling column.
+Migration 5 dropped `scheduled_at`. The scheduler calculates start times from
+the saved due date, its precision and the configured time block.
 
 ### Task assignments and leases
 

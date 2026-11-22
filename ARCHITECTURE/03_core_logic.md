@@ -55,3 +55,27 @@ separate from completion.
 ## Date Parsing (`internal/parse`)
 Robust parsing combining standard layouts (ISO 8601) and natural language processing (`go-naturaldate`).
 - Preprocessing step handles shorthand inputs like "2d" -> "in 2 days" to ensure intuitive CLI usage.
+
+## Calendar Capacity (`internal/scheduling`)
+
+`add`, `modify` and `reschedule` retain whether their due input is date-only.
+A date-only deadline uses `end_of_day`. With a named block, it can receive a
+virtual start in the corresponding window. An explicit time stays fixed, even
+at midnight or at the configured end of day. Legacy midnight rows still float.
+To make a legacy task with an end-of-day timestamp float, re-enter its due date
+with `tasc modify <id> --due YYYY-MM-DD --yes`.
+
+`list` and `calendar` plan virtual start times. All open tasks on the displayed
+days contribute to the plan, including tasks hidden by list filters. Explicit
+appointments occupy their full estimate, even across midnight. Placement never
+writes a new deadline. An invalid or nonpositive estimate uses 20 minutes.
+
+A floating task uses the earliest gap that fits its whole estimate inside its
+configured block. Blocks use local `HH:MM` boundaries on the same day and may
+end at `24:00`. The default window for unlabelled floating tasks is 07:00–24:00.
+Windows run in start-time order. Within a block, Tasc uses its existing urgency
+score and breaks ties by task ID. If the window is full, the task keeps its
+deadline and appears as unscheduled. Shorter tasks can still fill remaining
+gaps. Missing and invalid blocks also leave tasks unscheduled. The day and week
+grids list them below the timed rows. List JSON exposes the reason in
+`unscheduled`.
